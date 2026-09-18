@@ -8,7 +8,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   outlineWidth: 3,
   backgroundColor: '#151522',
   backgroundOpacity: 0.82,
-  animation: 'zoom'
+  animation: 'zoom',
+  minimumDonationAmount: 1000,
+  rankingTitle: '오늘의 후원',
+  rankingLimit: 10
 });
 
 export function normalizeDonation(input) {

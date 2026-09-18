@@ -23,11 +23,12 @@ app.get('/api/health', (_req, res) => res.json({ ok:true }));
 
 app.get('/api/dashboard', async (_req, res) => {
   const session = await activeSession();
-  const [donations, ranking] = await Promise.all([
+  const [donations, ranking, savedSettings] = await Promise.all([
     db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, received_at receivedAt FROM donations WHERE session_id = ? ORDER BY id DESC LIMIT 100`, args:[session.id] }),
-    db.execute({ sql:`SELECT donor_name donorName, SUM(amount) amount, COUNT(*) count FROM donations WHERE session_id = ? GROUP BY donor_name ORDER BY amount DESC, donor_name`, args:[session.id] })
+    db.execute({ sql:`SELECT donor_name donorName, SUM(amount) amount, COUNT(*) count FROM donations WHERE session_id = ? GROUP BY donor_name ORDER BY amount DESC, donor_name`, args:[session.id] }),
+    db.execute('SELECT value FROM settings WHERE id = 1')
   ]);
-  res.json({ session, donations:donations.rows, ranking:ranking.rows });
+  res.json({ session, donations:donations.rows, ranking:ranking.rows, settings:{ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) } });
 });
 
 app.get('/api/widgets', async (_req, res) => {
@@ -49,6 +50,11 @@ app.get('/api/donations', async (req, res) => {
 app.post('/api/donations', async (req, res) => {
   try {
     const input = normalizeDonation(req.body);
+    const savedSettings = await db.execute('SELECT value FROM settings WHERE id = 1');
+    const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) };
+    if (input.amount < Number(settings.minimumDonationAmount || 0)) {
+      return res.status(202).json({ ignored:true, minimumDonationAmount:settings.minimumDonationAmount, message:`${settings.minimumDonationAmount.toLocaleString('ko-KR')}원 미만 입금은 후원 리스트에 기록하지 않습니다.` });
+    }
     const session = await activeSession();
     const result = await db.execute({ sql:`INSERT INTO donations (session_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, ?)`, args:[session.id,input.donorName,input.amount,input.bank,input.externalId] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, received_at receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
@@ -66,6 +72,9 @@ app.get('/api/settings', async (_req, res) => {
 
 app.put('/api/settings', async (req, res) => {
   const settings = { ...DEFAULT_SETTINGS, ...req.body };
+  settings.minimumDonationAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.minimumDonationAmount) || 0)));
+  settings.rankingLimit = Math.max(1, Math.min(50, Math.floor(Number(settings.rankingLimit) || DEFAULT_SETTINGS.rankingLimit)));
+  settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);
   await db.execute({ sql:`UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1`, args:[JSON.stringify(settings)] });
   res.json(settings);
 });
