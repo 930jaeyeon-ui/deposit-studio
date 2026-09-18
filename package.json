@@ -1,0 +1,14 @@
+{
+  "name": "deposit-studio",
+  "version": "0.1.0",
+  "private": true,
+  "engines": { "node": ">=24.0.0" },
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,magenta \"npm run dev -w @deposit-studio/api\" \"npm run dev -w @deposit-studio/web\"",
+    "build": "npm run build -w @deposit-studio/web",
+    "start": "npm run start -w @deposit-studio/api",
+    "test": "npm run test -w @deposit-studio/api"
+  },
+  "devDependencies": { "concurrently": "^9.2.0" }
+}

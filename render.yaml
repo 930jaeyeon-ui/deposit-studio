@@ -1,0 +1,35 @@
+services:
+  - type: web
+    runtime: node
+    name: deposit-studio-api
+    region: singapore
+    plan: starter
+    buildCommand: npm ci
+    startCommand: npm run start -w @deposit-studio/api
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 24.21.0
+      - key: DB_PATH
+        value: /var/data/deposit-studio.db
+      - key: WEB_ORIGIN
+        value: https://deposit-studio-web.onrender.com
+    disk:
+      name: deposit-studio-data
+      mountPath: /var/data
+      sizeGB: 1
+
+  - type: web
+    runtime: static
+    name: deposit-studio-web
+    buildCommand: npm ci && npm run build -w @deposit-studio/web
+    staticPublishPath: ./apps/web/dist
+    envVars:
+      - key: NODE_VERSION
+        value: 24.21.0
+      - key: VITE_API_HOST
+        value: deposit-studio-api.onrender.com
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
