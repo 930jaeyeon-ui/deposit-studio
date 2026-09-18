@@ -12,12 +12,33 @@ async function api(path, options) {
 }
 
 export function App() {
-  if (location.pathname === '/api-test') return <ApiTest/>;
+  if (location.pathname === '/api-test') return <PageLayout><ApiTest/></PageLayout>;
   if (location.pathname === '/overlay') return <Overlay/>;
   if (location.pathname === '/recent') return <Widget type="recent"/>;
   if (location.pathname === '/ranking') return <Widget type="ranking"/>;
   if (location.pathname === '/settings') return <Settings/>;
   return <Dashboard/>;
+}
+
+function PageLayout({ children }) {
+  const path = location.pathname;
+  const links = [
+    ['/', '대시보드', '방송 후원 현황'],
+    ['/settings', '방송 설정', '기준 금액 · 알림 · 랭킹'],
+    ['/api-test', 'API 수신 테스트', '휴대폰 · 외부 연동 확인']
+  ];
+  return <div className="app-layout">
+    <aside className="side-menu">
+      <a className="brand" href="/"><span>DS</span><b>Deposit Studio</b><small>LIVE CONTROL</small></a>
+      <nav className="side-nav" aria-label="주 메뉴">
+        <span className="nav-label">관리 메뉴</span>
+        {links.map(([href, label, hint]) => <a key={href} className={path === href ? 'active' : ''} href={href}><strong>{label}</strong><small>{hint}</small></a>)}
+      </nav>
+      <div className="side-obs"><span className="nav-label">OBS 브라우저 소스</span><a href="/overlay" target="_blank">입금 알림 ↗</a><a href="/recent" target="_blank">최근 후원 ↗</a><a href="/ranking" target="_blank">후원 랭킹 ↗</a></div>
+      <p className="side-note">방송 전에는 설정에서 최소 기록 금액을 확인하세요.</p>
+    </aside>
+    <div className="app-content">{children}</div>
+  </div>;
 }
 
 function Dashboard() {
@@ -54,7 +75,7 @@ function Dashboard() {
 
   const total = data.donations.reduce((sum, item) => sum + item.amount, 0);
   const top = data.ranking[0];
-  return <div className="shell">
+  return <PageLayout><div className="shell">
     <header><div><span className="eyebrow">DEPOSIT STUDIO · LIVE CONTROL</span><h1>오늘의 후원 현황</h1></div><nav><button className="header-button" onClick={startNewBroadcast}>새 방송 시작</button><a href="/settings">방송 설정</a><a href="/ranking" target="_blank">OBS 랭킹 ↗</a></nav></header>
     <section className="hero"><div><span>현재 방송</span><h2>{data.session.title || '불러오는 중...'}</h2><small>{formatWon(data.settings.minimumDonationAmount || 0)}원 이상부터 후원 리스트에 기록</small></div><div className="hero-stat"><b>{data.ranking.length}</b><span>후원자</span></div><div className="hero-stat"><b>{formatWon(total)}원</b><span>누적 후원금</span></div></section>
     <section className="insight-strip"><div><span>현재 1위</span><b>{top ? `${top.donorName} · ${formatWon(top.amount)}원` : '첫 후원자를 기다리는 중'}</b></div><div><span>평균 후원</span><b>{data.donations.length ? `${formatWon(Math.round(total / data.donations.length))}원` : '-'}</b></div><div><span>OBS 표시</span><a href="/ranking" target="_blank">랭킹 위젯 열기 ↗</a></div></section>
@@ -68,7 +89,7 @@ function Dashboard() {
         <div className="table"><div className="table-head"><span>입금자</span><span>은행</span><span>금액</span><span>시간</span></div>{data.donations.map(item=><div className="table-row" key={item.id}><strong>{item.donorName}</strong><span>{item.bank}</span><b>{formatWon(item.amount)}원</b><time>{new Date(item.receivedAt+'Z').toLocaleString('ko-KR')}</time></div>)}{!data.donations.length&&<Empty/>}</div>
       </section>
     </main>
-  </div>;
+  </div></PageLayout>;
 }
 
 function Empty(){ return <p className="empty">아직 입금 내역이 없습니다.</p>; }
@@ -85,7 +106,7 @@ function Settings() {
   }
   const preview = settings.messageTemplate.replace('{name}','폴조지').replace('{amount}','50,000');
   const style = { color:settings.textColor,fontSize:settings.fontSize,fontWeight:settings.fontWeight,WebkitTextStroke:`${settings.outlineWidth}px ${settings.outlineColor}`,backgroundColor:settings.backgroundColor };
-  return <div className="shell"><header><div><span className="eyebrow">DEPOSIT STUDIO · LIVE CONTROL</span><h1>방송 설정</h1></div><a href="/">← 후원 현황</a></header><main className="settings-grid"><form className="panel controls" onSubmit={save}>
+  return <PageLayout><div className="shell"><header><div><span className="eyebrow">DEPOSIT STUDIO · LIVE CONTROL</span><h1>방송 설정</h1></div><a href="/">← 후원 현황</a></header><main className="settings-grid"><form className="panel controls" onSubmit={save}>
     <div className="control-section"><h3>후원 리스트 기준</h3><p>이 금액보다 작은 입금은 저장·알림·랭킹에 반영하지 않습니다.</p></div>
     <label>최소 기록 금액 (원)<input type="number" min="0" step="100" value={settings.minimumDonationAmount} onChange={e=>update('minimumDonationAmount',Math.max(0, Number(e.target.value)))}/></label>
     <label>랭킹 제목<input value={settings.rankingTitle} onChange={e=>update('rankingTitle',e.target.value)}/></label>
@@ -100,7 +121,7 @@ function Settings() {
     <label>외곽선 두께<input type="range" min="0" max="8" value={settings.outlineWidth} onChange={e=>update('outlineWidth',Number(e.target.value))}/><span>{settings.outlineWidth}px</span></label>
     <label>배경색<input type="color" value={settings.backgroundColor} onChange={e=>update('backgroundColor',e.target.value)}/></label>
     <button>설정 저장</button>{saved&&<p className="saved">{saved}</p>}
-  </form><section className="panel preview"><span>실시간 미리보기</span><div className="preview-stage"><div className="alert" style={style}>{preview.split('\n').map((line,i)=><div key={i}>{line}</div>)}</div></div><div className="widget-links"><a href="/overlay" target="_blank">/overlay</a><a href="/recent" target="_blank">/recent</a><a href="/ranking" target="_blank">/ranking</a></div></section></main></div>;
+  </form><section className="panel preview"><span>실시간 미리보기</span><div className="preview-stage"><div className="alert" style={style}>{preview.split('\n').map((line,i)=><div key={i}>{line}</div>)}</div></div><div className="widget-links"><a href="/overlay" target="_blank">/overlay</a><a href="/recent" target="_blank">/recent</a><a href="/ranking" target="_blank">/ranking</a></div></section></main></div></PageLayout>;
 }
 
 function Widget({ type }) {
