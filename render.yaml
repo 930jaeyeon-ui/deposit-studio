@@ -3,22 +3,19 @@ services:
     runtime: node
     name: deposit-studio-api
     region: singapore
-    plan: starter
+    plan: free
     buildCommand: npm ci
     startCommand: npm run start -w @deposit-studio/api
     healthCheckPath: /api/health
     envVars:
       - key: NODE_VERSION
         value: 24.21.0
-      - key: DB_PATH
-        value: /var/data/deposit-studio.db
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
       - key: WEB_ORIGIN
         value: https://deposit-studio-web.onrender.com
-    disk:
-      name: deposit-studio-data
-      mountPath: /var/data
-      sizeGB: 1
-
   - type: web
     runtime: static
     name: deposit-studio-web
