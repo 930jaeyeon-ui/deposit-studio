@@ -42,10 +42,20 @@ function Dashboard() {
     load();
   }
 
+  async function startNewBroadcast() {
+    const title = window.prompt('새 방송 제목을 입력하세요.', `방송 ${Number(data.session.id || 0) + 1}회차`);
+    if (title === null) return;
+    try {
+      await api('/api/sessions', { method:'POST', body:JSON.stringify({ title }) });
+      setMessage('새 방송을 시작했습니다. 이전 방송 후원 내역은 보관됩니다.');
+      load();
+    } catch (error) { setMessage(error.message); }
+  }
+
   const total = data.donations.reduce((sum, item) => sum + item.amount, 0);
   const top = data.ranking[0];
   return <div className="shell">
-    <header><div><span className="eyebrow">DEPOSIT STUDIO · LIVE CONTROL</span><h1>오늘의 후원 현황</h1></div><nav><a href="/settings">방송 설정</a><a href="/ranking" target="_blank">OBS 랭킹 ↗</a></nav></header>
+    <header><div><span className="eyebrow">DEPOSIT STUDIO · LIVE CONTROL</span><h1>오늘의 후원 현황</h1></div><nav><button className="header-button" onClick={startNewBroadcast}>새 방송 시작</button><a href="/settings">방송 설정</a><a href="/ranking" target="_blank">OBS 랭킹 ↗</a></nav></header>
     <section className="hero"><div><span>현재 방송</span><h2>{data.session.title || '불러오는 중...'}</h2><small>{formatWon(data.settings.minimumDonationAmount || 0)}원 이상부터 후원 리스트에 기록</small></div><div className="hero-stat"><b>{data.ranking.length}</b><span>후원자</span></div><div className="hero-stat"><b>{formatWon(total)}원</b><span>누적 후원금</span></div></section>
     <section className="insight-strip"><div><span>현재 1위</span><b>{top ? `${top.donorName} · ${formatWon(top.amount)}원` : '첫 후원자를 기다리는 중'}</b></div><div><span>평균 후원</span><b>{data.donations.length ? `${formatWon(Math.round(total / data.donations.length))}원` : '-'}</b></div><div><span>OBS 표시</span><a href="/ranking" target="_blank">랭킹 위젯 열기 ↗</a></div></section>
     {message && <p className="notice">{message}</p>}
