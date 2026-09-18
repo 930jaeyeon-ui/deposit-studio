@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { DEFAULT_SETTINGS, formatWon } from '@deposit-studio/shared';
+import { ApiTest } from './ApiTest';
 
 async function api(path, options) {
   const configuredHost = import.meta.env.VITE_API_HOST;
@@ -11,6 +12,7 @@ async function api(path, options) {
 }
 
 export function App() {
+  if (location.pathname === '/api-test') return <ApiTest/>;
   if (location.pathname === '/overlay') return <Overlay/>;
   if (location.pathname === '/recent') return <Widget type="recent"/>;
   if (location.pathname === '/ranking') return <Widget type="ranking"/>;

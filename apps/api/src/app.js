@@ -1,4 +1,5 @@
 import express from 'express';
+import { apiTest } from './api-test.js';
 import { DEFAULT_SETTINGS, normalizeDonation } from '@deposit-studio/shared';
 import { activeSession, db } from './db.js';
 
@@ -11,6 +12,13 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '100kb' }));
+app.use('/api/test', apiTest);
+app.use((error, req, res, next) => {
+  if (!req.path.startsWith('/api/test/')) return next(error);
+  res.status(error.status || 500).json({
+    error: error.status === 413 ? 'JSON은 100KB 이하로 보내세요.' : '올바른 JSON 객체를 보내세요.'
+  });
+});
 app.get('/api/health', (_req, res) => res.json({ ok:true }));
 
 app.get('/api/dashboard', async (_req, res) => {

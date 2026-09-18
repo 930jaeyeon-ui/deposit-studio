@@ -18,6 +18,9 @@ npm.cmd run dev
 - 관리 화면: http://127.0.0.1:5173
 - OBS 알림: http://127.0.0.1:5173/overlay
 - API: http://127.0.0.1:3001/api/health
+- API 수신 테스트: http://127.0.0.1:5173/api-test
+
+휴대폰과 PC를 같은 Wi-Fi에 연결한 뒤, 휴대폰에서는 `127.0.0.1` 대신 PC의 Wi-Fi IPv4 주소를 사용합니다. 테스트 페이지에 표시되는 `POST /api/test/messages` 주소로 `Content-Type: application/json` 헤더와 JSON 객체를 보내면 페이지의 수신함에 즉시 표시됩니다. 화면 갱신은 단방향 실시간 전송에 맞는 SSE(Server-Sent Events)를 사용합니다.
 
 SQLite 파일은 최초 실행 시 `data/deposit-studio.db`에 생성됩니다.
 
