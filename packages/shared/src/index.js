@@ -11,7 +11,13 @@ export const DEFAULT_SETTINGS = Object.freeze({
   animation: 'zoom',
   minimumDonationAmount: 1000,
   rankingTitle: '오늘의 후원',
-  rankingLimit: 10
+  rankingLimit: 10,
+  rankingFontSize: 30,
+  rankingRowGap: 10,
+  rankingAlign: 'left',
+  rankingTheme: 'midnight',
+  rankingShowRank: true,
+  rankingShowCount: false
 });
 
 export function normalizeDonation(input) {

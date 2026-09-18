@@ -14,7 +14,7 @@ async function api(path, options) {
 export function App() {
   if (location.pathname === '/api-test') return <PageLayout><ApiTest/></PageLayout>;
   if (location.pathname === '/overlay') return <Overlay/>;
-  if (location.pathname === '/recent') return <Widget type="recent"/>;
+  if (location.pathname === '/recent') return <Widget/>;
   if (location.pathname === '/ranking') return <Widget type="ranking"/>;
   if (location.pathname === '/settings') return <Settings/>;
   return <Dashboard/>;
@@ -34,7 +34,7 @@ function PageLayout({ children }) {
         <span className="nav-label">관리 메뉴</span>
         {links.map(([href, label, hint]) => <a key={href} className={path === href ? 'active' : ''} href={href}><strong>{label}</strong><small>{hint}</small></a>)}
       </nav>
-      <div className="side-obs"><span className="nav-label">OBS 브라우저 소스</span><a href="/overlay" target="_blank">입금 알림 ↗</a><a href="/recent" target="_blank">최근 후원 ↗</a><a href="/ranking" target="_blank">후원 랭킹 ↗</a></div>
+      <div className="side-obs"><span className="nav-label">OBS 브라우저 소스</span><a href="/overlay" target="_blank">입금 알림 ↗</a><a href="/ranking" target="_blank">후원 랭킹 ↗</a></div>
       <p className="side-note">방송 전에는 설정에서 최소 기록 금액을 확인하세요.</p>
     </aside>
     <div className="app-content">{children}</div>
@@ -111,6 +111,13 @@ function Settings() {
     <label>최소 기록 금액 (원)<input type="number" min="0" step="100" value={settings.minimumDonationAmount} onChange={e=>update('minimumDonationAmount',Math.max(0, Number(e.target.value)))}/></label>
     <label>랭킹 제목<input value={settings.rankingTitle} onChange={e=>update('rankingTitle',e.target.value)}/></label>
     <label>OBS 랭킹 표시 인원<input type="number" min="1" max="50" value={settings.rankingLimit} onChange={e=>update('rankingLimit',Math.min(50,Math.max(1,Number(e.target.value))))}/></label>
+    <div className="control-section"><h3>후원 랭킹 출력</h3><p>OBS 브라우저 소스의 랭킹 리스트 모양을 정합니다.</p></div>
+    <label>랭킹 글자 크기<input type="range" min="16" max="72" value={settings.rankingFontSize} onChange={e=>update('rankingFontSize',Number(e.target.value))}/><span>{settings.rankingFontSize}px</span></label>
+    <label>행 간격<input type="range" min="0" max="40" value={settings.rankingRowGap} onChange={e=>update('rankingRowGap',Number(e.target.value))}/><span>{settings.rankingRowGap}px</span></label>
+    <label>정렬<select value={settings.rankingAlign} onChange={e=>update('rankingAlign',e.target.value)}><option value="left">왼쪽 정렬</option><option value="center">가운데 정렬</option><option value="right">오른쪽 정렬</option></select></label>
+    <label>랭킹 테마<select value={settings.rankingTheme} onChange={e=>update('rankingTheme',e.target.value)}><option value="midnight">미드나이트</option><option value="clean">클린</option><option value="neon">네온</option></select></label>
+    <label className="toggle-label">순위 번호 표시<input type="checkbox" checked={settings.rankingShowRank} onChange={e=>update('rankingShowRank',e.target.checked)}/><i/></label>
+    <label className="toggle-label">후원 횟수 표시<input type="checkbox" checked={settings.rankingShowCount} onChange={e=>update('rankingShowCount',e.target.checked)}/><i/></label>
     <div className="control-section"><h3>입금 알림</h3><p>기준 금액을 통과한 새 후원에만 적용됩니다.</p></div>
     <label>알림 문구<textarea value={settings.messageTemplate} onChange={e=>update('messageTemplate',e.target.value)}/></label>
     <label>표시 시간 (초)<input type="number" min="1" max="30" value={settings.durationMs/1000} onChange={e=>update('durationMs',Number(e.target.value)*1000)}/></label>
@@ -121,13 +128,23 @@ function Settings() {
     <label>외곽선 두께<input type="range" min="0" max="8" value={settings.outlineWidth} onChange={e=>update('outlineWidth',Number(e.target.value))}/><span>{settings.outlineWidth}px</span></label>
     <label>배경색<input type="color" value={settings.backgroundColor} onChange={e=>update('backgroundColor',e.target.value)}/></label>
     <button>설정 저장</button>{saved&&<p className="saved">{saved}</p>}
-  </form><section className="panel preview"><span>실시간 미리보기</span><div className="preview-stage"><div className="alert" style={style}>{preview.split('\n').map((line,i)=><div key={i}>{line}</div>)}</div></div><div className="widget-links"><a href="/overlay" target="_blank">/overlay</a><a href="/recent" target="_blank">/recent</a><a href="/ranking" target="_blank">/ranking</a></div></section></main></div></PageLayout>;
+  </form><section className="panel preview"><span>실시간 미리보기 · 입금 알림</span><div className="preview-stage"><div className="alert" style={style}>{preview.split('\n').map((line,i)=><div key={i}>{line}</div>)}</div></div><span className="ranking-preview-label">후원 랭킹 미리보기</span><RankingPreview settings={settings}/><div className="widget-links"><a href="/overlay" target="_blank">입금 알림 열기</a><a href="/ranking" target="_blank">후원 랭킹 열기</a></div></section></main></div></PageLayout>;
 }
 
-function Widget({ type }) {
-  const [items, setItems] = useState([]);
-  useEffect(() => { const load=()=>api('/api/widgets').then(data=>setItems(type==='recent'?data.donations:data.ranking)); load(); const timer=setInterval(load,1000); return()=>clearInterval(timer); },[type]);
-  return <div className="widget"><div className="widget-card"><h2>{type==='recent'?'최근 후원':'후원 랭킹'}</h2>{items.map((item,index)=><div className="widget-row" key={type==='recent'?item.id:item.donorName}><b>{type==='ranking'&&`${index+1}. `}{item.donorName}</b><span>{formatWon(item.amount)}원</span></div>)}</div></div>;
+function RankingPreview({ settings }) {
+  const sample = [{ donorName:'입금자명1', amount:150000, count:2 }, { donorName:'입금자명2', amount:100000, count:1 }, { donorName:'후원자', amount:50000, count:1 }];
+  return <div className="ranking-preview"><RankingCard items={sample} settings={settings}/></div>;
+}
+
+function RankingCard({ items, settings }) {
+  const cardStyle = { textAlign:settings.rankingAlign, '--ranking-size':`${settings.rankingFontSize}px`, '--ranking-gap':`${settings.rankingRowGap}px` };
+  return <div className={`widget-card theme-${settings.rankingTheme}`} style={cardStyle}><h2>{settings.rankingTitle || '오늘의 후원'}</h2>{items.slice(0, settings.rankingLimit || 10).map((item,index)=><div className="widget-row" key={item.donorName}><b>{settings.rankingShowRank && <em>{index+1}</em>}{item.donorName}{settings.rankingShowCount && <small>{item.count}회</small>}</b><span>{formatWon(item.amount)}원</span></div>)}</div>;
+}
+
+function Widget() {
+  const [data, setData] = useState({ ranking:[], settings:DEFAULT_SETTINGS });
+  useEffect(() => { const load=()=>Promise.all([api('/api/widgets'), api('/api/settings')]).then(([widgets, settings])=>setData({ ranking:widgets.ranking, settings })); load(); const timer=setInterval(load,1000); return()=>clearInterval(timer); },[]);
+  return <div className="widget"><RankingCard items={data.ranking} settings={data.settings}/></div>;
 }
 
 function Overlay() {

@@ -74,6 +74,12 @@ app.put('/api/settings', async (req, res) => {
   const settings = { ...DEFAULT_SETTINGS, ...req.body };
   settings.minimumDonationAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.minimumDonationAmount) || 0)));
   settings.rankingLimit = Math.max(1, Math.min(50, Math.floor(Number(settings.rankingLimit) || DEFAULT_SETTINGS.rankingLimit)));
+  settings.rankingFontSize = Math.max(16, Math.min(72, Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize)));
+  settings.rankingRowGap = Math.max(0, Math.min(40, Math.floor(Number(settings.rankingRowGap) || 0)));
+  settings.rankingAlign = ['left', 'center', 'right'].includes(settings.rankingAlign) ? settings.rankingAlign : DEFAULT_SETTINGS.rankingAlign;
+  settings.rankingTheme = ['midnight', 'clean', 'neon'].includes(settings.rankingTheme) ? settings.rankingTheme : DEFAULT_SETTINGS.rankingTheme;
+  settings.rankingShowRank = Boolean(settings.rankingShowRank);
+  settings.rankingShowCount = Boolean(settings.rankingShowCount);
   settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);
   await db.execute({ sql:`UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1`, args:[JSON.stringify(settings)] });
   res.json(settings);
