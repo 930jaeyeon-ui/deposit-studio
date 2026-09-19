@@ -163,54 +163,41 @@ function PageLayout({ children }) {
 
 function MyDashboard() {
   const { user } = useAuth();
-  const [period, setPeriod] = useState('month');
   const [data, setData] = useState({ summary:{ totalAmount:0, donationCount:0, donorCount:0, averageAmount:0 }, donors:[], weekdays:[], days:[], months:[], hours:[], largestDonation:null });
+  const [weekData, setWeekData] = useState({ days:[] });
+  const [trendPeriod, setTrendPeriod] = useState('week');
   const [message, setMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  useEffect(() => { setMessage(''); api(`/api/my/analytics?period=${period}`).then(setData).catch(error=>setMessage(error.message)); }, [period]);
-  const weekdayNames = ['일','월','화','수','목','금','토'];
-  const weekdayOrder = [1,2,3,4,5,6,0];
-  const weekdays = weekdayOrder.map(day => ({ label:`${weekdayNames[day]}요일`, amount:Number(data.weekdays.find(item=>Number(item.weekday)===day)?.amount || 0) }));
+  useEffect(() => { setMessage(''); Promise.all([api('/api/my/analytics?period=month'),api('/api/my/analytics?period=7d')]).then(([month,week])=>{setData(month);setWeekData(week);}).catch(error=>setMessage(error.message)); }, []);
   const months = Array.from({ length:12 }, (_,offset) => { const date=new Date(); date.setMonth(date.getMonth()-(11-offset)); const key=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`; return { label:`${date.getMonth()+1}월`, key, amount:Number(data.months.find(item=>item.month===key)?.amount || 0) }; });
-  const currentHour = new Date().getHours();
-  const hourlyAmounts = Array.from({ length:24 }, (_,hour) => { const found=data.hours?.find(item=>Number(item.hour)===hour); return { key:`hour-${hour}`, label:`${hour}시`, amount:Number(found?.amount||0), note:hour===currentHour?'현재':'' }; });
-  const hourlyCounts = Array.from({ length:24 }, (_,hour) => { const found=data.hours?.find(item=>Number(item.hour)===hour); return { key:`hour-${hour}`, label:`${hour}시`, amount:Number(found?.count||0), note:hour===currentHour?'현재':'' }; });
-  const dailyRange = (() => {
+  const weekDays = (() => {
     const today = new Date();
     const start = new Date(today);
-    if (period === '7d') start.setDate(today.getDate()-6);
-    else if (period === '30d') start.setDate(today.getDate()-29);
-    else start.setDate(1);
-    const end = period === 'month' ? new Date(today.getFullYear(), today.getMonth()+1, 0) : today;
+    start.setDate(today.getDate()-6);
     const items = [];
-    for (const date = new Date(start); date <= end; date.setDate(date.getDate()+1)) {
+    for (const date = new Date(start); date <= today; date.setDate(date.getDate()+1)) {
       const key = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-      items.push({ key, label:`${date.getMonth()+1}/${date.getDate()}`, amount:Number(data.days?.find(item=>item.day===key)?.amount || 0) });
+      items.push({ key, label:`${date.getMonth()+1}/${date.getDate()}`, amount:Number(weekData.days?.find(item=>item.day===key)?.amount || 0), note:key===`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`?'오늘':'' });
     }
     return items;
   })();
-  const topWeekday = weekdays.reduce((top,item)=>item.amount>top.amount?item:top, weekdays[0]);
-  const topMonth = months.reduce((top,item)=>item.amount>top.amount?item:top, months[0]);
-  const topHour = hourlyAmounts.reduce((top,item)=>item.amount>top.amount?item:top, hourlyAmounts[0]);
   const normalizedQuery = searchQuery.trim().toLocaleLowerCase('ko-KR');
   const searchedIndex = normalizedQuery ? data.donors.findIndex(item=>item.donorName.toLocaleLowerCase('ko-KR').includes(normalizedQuery)) : -1;
   const searchedDonor = searchedIndex >= 0 ? data.donors[searchedIndex] : null;
-  const periods = [['today','오늘'],['7d','최근 7일'],['30d','최근 30일'],['month','이번 달'],['all','전체']];
-  const selectedPeriodLabel = periods.find(([value])=>value===period)?.[1] || '이번 달';
+  const selectedPeriodLabel = '이번 달';
+  const trendItems = trendPeriod==='week' ? weekDays : months;
   return <PageLayout><div className="shell">
-    <header><div><span className="eyebrow">MY DONATION ANALYTICS</span><h1>{user.displayName}님의 후원 현황</h1><p className="page-description">내 후원 흐름과 후원자 데이터를 기간별로 정리합니다.</p></div><nav><a href="/settings/alert">알림 설정</a><a href="/settings/ranking">순위표 설정</a><a href="/obs">OBS 연결</a></nav></header>
-    <section className="period-filter"><div className="period-heading"><span>조회 기간</span><strong>{selectedPeriodLabel}</strong><small>기간을 바꾸면 아래 통계·순위·후원자 검색이 함께 변경됩니다.</small></div><div className="period-tabs">{periods.map(([value,label])=><button className={period===value?'active':''} onClick={()=>setPeriod(value)} key={value}>{label}</button>)}</div></section>
+    <header><div><span className="eyebrow">MY DONATION ANALYTICS</span><h1>{user.displayName}님의 후원 현황</h1><p className="page-description">이번 달 후원 흐름과 후원자 데이터를 정리합니다.</p></div></header>
     <section className="dashboard-kpis personal-kpis"><article className="kpi primary"><span>{selectedPeriodLabel} 후원금</span><strong>{formatWon(Number(data.summary.totalAmount)||0)}<small>원</small></strong></article><article className="kpi"><span>{selectedPeriodLabel} 후원자</span><strong>{Number(data.summary.donorCount)||0}<small>명</small></strong><p>동일 닉네임은 합산</p></article><article className="kpi"><span>{selectedPeriodLabel} 후원 건수</span><strong>{Number(data.summary.donationCount)||0}<small>건</small></strong></article><article className="kpi"><span>{selectedPeriodLabel} 평균 후원</span><strong>{formatWon(Math.round(Number(data.summary.averageAmount)||0))}<small>원</small></strong></article></section>
     {message&&<p className="notice">{message}</p>}
-    <section className="analytics-insights">{period==='today'?<><article><span>오늘 후원이 가장 많았던 시간</span><b>{topHour.amount?topHour.label:'-'}</b><small>{topHour.amount?`${formatWon(topHour.amount)}원`:'데이터 없음'}</small></article><article><span>오늘 1위 후원자</span><b>{data.donors[0]?.donorName||'-'}</b><small>{data.donors[0]?`${formatWon(data.donors[0].amount)}원`:'데이터 없음'}</small></article><article><span>오늘 최고 단건 후원</span><b>{data.largestDonation?.donorName||'-'}</b><small>{data.largestDonation?`${formatWon(data.largestDonation.amount)}원`:'데이터 없음'}</small></article></>:<><article><span>{selectedPeriodLabel} 후원이 가장 많은 요일</span><b>{topWeekday.amount ? topWeekday.label : '-'}</b><small>{topWeekday.amount ? `${formatWon(topWeekday.amount)}원` : '데이터 없음'}</small></article><article><span>{selectedPeriodLabel} 1위 후원자</span><b>{data.donors[0]?.donorName || '-'}</b><small>{data.donors[0] ? `${formatWon(data.donors[0].amount)}원` : '데이터 없음'}</small></article><article><span>최근 12개월 최고 후원 월</span><b>{topMonth.amount ? topMonth.label : '-'}</b><small>{topMonth.amount ? `${formatWon(topMonth.amount)}원` : '데이터 없음'}</small></article></>}</section>
-    <main className="analytics-grid">{period==='today'?<><AnalyticsChart title="오늘 시간대별 후원금" caption="한국 시간 기준" items={hourlyAmounts} dense focusKey={`hour-${currentHour}`}/><AnalyticsChart title="오늘 시간대별 후원 건수" caption="시간대별 입금 횟수" items={hourlyCounts} dense focusKey={`hour-${currentHour}`} valueFormatter={value=>`${value}건`}/></>:<><AnalyticsChart title={`${selectedPeriodLabel} 요일별 후원금`} caption="선택한 기간의 요일별 합계" items={weekdays}/><AnalyticsChart title={period==='all'?'최근 12개월 월별 후원 추이':`${selectedPeriodLabel} 일별 후원 추이`} caption={period==='all'?'전체 조회에서는 최근 12개월을 표시합니다.':'선택한 기간의 날짜별 합계'} items={period==='all'?months:dailyRange} dense={period==='30d'||period==='month'}/></>}
+    <main className="analytics-grid"><AnalyticsChart className="dashboard-trend" title={trendPeriod==='week'?'최근 1주일 후원 추이':'최근 1년 후원 추이'} caption={trendPeriod==='week'?'일별 후원금액':'월별 후원금액'} items={trendItems} focusKey={trendPeriod==='week'?weekDays.at(-1)?.key:null} controls={<div className="chart-segment"><button className={trendPeriod==='week'?'active':''} onClick={()=>setTrendPeriod('week')}>최근 1주일</button><button className={trendPeriod==='year'?'active':''} onClick={()=>setTrendPeriod('year')}>최근 1년</button></div>}/>
       <section className="panel"><div className="panel-title"><div><span className="section-kicker">MY RANKING</span><h3>{selectedPeriodLabel} 내 후원자 순위</h3></div><span>상위 20명</span></div><ol className="ranking ranking-large">{data.donors.slice(0,20).map((item,index)=><li key={item.donorName}><i>{index+1}</i><strong>{item.donorName}<small>{item.count}회 후원</small></strong><span>{formatWon(item.amount)}원</span></li>)}{!data.donors.length&&<Empty/>}</ol></section>
       <section className="panel donor-lookup"><div className="panel-title"><div><span className="section-kicker">MY DONOR SEARCH</span><h3>{selectedPeriodLabel} 내 후원자 검색</h3></div></div><label className="donor-search"><span>닉네임 검색</span><input value={searchQuery} onChange={event=>setSearchQuery(event.target.value)} placeholder="예: 폴조지"/></label>{!normalizedQuery&&<div className="search-guide"><b>후원자를 검색해보세요</b><span>{selectedPeriodLabel} 기준 순위, 누적 금액과 후원 건수를 확인합니다.</span></div>}{normalizedQuery&&!searchedDonor&&<div className="search-guide"><b>검색 결과가 없습니다</b><span>기간이나 닉네임을 다시 확인해주세요.</span></div>}{searchedDonor&&<div className="donor-result"><span>검색된 후원자</span><strong>{searchedDonor.donorName}</strong><dl><div><dt>{selectedPeriodLabel} 순위</dt><dd>{searchedIndex+1}위</dd></div><div><dt>누적 후원금</dt><dd>{formatWon(searchedDonor.amount)}원</dd></div><div><dt>후원 건수</dt><dd>{searchedDonor.count}건</dd></div></dl></div>}</section>
     </main>
   </div></PageLayout>;
 }
 
-function AnalyticsChart({ title, caption, items, dense=false, focusKey=null, valueFormatter=formatWon }) {
+function AnalyticsChart({ title, caption, items, dense=false, focusKey=null, valueFormatter=formatWon, controls=null, className='' }) {
   const chartRef = useRef(null);
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
@@ -229,7 +216,7 @@ function AnalyticsChart({ title, caption, items, dense=false, focusKey=null, val
     });
     return () => cancelAnimationFrame(frame);
   }, [dense, focusKey, items.length, items.at(-1)?.key]);
-  return <section className="panel analytics-chart"><div className="panel-title"><div><span className="section-kicker">DONATION TREND</span><h3>{title}</h3></div><span>{caption}</span></div><div ref={chartRef} className={`bar-chart ${dense?'bar-chart-dense':''}`}>{items.map(item=>{const isFocused=dense&&item.key===(focusKey||todayKey);return <div className={`bar-item ${isFocused?'today':''}`} data-focus={isFocused?'true':undefined} key={item.key||item.label}><div className="bar-value">{item.amount ? valueFormatter(item.amount) : ''}</div><div className="bar-track"><i style={{height:`${item.amount ? Math.max(5,item.amount/max*100) : 2}%`}}/></div><span>{item.label}{isFocused&&<small>{item.note||'오늘'}</small>}</span></div>})}</div></section>;
+  return <section className={`panel analytics-chart ${className}`}><div className="panel-title"><div><span className="section-kicker">DONATION TREND</span><h3>{title}</h3></div>{controls||<span>{caption}</span>}</div><div ref={chartRef} className={`bar-chart ${dense?'bar-chart-dense':''}`}>{items.map(item=>{const isFocused=item.key===(focusKey||todayKey);return <div className={`bar-item ${isFocused?'today':''}`} data-focus={isFocused?'true':undefined} key={item.key||item.label}><div className="bar-value">{item.amount ? valueFormatter(item.amount) : ''}</div><div className="bar-track"><i style={{height:`${item.amount ? Math.max(5,item.amount/max*100) : 2}%`}}/></div><span>{item.label}{isFocused&&<small>{item.note||'오늘'}</small>}</span></div>})}</div></section>;
 }
 
 function DepositHistory() {
