@@ -182,13 +182,94 @@ function PageLayout({ children }) {
   </div>;
 }
 
+const DONOR_PAGE_SIZE = 50;
+const DONOR_ROW_HEIGHT = 64;
+const DONOR_LIST_HEIGHT = 520;
+
+function VirtualDonorList({ endpoint, title, kicker, totalLabel='명' }) {
+  const viewportRef = useRef(null);
+  const loadedPages = useRef(new Set());
+  const loadingPages = useRef(new Set());
+  const [items,setItems] = useState([]);
+  const [total,setTotal] = useState(0);
+  const [scrollTop,setScrollTop] = useState(0);
+  const [query,setQuery] = useState('');
+  const [searchMessage,setSearchMessage] = useState('');
+  const [searchResult,setSearchResult] = useState(null);
+  const [hasSearched,setHasSearched] = useState(false);
+
+  async function loadPage(page) {
+    if (page < 0 || loadedPages.current.has(page) || loadingPages.current.has(page)) return;
+    loadingPages.current.add(page);
+    try {
+      const separator = endpoint.includes('?') ? '&' : '?';
+      const result = await api(`${endpoint}${separator}offset=${page*DONOR_PAGE_SIZE}&limit=${DONOR_PAGE_SIZE}`);
+      setTotal(result.total);
+      setItems(previous => {
+        const next = previous.slice();
+        next.length = result.total;
+        result.items.forEach((item,index) => { next[result.offset+index]=item; });
+        return next;
+      });
+      loadedPages.current.add(page);
+    } finally { loadingPages.current.delete(page); }
+  }
+
+  useEffect(() => {
+    loadedPages.current.clear();
+    loadingPages.current.clear();
+    setItems([]);
+    setTotal(0);
+    setScrollTop(0);
+    setSearchResult(null);
+    setHasSearched(false);
+    setSearchMessage('');
+    viewportRef.current?.scrollTo({ top:0 });
+    loadPage(0);
+  }, [endpoint]);
+
+  const startIndex = Math.max(0, Math.floor(scrollTop/DONOR_ROW_HEIGHT)-5);
+  const endIndex = Math.min(total, Math.ceil((scrollTop+DONOR_LIST_HEIGHT)/DONOR_ROW_HEIGHT)+5);
+  useEffect(() => {
+    if (!total) return;
+    const firstPage = Math.floor(startIndex/DONOR_PAGE_SIZE);
+    const lastPage = Math.floor(Math.max(startIndex,endIndex-1)/DONOR_PAGE_SIZE);
+    for (let page=firstPage;page<=lastPage;page+=1) loadPage(page);
+  }, [startIndex,endIndex,total,endpoint]);
+
+  async function search(event) {
+    event.preventDefault();
+    const normalized = query.trim();
+    if (!normalized) { setSearchMessage('닉네임을 입력해주세요.'); return; }
+    setHasSearched(true);
+    const separator = endpoint.includes('?') ? '&' : '?';
+    const result = await api(`${endpoint}${separator}offset=0&limit=1&query=${encodeURIComponent(normalized)}`);
+    if (!result.match) { setSearchMessage('검색 결과가 없습니다.'); setSearchResult(null); return; }
+    setSearchResult(result.match);
+    setSearchMessage(`${result.match.donorName} 검색 결과`);
+  }
+
+  const visibleItems=[];
+  for (let index=startIndex;index<endIndex;index+=1) {
+    const item=items[index];
+    visibleItems.push(<li className={item?'':'donor-row-loading'} style={{position:'absolute',top:index*DONOR_ROW_HEIGHT,height:DONOR_ROW_HEIGHT,left:0,right:0}} key={item?.donorName||`loading-${index}`}><i>{index+1}</i>{item?<><strong>{item.donorName}<small>{item.count}회 후원</small></strong><span>{formatWon(item.amount)}원</span></>:<strong><small>불러오는 중...</small></strong>}</li>);
+  }
+
+  function changeQuery(event) {
+    const value=event.target.value;
+    setQuery(value);
+    if (!value.trim()) { setSearchResult(null); setHasSearched(false); setSearchMessage(''); }
+  }
+
+  return <section className="panel donor-list-panel"><div className="panel-title"><div><span className="section-kicker">{kicker}</span><h3>{title}</h3></div><span>전체 {total}{totalLabel}</span></div><form className="donor-list-search" onSubmit={search}><input value={query} onChange={changeQuery} placeholder="후원자 닉네임 검색" aria-label="후원자 닉네임 검색"/><button>검색</button></form><div className="donor-search-status" aria-live="polite">{searchMessage}</div>{hasSearched?(searchResult?<ol className="ranking ranking-large donor-search-result"><li><i>{Number(searchResult.donorIndex)+1}</i><strong>{searchResult.donorName}<small>{searchResult.count}회 후원</small></strong><span>{formatWon(searchResult.amount)}원</span></li></ol>:<Empty/>):total?<div className="virtual-donor-viewport" ref={viewportRef} onScroll={event=>setScrollTop(event.currentTarget.scrollTop)}><ol className="ranking ranking-large virtual-donor-list" style={{height:total*DONOR_ROW_HEIGHT}}>{visibleItems}</ol></div>:<Empty/>}</section>;
+}
+
 function MyDashboard() {
   const { user } = useAuth();
   const [data, setData] = useState({ summary:{ totalAmount:0, donationCount:0, donorCount:0, averageAmount:0 }, donors:[], weekdays:[], days:[], months:[], hours:[], largestDonation:null });
   const [weekData, setWeekData] = useState({ days:[] });
   const [trendPeriod, setTrendPeriod] = useState('week');
   const [message, setMessage] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
   useEffect(() => { setMessage(''); Promise.all([api('/api/my/analytics?period=month'),api('/api/my/analytics?period=7d')]).then(([month,week])=>{setData(month);setWeekData(week);}).catch(error=>setMessage(error.message)); }, []);
   const months = Array.from({ length:12 }, (_,offset) => { const date=new Date(); date.setMonth(date.getMonth()-(11-offset)); const key=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`; const found=data.months.find(item=>item.month===key);return { label:`${date.getMonth()+1}월`, key, amount:Number(found?.amount||0), count:Number(found?.count||0), donorCount:Number(found?.donorCount||0) }; });
   const weekDays = (() => {
@@ -202,9 +283,6 @@ function MyDashboard() {
     }
     return items;
   })();
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase('ko-KR');
-  const searchedIndex = normalizedQuery ? data.donors.findIndex(item=>item.donorName.toLocaleLowerCase('ko-KR').includes(normalizedQuery)) : -1;
-  const searchedDonor = searchedIndex >= 0 ? data.donors[searchedIndex] : null;
   const selectedPeriodLabel = '이번 달';
   const trendItems = trendPeriod==='week' ? weekDays : months;
   const currentMonthLabel=`${new Date().getMonth()+1}월`;
@@ -216,8 +294,7 @@ function MyDashboard() {
     <section className="dashboard-kpis personal-kpis"><article className="kpi primary"><span>{currentMonthLabel} 후원금</span><strong>{formatWon(Number(data.summary.totalAmount)||0)}<small>원</small></strong></article><article className="kpi"><span>월별 평균 후원자 수</span><strong>{monthlyAverageDonors}<small>명</small></strong><p>최근 12개월 기준</p></article><article className="kpi"><span>월별 평균 후원 건수</span><strong>{monthlyAverageCount}<small>건</small></strong><p>최근 12개월 기준</p></article><article className="kpi"><span>월별 평균 후원</span><strong>{formatWon(monthlyAverageAmount)}<small>원</small></strong><p>최근 12개월 기준</p></article></section>
     {message&&<p className="notice">{message}</p>}
     <main className="analytics-grid"><AnalyticsChart className="dashboard-trend" title={trendPeriod==='week'?'최근 1주일 후원 추이':'최근 1년 후원 추이'} caption={trendPeriod==='week'?'일별 후원금액':'월별 후원금액'} items={trendItems} chartType={trendPeriod==='week'?'area':'bar'} controls={<div className="chart-segment"><button className={trendPeriod==='week'?'active':''} onClick={()=>setTrendPeriod('week')}>최근 1주일</button><button className={trendPeriod==='year'?'active':''} onClick={()=>setTrendPeriod('year')}>최근 1년</button></div>}/>
-      <section className="panel"><div className="panel-title"><div><span className="section-kicker">MY RANKING</span><h3>{selectedPeriodLabel} 내 후원자 순위</h3></div><span>상위 20명</span></div><ol className="ranking ranking-large">{data.donors.slice(0,20).map((item,index)=><li key={item.donorName}><i>{index+1}</i><strong>{item.donorName}<small>{item.count}회 후원</small></strong><span>{formatWon(item.amount)}원</span></li>)}{!data.donors.length&&<Empty/>}</ol></section>
-      <section className="panel donor-lookup"><div className="panel-title"><div><span className="section-kicker">MY DONOR SEARCH</span><h3>{selectedPeriodLabel} 내 후원자 검색</h3></div></div><label className="donor-search"><span>닉네임 검색</span><input value={searchQuery} onChange={event=>setSearchQuery(event.target.value)} placeholder="예: 폴조지"/></label>{!normalizedQuery&&<div className="search-guide"><b>후원자를 검색해보세요</b><span>{selectedPeriodLabel} 기준 순위, 누적 금액과 후원 건수를 확인합니다.</span></div>}{normalizedQuery&&!searchedDonor&&<div className="search-guide"><b>검색 결과가 없습니다</b><span>기간이나 닉네임을 다시 확인해주세요.</span></div>}{searchedDonor&&<div className="donor-result"><span>검색된 후원자</span><strong>{searchedDonor.donorName}</strong><dl><div><dt>{selectedPeriodLabel} 순위</dt><dd>{searchedIndex+1}위</dd></div><div><dt>누적 후원금</dt><dd>{formatWon(searchedDonor.amount)}원</dd></div><div><dt>후원 건수</dt><dd>{searchedDonor.count}건</dd></div></dl></div>}</section>
+      <VirtualDonorList endpoint="/api/my/donors?period=month" title={`${selectedPeriodLabel} 내 후원자 목록`} kicker="MY DONORS"/>
     </main>
   </div></PageLayout>;
 }
@@ -331,10 +408,10 @@ function ObsSetup() {
 }
 
 function Dashboard() {
-  const [data, setData] = useState({ session: {}, donations: [], ranking: [], settings: DEFAULT_SETTINGS });
+  const [data, setData] = useState({ session: {}, donations: [], summary:{ totalAmount:0, donationCount:0, donorCount:0 }, settings: DEFAULT_SETTINGS });
   const [form, setForm] = useState({ donorName: '폴조지', amount: 50000, bank: '테스트' });
   const [message, setMessage] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [donorListVersion, setDonorListVersion] = useState(0);
   const load = () => api('/api/dashboard').then(setData).catch(e => setMessage(e.message));
   useEffect(() => { load(); }, []);
 
@@ -344,30 +421,23 @@ function Dashboard() {
       const result = await api('/api/donations', { method: 'POST', body: JSON.stringify({ ...form, amount: Number(form.amount) }) });
       setMessage(result.ignored ? result.message : '후원 리스트에 반영했습니다. 같은 입금자명은 자동으로 합산됩니다.');
       load();
+      setDonorListVersion(value=>value+1);
     } catch (error) { setMessage(error.message); }
   }
 
-  const total = data.donations.reduce((sum, item) => sum + item.amount, 0);
-  const average = data.donations.length ? Math.round(total / data.donations.length) : 0;
-  const normalizedQuery = searchQuery.trim().toLocaleLowerCase('ko-KR');
-  const searchedIndex = normalizedQuery ? data.ranking.findIndex(item => item.donorName.toLocaleLowerCase('ko-KR').includes(normalizedQuery)) : -1;
-  const searchedDonor = searchedIndex >= 0 ? data.ranking[searchedIndex] : null;
+  const total = Number(data.summary?.totalAmount||0);
+  const donationCount = Number(data.summary?.donationCount||0);
+  const average = donationCount ? Math.round(total/donationCount) : 0;
   return <PageLayout><div className="shell">
     <header><div><span className="eyebrow">CREW DONATION OVERVIEW</span><h1>크루 후원 현황</h1><p className="page-description">크루 전체 후원자의 누적 현황을 확인합니다.</p></div></header>
     <section className="dashboard-kpis">
       <article className="kpi primary"><span>전체 후원금</span><strong>{formatWon(total)}<small>원</small></strong></article>
-      <article className="kpi"><span>전체 후원자</span><strong>{data.ranking.length}<small>명</small></strong><p>동일 닉네임은 합산</p></article>
+      <article className="kpi"><span>전체 후원자</span><strong>{Number(data.summary?.donorCount||0)}<small>명</small></strong><p>동일 닉네임은 합산</p></article>
       <article className="kpi"><span>후원 1건당 평균 금액</span><strong>{formatWon(average)}<small>원</small></strong><p>전체 후원 건수 기준</p></article>
     </section>
     {message && <p className="notice">{message}</p>}
     <main className="dashboard-main">
-      <section className="panel ranking-panel"><div className="panel-title"><div><span className="section-kicker">CREW RANKING</span><h3>크루 전체 후원 순위</h3></div><span>누적 금액 기준 · 상위 20명</span></div><ol className="ranking ranking-large">{data.ranking.slice(0, 20).map((item,i)=><li key={item.donorName}><i>{i+1}</i><strong>{item.donorName}<small>{item.count}회 후원</small></strong><span>{formatWon(item.amount)}원</span></li>)}{!data.ranking.length&&<Empty/>}</ol></section>
-      <section className="panel crew-summary"><div className="panel-title"><div><span className="section-kicker">DONOR SEARCH</span><h3>후원자 조회</h3></div></div>
-        <label className="donor-search"><span>닉네임 검색</span><input value={searchQuery} onChange={event=>setSearchQuery(event.target.value)} placeholder="예: 폴조지"/></label>
-        {!normalizedQuery && <div className="search-guide"><b>후원자를 검색해보세요</b><span>누적 후원금과 후원 건수를 바로 확인할 수 있습니다.</span></div>}
-        {normalizedQuery && !searchedDonor && <div className="search-guide"><b>검색 결과가 없습니다</b><span>닉네임을 다시 확인해주세요.</span></div>}
-        {searchedDonor && <div className="donor-result"><span>검색된 후원자</span><strong>{searchedDonor.donorName}</strong><dl><div><dt>현재 순위</dt><dd>{searchedIndex+1}위</dd></div><div><dt>누적 후원금</dt><dd>{formatWon(searchedDonor.amount)}원</dd></div><div><dt>후원 건수</dt><dd>{searchedDonor.count}건</dd></div></dl></div>}
-      </section>
+      <VirtualDonorList key={donorListVersion} endpoint="/api/dashboard/donors" title="후원자 목록" kicker="CREW DONORS"/>
       <section className="panel wide test-panel test-panel-bottom"><div className="panel-title"><div><span className="section-kicker">TEST TOOL</span><h3>후원 수동 추가</h3></div><span>테스트 및 누락 내역 입력용</span></div>
         <form onSubmit={submit}><label>입금자명<input placeholder="예: 폴조지" value={form.donorName} onChange={e=>setForm({...form,donorName:e.target.value})}/></label><label>금액<input type="number" min="1" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/></label><label>입금 경로<input placeholder="예: 카카오뱅크" value={form.bank} onChange={e=>setForm({...form,bank:e.target.value})}/></label><button>후원 리스트에 추가</button></form>
       </section>

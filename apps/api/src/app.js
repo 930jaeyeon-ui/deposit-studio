@@ -206,12 +206,49 @@ app.post('/api/users/:id/reset-password', requireAuth, requireManager, async (re
 
 app.get('/api/dashboard', requireAuth, async (req, res) => {
   const session = await activeSession();
-  const [donations, ranking, savedSettings] = await Promise.all([
+  const [donations, summary, savedSettings] = await Promise.all([
     db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 100`, args:[session.id] }),
-    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName`, args:[session.id] }),
+    db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) totalAmount, COUNT(*) donationCount, COUNT(DISTINCT ${effectiveDonorName}) donorCount FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included'`, args:[session.id] }),
     db.execute({ sql:'SELECT value FROM user_settings WHERE user_id = ?', args:[req.user.id] })
   ]);
-  res.json({ session, donations:donations.rows, ranking:ranking.rows, settings:{ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) } });
+  res.json({ session, donations:donations.rows, summary:summary.rows[0], settings:{ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) } });
+});
+
+app.get('/api/dashboard/donors', requireAuth, async (req, res) => {
+  const session = await activeSession();
+  const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+  const query = String(req.query.query || '').trim().slice(0, 40);
+  const donorSource = `FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' GROUP BY ${effectiveDonorName}`;
+  const [items, total, match] = await Promise.all([
+    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count ${donorSource} ORDER BY amount DESC, donorName LIMIT ? OFFSET ?`, args:[session.id,limit,offset] }),
+    db.execute({ sql:`SELECT COUNT(*) total FROM (SELECT 1 ${donorSource})`, args:[session.id] }),
+    query ? db.execute({ sql:`SELECT donorName, amount, count, donorIndex FROM (SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count, ROW_NUMBER() OVER (ORDER BY SUM(d.amount) DESC, ${effectiveDonorName}) - 1 donorIndex ${donorSource}) WHERE instr(lower(donorName), lower(?)) > 0 ORDER BY donorIndex LIMIT 1`, args:[session.id,query] }) : Promise.resolve({ rows:[] })
+  ]);
+  const totalCount = Number(total.rows[0]?.total || 0);
+  res.json({ items:items.rows, total:totalCount, offset, limit, hasMore:offset + items.rows.length < totalCount, match:match.rows[0] || null });
+});
+
+app.get('/api/my/donors', requireAuth, async (req, res) => {
+  const period = ['today','7d','30d','month','all'].includes(req.query.period) ? req.query.period : 'month';
+  const filters = {
+    today: `strftime('%Y-%m-%d', datetime(d.received_at, '+9 hours')) = strftime('%Y-%m-%d', datetime('now', '+9 hours'))`,
+    '7d': `datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of day', '-6 days')`,
+    '30d': `datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of day', '-29 days')`,
+    month: `strftime('%Y-%m', datetime(d.received_at, '+9 hours')) = strftime('%Y-%m', datetime('now', '+9 hours'))`,
+    all: '1 = 1'
+  };
+  const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
+  const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
+  const query = String(req.query.query || '').trim().slice(0, 40);
+  const donorSource = `FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND d.status = 'included' AND ${filters[period]} GROUP BY ${effectiveDonorName}`;
+  const [items, total, match] = await Promise.all([
+    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count ${donorSource} ORDER BY amount DESC, donorName LIMIT ? OFFSET ?`, args:[req.user.id,limit,offset] }),
+    db.execute({ sql:`SELECT COUNT(*) total FROM (SELECT 1 ${donorSource})`, args:[req.user.id] }),
+    query ? db.execute({ sql:`SELECT donorName, amount, count, donorIndex FROM (SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count, ROW_NUMBER() OVER (ORDER BY SUM(d.amount) DESC, ${effectiveDonorName}) - 1 donorIndex ${donorSource}) WHERE instr(lower(donorName), lower(?)) > 0 ORDER BY donorIndex LIMIT 1`, args:[req.user.id,query] }) : Promise.resolve({ rows:[] })
+  ]);
+  const totalCount = Number(total.rows[0]?.total || 0);
+  res.json({ items:items.rows, total:totalCount, offset, limit, hasMore:offset + items.rows.length < totalCount, match:match.rows[0] || null });
 });
 
 app.get('/api/my/analytics', requireAuth, async (req, res) => {
