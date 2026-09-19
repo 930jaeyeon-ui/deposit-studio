@@ -36,6 +36,26 @@ async function api(path, options) {
 }
 
 export function App() {
+  const [,setRoute] = useState(()=>`${location.pathname}${location.search}${location.hash}`);
+  useEffect(()=>{
+    const navigate=()=>setRoute(`${location.pathname}${location.search}${location.hash}`);
+    const handleClick=event=>{
+      if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;
+      const anchor=event.target.closest?.('a[href]');
+      if(!anchor||anchor.target==='_blank'||anchor.hasAttribute('download'))return;
+      const url=new URL(anchor.href,location.href);
+      if(url.origin!==location.origin)return;
+      event.preventDefault();
+      const next=`${url.pathname}${url.search}${url.hash}`;
+      const current=`${location.pathname}${location.search}${location.hash}`;
+      if(next!==current)history.pushState({},'',next);
+      navigate();
+      window.scrollTo({top:0,behavior:'instant'});
+    };
+    addEventListener('popstate',navigate);
+    document.addEventListener('click',handleClick);
+    return()=>{removeEventListener('popstate',navigate);document.removeEventListener('click',handleClick);};
+  },[]);
   if (location.pathname === '/overlay') return <Overlay/>;
   if (location.pathname === '/recent') return <Widget/>;
   if (location.pathname === '/ranking') return <Widget type="ranking"/>;
