@@ -23,13 +23,18 @@ function ThemeSelector() {
     media.addEventListener('change', apply);
     return () => media.removeEventListener('change', apply);
   }, [theme]);
-  return <div className="theme-picker"><span>화면 테마</span><div>{[['light','라이트'],['system','시스템'],['dark','다크']].map(([value,label])=><button key={value} className={theme===value?'active':''} onClick={()=>setTheme(value)}>{label}</button>)}</div></div>;
+  const themes = [['light','☀','라이트'],['system','◐','시스템'],['dark','☾','다크']];
+  return <div className="theme-picker"><span>화면 테마</span><div>{themes.map(([value,icon,label])=><button key={value} className={theme===value?'active':''} onClick={()=>setTheme(value)} aria-pressed={theme===value}><i aria-hidden="true">{icon}</i><span>{label}</span></button>)}</div></div>;
+}
+
+function apiUrl(path) {
+  const configuredHost = import.meta.env.VITE_API_HOST;
+  const baseUrl = import.meta.env.VITE_API_URL || (configuredHost ? `https://${configuredHost}` : '');
+  return `${baseUrl}${path}`;
 }
 
 async function api(path, options) {
-  const configuredHost = import.meta.env.VITE_API_HOST;
-  const baseUrl = import.meta.env.VITE_API_URL || (configuredHost ? `https://${configuredHost}` : '');
-  const response = await fetch(`${baseUrl}${path}`, { credentials:'include', headers: { 'Content-Type': 'application/json' }, ...options });
+  const response = await fetch(apiUrl(path), { credentials:'include', headers: { 'Content-Type': 'application/json' }, ...options });
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || '요청에 실패했습니다.');
   return data;
@@ -96,7 +101,7 @@ function Login({ onLogin }) {
     catch (error) { setMessage(error.message); }
     finally { setSubmitting(false); }
   }
-  return <div className="login-page"><section className="login-card"><div className="login-brand"><span className="brand-logo" aria-hidden="true"/><div><b>N9 SIGNAL</b></div></div><div className="login-heading"><h1>로그인</h1></div><form onSubmit={submit}><label>아이디<input autoFocus autoComplete="username" value={form.loginId} onChange={e=>setForm({...form,loginId:e.target.value})}/></label><label>비밀번호<input type="password" autoComplete="current-password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label>{message&&<p className="login-error">{message}</p>}<button disabled={submitting}>{submitting?'확인 중...':'로그인'}</button></form></section></div>;
+  return <div className="login-page"><section className="login-card"><div className="login-brand"><span aria-hidden="true">N9</span><div><b>N9 SIGNAL</b></div></div><div className="login-heading"><h1>로그인</h1></div><form onSubmit={submit}><label>아이디<input autoFocus autoComplete="username" value={form.loginId} onChange={e=>setForm({...form,loginId:e.target.value})}/></label><label>비밀번호<input type="password" autoComplete="current-password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})}/></label>{message&&<p className="login-error">{message}</p>}<button disabled={submitting}>{submitting?'확인 중...':'로그인'}</button></form></section></div>;
 }
 
 function AccessDenied() { return <PageLayout><div className="shell"><section className="panel access-denied"><h1>접근 권한이 없습니다</h1><p>이 화면은 관리자 계정만 사용할 수 있습니다.</p></section></div></PageLayout>; }
@@ -158,11 +163,12 @@ function PageLayout({ children }) {
   const activePath = path === '/my-dashboard' ? '/' : path === '/settings' ? '/settings/alert' : path;
   const canManage = ['super','admin'].includes(user.role);
   async function logout() { await api('/api/auth/logout', { method:'POST' }).catch(()=>{}); setUser(null); }
-  const Link = ({ href, label, hint }) => <a className={activePath === href ? 'active' : ''} href={href}><strong>{label}</strong><small>{hint}</small></a>;
+  const NAV_ICONS = {'/':'⌁','/crew-dashboard':'◫','/deposits':'₩','/settings/alert':'◉','/settings/ranking':'≡','/obs':'↗','/admin/users':'♙','/api-test':'⌘'};
+  const Link = ({ href, label, hint }) => <a className={activePath === href ? 'active' : ''} href={href}><span className="nav-icon" aria-hidden="true">{NAV_ICONS[href]}</span><span className="nav-copy"><strong>{label}</strong><small>{hint}</small></span></a>;
   const [pageGroup,pageTitle] = PAGE_INFO[path] || ['','N9 SIGNAL'];
   return <div className="app-layout">
     <aside className="side-menu">
-      <a className="brand" href="/"><span className="brand-logo" aria-hidden="true"/><b>N9 SIGNAL</b><small>CREW DONATION</small></a>
+      <a className="brand" href="/"><span aria-hidden="true">N9</span><b>N9 SIGNAL</b><small>CREW DONATION</small></a>
       <nav className="side-nav" aria-label="주 메뉴">
         <span className="nav-label">후원 현황</span>
         <Link href="/" label="내 후원 현황" hint="나의 방송과 후원 통계"/>
@@ -311,8 +317,8 @@ function AnalyticsChart({ title, caption, items, chartType='area', controls=null
   const compact=value=>value>=100000000?`${(value/100000000).toFixed(value%100000000?1:0)}억`:value>=10000?`${Math.round(value/10000)}만`:formatWon(value);
   const options={
     chart:{type:chartType,toolbar:{show:false},zoom:{enabled:false},fontFamily:'Pretendard, "Noto Sans KR", sans-serif',foreColor:isLight?'#65778e':'#8295b0',animations:{enabled:true,easing:'easeinout',speed:550}},
-    colors:['#5b8cff'],
-    dataLabels:{enabled:true,formatter:value=>value?compact(value):'',offsetY:chartType==='bar'?-10:-7,style:{fontSize:'10px',fontWeight:700,colors:[isLight?'#355b89':'#a9ceff']},background:{enabled:false}},
+    colors:['#5b7cfa'],
+    dataLabels:{enabled:true,formatter:value=>value?compact(value):'',offsetY:chartType==='bar'?-10:-7,style:{fontSize:'10px',fontWeight:700,colors:[isLight?'#3f5fb8':'#a9bbff']},background:{enabled:false}},
     stroke:{curve:chartType==='area'?'smooth':'straight',width:chartType==='area'?3:0},
     fill:chartType==='area'?{type:'gradient',gradient:{shade:isLight?'light':'dark',type:'vertical',opacityFrom:.5,opacityTo:.05,stops:[0,92,100]}}:{type:'gradient',gradient:{type:'vertical',opacityFrom:1,opacityTo:.72,stops:[0,100]}},
     markers:{size:chartType==='area'?4:0,strokeWidth:3,strokeColors:[isLight?'#fff':'#111b2e'],hover:{size:6}},
@@ -361,7 +367,7 @@ function DepositHistory() {
     catch(error){setMessage(error.message);} finally { setStatusSaving(null); }
   }
   const formatDay = value => { const [year,month,day]=value.split('-'); return `${year}년 ${Number(month)}월 ${Number(day)}일`; };
-  return <PageLayout><div className="shell deposit-page"><header><div><h1>입금 내역</h1><p className="page-description">내 계정으로 들어온 입금을 확인하고 입금자명과 후원 반영 여부를 관리합니다.</p></div></header><section className="deposit-filters"><div className="period-tabs">{ranges.map(([value,label])=><button className={filters.range===value?'active':''} onClick={()=>setFilters({...filters,range:value})} key={value}>{label}</button>)}</div><div className="deposit-search"><input value={filters.query} onChange={event=>setFilters({...filters,query:event.target.value})} placeholder="입금자명 검색"/><select value={filters.status} onChange={event=>setFilters({...filters,status:event.target.value})}><option value="">전체 상태</option>{Object.entries(statuses).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></div>{filters.range==='custom'&&<div className="custom-dates"><label>시작일<input type="date" value={filters.from} max={filters.to} onChange={event=>setFilters({...filters,from:event.target.value})}/></label><i>–</i><label>종료일<input type="date" value={filters.to} min={filters.from} onChange={event=>setFilters({...filters,to:event.target.value})}/></label></div>}</section>{message&&<p className="notice">{message}</p>}<section className="deposit-kpis"><article><span>조회 기간 입금액</span><b>{formatWon(Number(data.summary.totalAmount)||0)}<small>원</small></b></article><article><span>입금 건수</span><b>{Number(data.summary.depositCount)||0}<small>건</small></b></article><article><span>입금자 수</span><b>{Number(data.summary.donorCount)||0}<small>명</small></b></article><article><span>평균 입금액</span><b>{formatWon(Math.round(Number(data.summary.averageAmount)||0))}<small>원</small></b></article></section><section className="panel deposit-list-panel"><div className="deposit-table-head"><span>입금 시각</span><span>입금자</span><span>은행</span><span>후원 반영</span><span>금액</span></div>{Object.entries(groups).map(([day,items])=><div className="deposit-day" key={day}><div className="deposit-day-title"><b>{formatDay(day)}</b><span>{items.length}건 · {formatWon(items.reduce((sum,item)=>sum+Number(item.amount),0))}원</span></div>{items.map(item=><article className="deposit-row" key={item.id}><time>{String(item.receivedAt).slice(11,16)}</time><div className="deposit-donor"><div><strong>{item.donorName}</strong><button type="button" onClick={()=>openDonor(item)}>입금자명 변경</button></div>{Boolean(item.nameAdjusted)&&<small>은행 원문 · {item.rawDonorName}</small>}</div><span>{bankNames[item.bank]||item.bank}</span><div className="deposit-status-control"><em className={`deposit-status ${item.status}`}>{statuses[item.status]||item.status}</em><button type="button" disabled={statusSaving===item.id} onClick={()=>changeStatus(item)}>{statusSaving===item.id?"변경 중":item.status==="included"?"후원 제외":"후원 반영"}</button></div><b>{formatWon(item.amount)}원</b></article>)}</div>)}{!data.deposits.length&&<div className="empty deposit-empty">선택한 조건의 입금 내역이 없습니다.</div>}</section></div>{editing&&<div className="dialog-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setEditing(null);}}><section className="profile-dialog donor-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><div><small>은행 원본 · {editing.rawDonorName}</small><h2>입금자명 변경</h2><p>같은 후원자가 다른 이름으로 입금했을 때 순위표에 표시할 이름을 직접 정할 수 있습니다.</p></div><button onClick={()=>setEditing(null)} aria-label="닫기">×</button></div><form onSubmit={saveDonor}><label>변경할 입금자명<input autoFocus list="known-donors" maxLength="40" value={donorForm.canonicalName} onChange={event=>setDonorForm({...donorForm,canonicalName:event.target.value})}/><datalist id="known-donors">{data.donorNames.map(name=><option value={name} key={name}/>)}</datalist></label><div className="donor-scope"><label><input type="radio" name="scope" checked={donorForm.scope==='single'} onChange={()=>setDonorForm({...donorForm,scope:'single'})}/><span><b>이번 입금만</b><small>선택한 한 건에만 적용합니다.</small></span></label><label><input type="radio" name="scope" checked={donorForm.scope==='same_name'} onChange={()=>setDonorForm({...donorForm,scope:'same_name'})}/><span><b>같은 입금자명 전체</b><small>앞으로 같은 원본 이름에도 적용합니다.</small></span></label></div><button type="button" className="restore-name" onClick={()=>setDonorForm({...donorForm,canonicalName:''})}>은행 원본 이름으로 되돌리기</button><button className="primary-button">입금자명 저장</button></form></section></div>}</PageLayout>;
+  return <PageLayout><div className="shell deposit-page"><header><div><h1>입금 내역</h1><p className="page-description">내 계정으로 들어온 입금을 확인하고 입금자명과 후원 반영 여부를 관리합니다.</p></div></header><section className="deposit-filters"><div className="period-tabs">{ranges.map(([value,label])=><button className={filters.range===value?'active':''} onClick={()=>setFilters({...filters,range:value})} key={value}>{label}</button>)}</div><div className="deposit-search"><input value={filters.query} onChange={event=>setFilters({...filters,query:event.target.value})} placeholder="입금자명 검색"/><select value={filters.status} onChange={event=>setFilters({...filters,status:event.target.value})}><option value="">전체 상태</option>{Object.entries(statuses).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></div>{filters.range==='custom'&&<div className="custom-dates"><label>시작일<input type="date" value={filters.from} max={filters.to} onChange={event=>setFilters({...filters,from:event.target.value})}/></label><i>–</i><label>종료일<input type="date" value={filters.to} min={filters.from} onChange={event=>setFilters({...filters,to:event.target.value})}/></label></div>}</section>{message&&<p className="notice">{message}</p>}<section className="deposit-kpis"><article><span>조회 기간 입금액</span><b>{formatWon(Number(data.summary.totalAmount)||0)}<small>원</small></b></article><article><span>입금 건수</span><b>{Number(data.summary.depositCount)||0}<small>건</small></b></article><article><span>입금자 수</span><b>{Number(data.summary.donorCount)||0}<small>명</small></b></article><article><span>평균 입금액</span><b>{formatWon(Math.round(Number(data.summary.averageAmount)||0))}<small>원</small></b></article></section><section className="panel deposit-list-panel"><div className="deposit-table-head"><span>입금 시각</span><span>입금자</span><span>은행</span><span>후원 반영</span><span>금액</span></div>{Object.entries(groups).map(([day,items])=><div className="deposit-day" key={day}><div className="deposit-day-title"><b>{formatDay(day)}</b><span>{items.length}건 · {formatWon(items.reduce((sum,item)=>sum+Number(item.amount),0))}원</span></div>{items.map(item=><article className="deposit-row" key={item.id}><time>{String(item.receivedAt).slice(11,16)}</time><div className="deposit-donor"><div><strong>{item.donorName}</strong><button className="donor-edit-button" type="button" onClick={()=>openDonor(item)}>입금자명 변경</button></div>{Boolean(item.nameAdjusted)&&<small>은행 원문 · {item.rawDonorName}</small>}</div><span>{bankNames[item.bank]||item.bank}</span><div className="deposit-status-control"><em className={`deposit-status ${item.status}`}>{statuses[item.status]||item.status}</em><button type="button" disabled={statusSaving===item.id} onClick={()=>changeStatus(item)}>{statusSaving===item.id?"변경 중":item.status==="included"?"후원 제외":"후원 반영"}</button></div><b>{formatWon(item.amount)}원</b></article>)}</div>)}{!data.deposits.length&&<div className="empty deposit-empty">선택한 조건의 입금 내역이 없습니다.</div>}</section></div>{editing&&<div className="dialog-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setEditing(null);}}><section className="profile-dialog donor-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><div><small>은행 원본 · {editing.rawDonorName}</small><h2>입금자명 변경</h2><p>같은 후원자가 다른 이름으로 입금했을 때 순위표에 표시할 이름을 직접 정할 수 있습니다.</p></div><button onClick={()=>setEditing(null)} aria-label="닫기">×</button></div><form onSubmit={saveDonor}><label>변경할 입금자명<input autoFocus list="known-donors" maxLength="40" value={donorForm.canonicalName} onChange={event=>setDonorForm({...donorForm,canonicalName:event.target.value})}/><datalist id="known-donors">{data.donorNames.map(name=><option value={name} key={name}/>)}</datalist></label><div className="donor-scope"><label><input type="radio" name="scope" checked={donorForm.scope==='single'} onChange={()=>setDonorForm({...donorForm,scope:'single'})}/><span><b>이번 입금만</b><small>선택한 한 건에만 적용합니다.</small></span></label><label><input type="radio" name="scope" checked={donorForm.scope==='same_name'} onChange={()=>setDonorForm({...donorForm,scope:'same_name'})}/><span><b>같은 입금자명 전체</b><small>앞으로 같은 원본 이름에도 적용합니다.</small></span></label></div><button type="button" className="restore-name" onClick={()=>setDonorForm({...donorForm,canonicalName:''})}>은행 원본 이름으로 되돌리기</button><button className="primary-button">입금자명 저장</button></form></section></div>}</PageLayout>;
 }
 
 function AdminAccounts() {
@@ -398,7 +404,7 @@ function AdminAccounts() {
 
 function ObsSetup() {
   const [copied, setCopied] = useState('');
-  const sources = [{key:'alert',title:'후원 알림',description:'새 후원이 들어올 때 잠시 나타나는 화면',path:'/overlay',previewPath:'/overlay?preview=1',size:'1920 × 1080'},{key:'ranking',title:'후원 순위표',description:'방송 화면에 계속 표시하는 누적 후원 순위',path:'/ranking',previewPath:'/ranking',size:'600 × 800'}];
+  const sources = [{key:'alert',title:'후원 알림',description:'새 후원이 들어올 때 잠시 나타나는 화면',path:'/overlay',previewPath:'/overlay?preview=1',size:'1280 × 720'},{key:'ranking',title:'후원 순위표',description:'방송 화면에 계속 표시하는 누적 후원 순위',path:'/ranking',previewPath:'/ranking',size:'600 × 800'}];
   async function copy(source) {
     await navigator.clipboard.writeText(`${location.origin}${source.path}`);
     setCopied(source.key);
@@ -482,20 +488,22 @@ function alertAppearance(settings, amount=50000) {
     soundVolume:customSound ? tier.soundVolume : settings.soundVolume,
     customSoundData:soundData(settings,customSound?tier.soundPreset:settings.soundPreset,customSound?tier.customSoundData:settings.customSoundData),
     style:{ color:customText?tier.textColor:settings.textColor,fontSize:customText?tier.fontSize:settings.fontSize,fontWeight:customText?tier.fontWeight:settings.fontWeight,fontFamily:family,textAlign:settings.textAlign,lineHeight:settings.lineHeight,letterSpacing:`${settings.letterSpacing}px`,
-      WebkitTextStroke:`${customText?tier.outlineWidth:settings.outlineWidth}px ${customText?tier.outlineColor:settings.outlineColor}`,textShadow:settings.textShadow?'0 5px 16px #000b':'none',padding:settings.backgroundEnabled?`${settings.backgroundPadding}px`:'0',borderRadius:settings.backgroundEnabled?`${settings.backgroundRadius}px`:'0',
+      WebkitTextStroke:settings.outlineEnabled===false?'0 transparent':`${customText?tier.outlineWidth:settings.outlineWidth}px ${customText?tier.outlineColor:settings.outlineColor}`,textShadow:settings.textShadow?'0 5px 16px #000b':'none',padding:settings.backgroundEnabled?`${settings.backgroundPadding}px`:'0',borderRadius:settings.backgroundEnabled?`${settings.backgroundRadius}px`:'0',
       background:settings.backgroundEnabled?`color-mix(in srgb, ${settings.backgroundColor} ${settings.backgroundOpacity*100}%, transparent)`:'transparent' }
   };
 }
 
-function playAlertSound(settings, preset=settings.soundPreset, volume=settings.soundVolume, customSoundData=settings.customSoundData) {
+async function playAlertSound(settings, preset=settings.soundPreset, volume=settings.soundVolume, customSoundData=settings.customSoundData) {
   if (!settings.soundEnabled || preset==='none') return;
-  if (preset==='custom' && customSoundData) { const audio=new Audio(customSoundData); audio.volume=volume/100; audio.play().catch(()=>{}); return; }
+  if ((preset==='custom' || preset?.startsWith('library:')) && customSoundData) { const audio=new Audio(customSoundData); audio.volume=Math.max(0,Math.min(1,volume/100)); await audio.play().catch(()=>{}); return; }
   const AudioContext = window.AudioContext || window.webkitAudioContext;
   if (!AudioContext) return;
-  const context=new AudioContext(); const gain=context.createGain(); gain.connect(context.destination); gain.gain.setValueAtTime(Math.max(.01,volume/100)*.18,context.currentTime);
+  const context=new AudioContext();
+  if(context.state==='suspended') await context.resume();
+  const master=context.createGain(); master.connect(context.destination); master.gain.setValueAtTime(Math.max(.05,volume/100)*.42,context.currentTime);
   const notes={coin:[880,1320],chime:[523,659,784],pop:[320,180],fanfare:[523,659,784,1046]}[preset] || [660];
-  notes.forEach((frequency,index)=>{ const oscillator=context.createOscillator(); oscillator.type=preset==='pop'?'triangle':'sine'; oscillator.frequency.value=frequency; oscillator.connect(gain); const start=context.currentTime+index*.1; oscillator.start(start); oscillator.stop(start+.16); });
-  setTimeout(()=>context.close(),1200);
+  notes.forEach((frequency,index)=>{ const oscillator=context.createOscillator(); const gain=context.createGain(); oscillator.type=preset==='pop'?'triangle':'sine'; oscillator.frequency.value=frequency; oscillator.connect(gain); gain.connect(master); const start=context.currentTime+index*.11; gain.gain.setValueAtTime(.001,start); gain.gain.exponentialRampToValueAtTime(1,start+.018); gain.gain.exponentialRampToValueAtTime(.001,start+.24); oscillator.start(start); oscillator.stop(start+.25); });
+  setTimeout(()=>context.close().catch(()=>{}),1500);
 }
 
 function TierMode({ title, description, mode='inherit', onChange, children }) {
@@ -515,7 +523,7 @@ function Settings({ mode }) {
     await persistSettings();
     setSaved(mode === 'alert' ? '알림 설정을 저장했습니다. 다음 후원 알림부터 적용됩니다.' : '후원 순위표 설정을 저장했습니다. OBS 순위표에 바로 적용됩니다.');
   }
-  async function openWidgetPreview() { const popup=window.open('about:blank','_blank');try{await persistSettings();if(popup)popup.location.href=isAlert?'/overlay?preview=1':'/ranking';setSaved('현재 설정을 저장하고 예시 화면을 열었습니다.');}catch(error){popup?.close();setSaved(error.message||'예시 화면을 열지 못했습니다.');} }
+  async function openWidgetPreview() { const popup=window.open('about:blank','_blank');if(mode==='alert')playAlertSound(settings,appearance.soundPreset,appearance.soundVolume,appearance.customSoundData);try{await persistSettings();if(popup)popup.location.href=isAlert?'/overlay?preview=1':'/ranking';setSaved('현재 설정을 저장하고 예시 화면을 열었습니다.');}catch(error){popup?.close();setSaved(error.message||'예시 화면을 열지 못했습니다.');} }
   const appearance = alertAppearance(settings,50000);
   const preview = appearance.messageTemplate.replaceAll('{name}','폴조지').replaceAll('{amount}','50,000').replaceAll('{grade}',settings.crewGradeEnabled?'[크루 VIP] ':'');
   const style = appearance.style;
@@ -530,7 +538,7 @@ function Settings({ mode }) {
   const loadSound = event => addLibrarySound(event.target.files?.[0],(current,preset)=>({...current,soundPreset:preset,soundEnabled:true}));
   const loadTierSound = (tierId,event) => addLibrarySound(event.target.files?.[0],(current,preset)=>({...current,amountTiers:(current.amountTiers||[]).map(tier=>tier.id===tierId?{...tier,soundPreset:preset}:tier)}));
   const removeLibrarySound = id => setSettings(current=>{const preset=`library:${id}`;return {...current,soundPreset:current.soundPreset===preset?'coin':current.soundPreset,soundLibrary:(current.soundLibrary||[]).filter(sound=>sound.id!==id),amountTiers:(current.amountTiers||[]).map(tier=>tier.soundPreset===preset?{...tier,soundPreset:'coin'}:tier)};});
-  return <PageLayout><div className="shell"><header><div><span className="eyebrow">{isAlert?'DONATION ALERT':'DONATION RANKING'}</span><h1>{isAlert?'후원 알림 설정':'후원 순위표 설정'}</h1><p className="page-description">{isAlert?'새 후원이 들어왔을 때 나타나는 알림을 설정합니다.':'방송에 계속 표시할 누적 후원 순위표를 설정합니다.'}</p></div></header><main className="settings-grid"><form className="panel controls" onSubmit={save}>
+  return <PageLayout><div className="shell"><header><div><span className="eyebrow">{isAlert?'DONATION ALERT':'DONATION RANKING'}</span><h1>{isAlert?'후원 알림 설정':'후원 순위표 설정'}</h1><p className="page-description">{isAlert?'위에서 아래로 하나씩 설정하면 오른쪽 미리보기에 바로 반영됩니다.':'방송에 계속 표시할 누적 후원 순위표를 설정합니다.'}</p></div></header><main className={`settings-grid ${isAlert?'alert-settings-grid':''}`}><form className={`panel controls ${isAlert?'alert-controls':''}`} onSubmit={save}>
     {isAlert ? <>
       <div className="control-section"><h3>알림 표시 기준</h3><p>기록된 후원 중 설정 금액 이상인 후원만 화면에 알립니다.</p></div>
       <label>알림 최소 금액 (원)<input type="number" min="0" step="100" value={settings.alertMinimumAmount} onChange={e=>update('alertMinimumAmount',Math.max(0,Number(e.target.value)))}/></label>
@@ -544,8 +552,8 @@ function Settings({ mode }) {
       <label>정렬<select value={settings.textAlign} onChange={e=>update('textAlign',e.target.value)}><option value="left">왼쪽</option><option value="center">가운데</option><option value="right">오른쪽</option></select></label>
       <label>줄 간격<input type="range" min="0.8" max="2.5" step="0.05" value={settings.lineHeight} onChange={e=>update('lineHeight',Number(e.target.value))}/><span>{settings.lineHeight}</span></label>
       <label>자간<input type="range" min="-5" max="30" value={settings.letterSpacing} onChange={e=>update('letterSpacing',Number(e.target.value))}/><span>{settings.letterSpacing}px</span></label>
-      <label>글자색<input type="color" value={settings.textColor} onChange={e=>update('textColor',e.target.value)}/></label><label>테두리 색상<input type="color" value={settings.outlineColor} onChange={e=>update('outlineColor',e.target.value)}/></label>
-      <label>테두리 굵기<input type="range" min="0" max="12" step=".5" value={settings.outlineWidth} onChange={e=>update('outlineWidth',Number(e.target.value))}/><span>{settings.outlineWidth}px</span></label>
+      <div className="text-color-row"><label>글자색<input type="color" value={settings.textColor} onChange={e=>update('textColor',e.target.value)}/></label><label className="compact-check"><input type="checkbox" checked={settings.outlineEnabled!==false} onChange={e=>update('outlineEnabled',e.target.checked)}/><span>테두리 사용</span></label><label className={settings.outlineEnabled===false?'disabled':''}>테두리색<input type="color" disabled={settings.outlineEnabled===false} value={settings.outlineColor} onChange={e=>update('outlineColor',e.target.value)}/></label></div>
+      {settings.outlineEnabled!==false&&<label>테두리 굵기<input type="range" min="0.5" max="12" step=".5" value={Math.max(.5,settings.outlineWidth)} onChange={e=>update('outlineWidth',Number(e.target.value))}/><span>{settings.outlineWidth}px</span></label>}
       <label className="toggle-label">글자 그림자<input type="checkbox" checked={settings.textShadow} onChange={e=>update('textShadow',e.target.checked)}/><i/></label>
       <div className="control-section"><h3>알림 배경</h3><p>기본값은 배경 없음입니다. 방송 화면 위에 글자만 투명하게 표시됩니다.</p></div>
       <label className="toggle-label">알림 배경 사용<input type="checkbox" checked={settings.backgroundEnabled} onChange={e=>update('backgroundEnabled',e.target.checked)}/><i/></label>
@@ -593,12 +601,34 @@ function Settings({ mode }) {
       {settings.rankingRankHighlightEnabled!==false&&<div className="rank-style-editor">{['1위','2위','3위','4위 이하'].map((label,index)=>{const rankStyle=(settings.rankingRankStyles||DEFAULT_SETTINGS.rankingRankStyles)[index];return <article key={label}><b>{label}</b><label>글자색<input type="color" value={rankStyle.color} onChange={e=>changeRankStyle(index,'color',e.target.value)}/></label><label>순위색<input type="color" value={rankStyle.badge} onChange={e=>changeRankStyle(index,'badge',e.target.value)}/></label><label>크기<input type="number" min="70" max="160" value={rankStyle.size} onChange={e=>changeRankStyle(index,'size',Number(e.target.value))}/></label><label>굵기<select value={rankStyle.weight} onChange={e=>changeRankStyle(index,'weight',Number(e.target.value))}>{[400,500,600,700,800,900].map(value=><option key={value}>{value}</option>)}</select></label></article>})}</div>}
     </>}
     <button>{isAlert?'알림 설정 저장':'후원 순위표 설정 저장'}</button>{saved&&<p className="saved">{saved}</p>}
-  </form><section className="panel preview"><div className="preview-heading"><span>예시 미리보기 · {isAlert?'후원 알림':'후원 순위표'}</span>{isAlert&&<button type="button" onClick={()=>{setPreviewRun(value=>value+1);playAlertSound(settings,appearance.soundPreset,appearance.soundVolume,appearance.customSoundData);}}>예시 알림 다시 보기</button>}</div>{isAlert?<div className="preview-stage checkerboard"><div key={previewRun} className={`alert ${appearance.animation}`} style={style}><div className="alert-text">{preview.split('\n').map((line,i)=><div key={i}>{line}</div>)}</div></div></div>:<RankingPreview key={previewRun} settings={settings}/>}<div className="widget-links"><button type="button" onClick={openWidgetPreview}>{isAlert?'후원 알림 예시 화면 열기':'후원 순위표 화면 열기'}</button></div></section></main></div></PageLayout>;
+  </form><section className={`panel preview ${isAlert?'alert-preview':''}`}><div className="preview-heading"><div><span>예시 미리보기 · {isAlert?'후원 알림':'후원 순위표'}</span>{isAlert&&<small>실제 출력과 동일한 16:9 · 1920 × 1080 기준</small>}</div>{isAlert&&<button type="button" onClick={()=>{setPreviewRun(value=>value+1);playAlertSound(settings,appearance.soundPreset,appearance.soundVolume,appearance.customSoundData);}}>다시 재생</button>}</div>{isAlert?<AlertPreviewFrame key={previewRun} appearance={appearance} text={preview}/>:<RankingPreview key={previewRun} settings={settings}/>}<div className="widget-links"><button type="button" onClick={openWidgetPreview}>{isAlert?'전체 화면으로 확인':'후원 순위표 화면 열기'}</button></div></section></main></div></PageLayout>;
+}
+
+const ALERT_OUTPUT_WIDTH = 1920;
+const ALERT_OUTPUT_HEIGHT = 1080;
+
+function AlertOutputCanvas({ children, className='' }) {
+  const frameRef = useRef(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const frame = frameRef.current;
+    if (!frame) return;
+    const resize = () => setScale(frame.clientWidth / ALERT_OUTPUT_WIDTH);
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={frameRef} className={`alert-output-frame ${className}`}><div className="alert-output-canvas" style={{width:ALERT_OUTPUT_WIDTH,height:ALERT_OUTPUT_HEIGHT,transform:`translate(-50%,-50%) scale(${scale})`}}>{children}</div></div>;
+}
+
+function AlertPreviewFrame({ appearance, text }) {
+  return <AlertOutputCanvas className="preview-stage alert-preview-frame"><div className="alert-preview-canvas dark-mosaic"><div className={`alert ${appearance.animation}`} style={appearance.style}><div className="alert-text">{text.split('\n').map((line,index)=><div key={index}>{line}</div>)}</div></div></div></AlertOutputCanvas>;
 }
 
 function RankingPreview({ settings }) {
   const sample = [{ donorName:'폴조지', amount:150000, count:2 }, { donorName:'제병이', amount:100000, count:1 }, { donorName:'일집헬스', amount:50000, count:1 },{donorName:'행복한 조이킹',amount:30000,count:3},{donorName:'둥이운동',amount:20000,count:1},{donorName:'피스',amount:10000,count:1}];
-  return <div className="ranking-preview"><RankingCard items={sample} settings={settings}/></div>;
+  return <div className="ranking-preview dark-mosaic"><RankingCard items={sample} settings={settings}/></div>;
 }
 
 function RankingCard({ items, settings }) {
@@ -624,20 +654,28 @@ function Overlay() {
 
   useEffect(() => {
     const previewMode = new URLSearchParams(location.search).get('preview') === '1';
-    let timer;
-    const poll = async () => {
-      try {
-        const rows = await api(`/api/donations?after=${lastId.current}`);
-        if (rows.length) { lastId.current = rows.at(-1).id; queue.current.push(...rows); play(); }
-      } catch { /* 다음 폴링에서 재시도 */ }
-    };
+    let events;
+    let stopped = false;
     api(previewMode?'/api/overlay/preview':'/api/overlay/bootstrap').then(({ settings:value, lastDonationId }) => {
+      if (stopped) return;
       setSettings(value); settingsRef.current = value;
       if (previewMode) { setCurrent({ donorName:'폴조지', amount:50000 }); return; }
       lastId.current = lastDonationId;
-      timer = setInterval(poll, 500);
+      events = new EventSource(apiUrl(`/api/overlay/events?after=${lastId.current}`), { withCredentials:true });
+      events.addEventListener('bootstrap', event => {
+        const snapshot = JSON.parse(event.data);
+        setSettings(snapshot.settings); settingsRef.current = snapshot.settings;
+      });
+      events.addEventListener('donation', event => {
+        const donation = JSON.parse(event.data);
+        if (donation.id <= lastId.current) return;
+        lastId.current = donation.id;
+        if (donation.amount < Number(settingsRef.current.alertMinimumAmount || 0)) return;
+        queue.current.push(donation);
+        play();
+      });
     });
-    return () => clearInterval(timer);
+    return () => { stopped = true; events?.close(); };
   }, []);
 
   function play() {
@@ -654,5 +692,5 @@ function Overlay() {
   if (!current) return <div className="overlay-stage"/>;
   const appearance=alertAppearance(settings,current.amount);
   const text = appearance.messageTemplate.replaceAll('{name}',current.donorName).replaceAll('{amount}',formatWon(current.amount)).replaceAll('{grade}',settings.crewGradeEnabled?(current.grade?`[${current.grade}] `:''):'');
-  return <div className="overlay-stage"><div className={`alert ${exiting?appearance.exitAnimation:appearance.animation}`} style={appearance.style}><div className="alert-text">{text.split('\n').map((line,i)=><div key={i}>{line}</div>)}</div></div></div>;
+  return <AlertOutputCanvas className="overlay-stage"><div className={`alert ${exiting?appearance.exitAnimation:appearance.animation}`} style={appearance.style}><div className="alert-text">{text.split('\n').map((line,i)=><div key={i}>{line}</div>)}</div></div></AlertOutputCanvas>;
 }
