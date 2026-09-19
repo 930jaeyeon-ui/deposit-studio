@@ -2,16 +2,18 @@ import express from 'express';
 import { apiTest } from './api-test.js';
 import { DEFAULT_SETTINGS, normalizeDonation } from '@deposit-studio/shared';
 import { activeSession, db } from './db.js';
+import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, verifyPassword } from './auth.js';
 
 export const app = express();
 app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', process.env.WEB_ORIGIN || '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Origin', process.env.WEB_ORIGIN || req.headers.origin || '*');
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
-app.use(express.json({ limit: '100kb' }));
+app.use(express.json({ limit: '15mb' }));
 app.use('/api/test', apiTest);
 app.use((error, req, res, next) => {
   if (!req.path.startsWith('/api/test/')) return next(error);
@@ -20,44 +22,339 @@ app.use((error, req, res, next) => {
   });
 });
 app.get('/api/health', (_req, res) => res.json({ ok:true }));
+const effectiveDonorName = `COALESCE(NULLIF(d.donor_override_name, ''), NULLIF(a.canonical_name, ''), d.donor_name)`;
+const MEMBER_INITIAL_PASSWORD = 'Init1234!!';
 
-app.get('/api/dashboard', async (_req, res) => {
+async function getUserSettings(userId) {
+  const result = await db.execute({ sql:'SELECT value FROM user_settings WHERE user_id = ? LIMIT 1', args:[userId] });
+  if (!result.rows.length) {
+    await db.execute({ sql:'INSERT INTO user_settings (user_id, value) VALUES (?, ?)', args:[userId,JSON.stringify(DEFAULT_SETTINGS)] });
+    return { ...DEFAULT_SETTINGS };
+  }
+  return { ...DEFAULT_SETTINGS, ...JSON.parse(result.rows[0].value) };
+}
+
+function cleanSettings(input) {
+  const settings = { ...DEFAULT_SETTINGS, ...input };
+  settings.minimumDonationAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.minimumDonationAmount) || 0)));
+  settings.alertMinimumAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.alertMinimumAmount) || 0)));
+  settings.durationMs = Math.max(1000, Math.min(30000, Math.floor(Number(settings.durationMs) || 5000)));
+  settings.fontSize = Math.max(20, Math.min(160, Math.floor(Number(settings.fontSize) || 54)));
+  settings.fontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.fontWeight) || 800)));
+  settings.outlineWidth = Math.max(0, Math.min(12, Number(settings.outlineWidth) || 0));
+  settings.lineHeight = Math.max(0.8, Math.min(2.5, Number(settings.lineHeight) || 1.35));
+  settings.letterSpacing = Math.max(-5, Math.min(30, Number(settings.letterSpacing) || 0));
+  settings.backgroundOpacity = Math.max(0, Math.min(1, Number(settings.backgroundOpacity) || 0));
+  settings.backgroundPadding = Math.max(0, Math.min(100, Number(settings.backgroundPadding) || 0));
+  settings.backgroundRadius = Math.max(0, Math.min(100, Number(settings.backgroundRadius) || 0));
+  settings.soundVolume = Math.max(0, Math.min(100, Number(settings.soundVolume) || 0));
+  settings.messageTemplate = String(settings.messageTemplate || DEFAULT_SETTINGS.messageTemplate).slice(0,300);
+  settings.fontFamily = String(settings.fontFamily || DEFAULT_SETTINGS.fontFamily).slice(0,120);
+  settings.customFontFamily = String(settings.customFontFamily || '').slice(0,100);
+  settings.textAlign = ['left','center','right'].includes(settings.textAlign) ? settings.textAlign : 'center';
+  settings.animation = ['fade','zoom','slide-up','slide-down','slide-left','slide-right','bounce','flip','pulse','shake'].includes(settings.animation) ? settings.animation : 'zoom';
+  settings.exitAnimation = ['fade-out','zoom-out','slide-down-out','slide-up-out'].includes(settings.exitAnimation) ? settings.exitAnimation : 'fade-out';
+  settings.soundPreset = ['coin','chime','pop','fanfare','custom','none'].includes(settings.soundPreset) || String(settings.soundPreset).startsWith('library:') ? settings.soundPreset : 'coin';
+  settings.backgroundEnabled = Boolean(settings.backgroundEnabled);
+  settings.textShadow = Boolean(settings.textShadow);
+  settings.soundEnabled = Boolean(settings.soundEnabled);
+  settings.crewGradeEnabled = Boolean(settings.crewGradeEnabled);
+  settings.customSoundData = String(settings.customSoundData || '').slice(0,1400000);
+  settings.customSoundName = String(settings.customSoundName || '').slice(0,100);
+  settings.soundLibrary = Array.isArray(settings.soundLibrary) ? settings.soundLibrary.slice(0,10).map((sound,index)=>({id:String(sound.id || `sound-${index}`).slice(0,50),name:String(sound.name || `내 음원 ${index+1}`).slice(0,100),data:String(sound.data || '').slice(0,1400000)})).filter(sound=>sound.data.startsWith('data:audio/')) : [];
+  settings.amountTiers = Array.isArray(settings.amountTiers) ? settings.amountTiers.slice(0,12).map((tier,index)=>({
+    id:String(tier.id || `tier-${index}`).slice(0,40), name:String(tier.name || `${index+1}구간`).slice(0,30),
+    minAmount:Math.max(0,Math.min(100000000,Number(tier.minAmount)||0)), maxAmount:tier.maxAmount==null||tier.maxAmount===''?null:Math.max(0,Math.min(100000000,Number(tier.maxAmount)||0)),
+    enabled:tier.enabled !== false,
+    messageMode:tier.messageMode === 'custom' ? 'custom' : 'inherit', messageTemplate:String(tier.messageTemplate || '').slice(0,300),
+    textMode:tier.textMode === 'custom' ? 'custom' : 'inherit', fontFamily:String(tier.fontFamily || settings.fontFamily).slice(0,120), fontSize:Math.max(20,Math.min(160,Number(tier.fontSize)||settings.fontSize)), fontWeight:Math.max(100,Math.min(900,Number(tier.fontWeight)||settings.fontWeight)), textColor:String(tier.textColor || settings.textColor).slice(0,20), outlineColor:String(tier.outlineColor || settings.outlineColor).slice(0,20), outlineWidth:Math.max(0,Math.min(12,Number(tier.outlineWidth)||0)),
+    effectMode:tier.effectMode === 'custom' ? 'custom' : 'inherit', animation:String(tier.animation || settings.animation).slice(0,30), exitAnimation:String(tier.exitAnimation || settings.exitAnimation).slice(0,30), durationMs:Math.max(1000,Math.min(30000,Number(tier.durationMs)||settings.durationMs)),
+    soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number(tier.soundVolume) || settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,1400000)
+  })) : [];
+  settings.rankingLimit = Math.max(1, Math.min(50, Math.floor(Number(settings.rankingLimit) || DEFAULT_SETTINGS.rankingLimit)));
+  settings.rankingFontSize = Math.max(16, Math.min(72, Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize)));
+  settings.rankingFontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.rankingFontWeight) || 700)));
+  settings.rankingUseLineHeight = Boolean(settings.rankingUseLineHeight);
+  settings.rankingLineHeight = Math.max(.8, Math.min(2, Number(settings.rankingLineHeight) || 1.2));
+  settings.rankingLetterSpacing = Math.max(-5, Math.min(20, Number(settings.rankingLetterSpacing) || 0));
+  settings.rankingRowGap = Math.max(0, Math.min(40, Math.floor(Number(settings.rankingRowGap) || 0)));
+  settings.rankingColumnGap = Math.max(0, Math.min(80, Number(settings.rankingColumnGap) || 0));
+  settings.rankingNameAlign = ['left','center','right'].includes(settings.rankingNameAlign) ? settings.rankingNameAlign : 'left';
+  settings.rankingAmountAlign = ['left','center','right'].includes(settings.rankingAmountAlign) ? settings.rankingAmountAlign : 'right';
+  settings.rankingRowAlign = ['spread','left','center','right'].includes(settings.rankingRowAlign) ? settings.rankingRowAlign : 'spread';
+  settings.rankingTheme = ['midnight','clean','neon','gold','rose','ocean','forest','lavender','mono','transparent','custom'].includes(settings.rankingTheme) ? settings.rankingTheme : DEFAULT_SETTINGS.rankingTheme;
+  settings.rankingBackgroundEnabled=Boolean(settings.rankingBackgroundEnabled);
+  for (const key of ['rankingCustomBackground','rankingCustomBorder','rankingCustomRowBackground']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
+  settings.rankingCustomRadius=Math.max(0,Math.min(60,Number(settings.rankingCustomRadius)||0));
+  settings.rankingCustomMarker=['circle','square','pill','plain'].includes(settings.rankingCustomMarker)?settings.rankingCustomMarker:'circle';
+  settings.rankingNameSuffix = String(settings.rankingNameSuffix || '').slice(0,12);
+  settings.rankingAmountSuffix = String(settings.rankingAmountSuffix || '').slice(0,12);
+  settings.rankingShowTitle = settings.rankingShowTitle !== false;
+  settings.rankingTitleSize = Math.max(14,Math.min(72,Number(settings.rankingTitleSize)||24));
+  settings.rankingTitleAlign = ['left','center','right'].includes(settings.rankingTitleAlign)?settings.rankingTitleAlign:'left';
+  for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
+  settings.rankingColumns = Math.max(1,Math.min(4,Math.floor(Number(settings.rankingColumns)||1)));
+  settings.rankingRowsPerColumn = Math.max(1,Math.min(20,Math.floor(Number(settings.rankingRowsPerColumn)||10)));
+  settings.rankingAnimation = ['none','fade','slide-up','slide-left','zoom','stagger'].includes(settings.rankingAnimation)?settings.rankingAnimation:'fade';
+  settings.rankingRankHighlightEnabled = settings.rankingRankHighlightEnabled !== false;
+  settings.rankingRankStyles = Array.from({length:4},(_,index)=>{const source=Array.isArray(settings.rankingRankStyles)?settings.rankingRankStyles[index]||{}:{};const fallback=DEFAULT_SETTINGS.rankingRankStyles[index];return {color:String(source.color||fallback.color).slice(0,20),badge:String(source.badge||fallback.badge).slice(0,20),size:Math.max(70,Math.min(160,Number(source.size)||fallback.size)),weight:Math.max(100,Math.min(900,Number(source.weight)||fallback.weight))};});
+  settings.rankingShowRank = Boolean(settings.rankingShowRank);
+  settings.rankingShowCount = Boolean(settings.rankingShowCount);
+  settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);
+  return settings;
+}
+
+app.post('/api/auth/login', async (req, res) => {
+  const loginId = String(req.body?.loginId || '').trim();
+  const password = String(req.body?.password || '');
+  const result = await db.execute({ sql:`SELECT id, login_id loginId, display_name displayName, role, password_hash passwordHash, avatar_path avatar, must_change_password mustChangePassword FROM users WHERE login_id = ? COLLATE NOCASE AND is_active = 1 LIMIT 1`, args:[loginId] });
+  const user = result.rows[0];
+  if (!user || !verifyPassword(password, user.passwordHash)) return res.status(401).json({ error:'아이디 또는 비밀번호를 확인해주세요.' });
+  await createSession(res, user.id, req);
+  const { passwordHash, ...safeUser } = user;
+  res.json(safeUser);
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  const user = await currentUser(req);
+  if (!user) return res.status(401).json({ error:'로그인이 필요합니다.' });
+  res.json(user);
+});
+
+app.post('/api/auth/logout', async (req, res) => {
+  await destroySession(req, res);
+  res.json({ ok:true });
+});
+
+app.put('/api/profile', requireAuth, async (req, res) => {
+  const displayName = String(req.body?.displayName || '').trim();
+  const avatar = req.body?.avatar == null ? null : String(req.body.avatar);
+  if (displayName.length < 1 || displayName.length > 20) return res.status(400).json({ error:'표시 이름은 1~20자로 입력해주세요.' });
+  if (avatar && !(/^\/avatars\/[a-zA-Z0-9._-]+$/.test(avatar) || /^data:image\/(png|jpeg|webp);base64,[a-zA-Z0-9+/=]+$/.test(avatar))) {
+    return res.status(400).json({ error:'지원하지 않는 프로필 이미지 형식입니다.' });
+  }
+  if (avatar && avatar.length > 1_500_000) return res.status(400).json({ error:'프로필 이미지는 1MB 이하로 선택해주세요.' });
+  await db.execute({ sql:'UPDATE users SET display_name = ?, avatar_path = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', args:[displayName,avatar,req.user.id] });
+  const user = await currentUser(req);
+  res.json(user);
+});
+
+app.put('/api/profile/password', requireAuth, async (req, res) => {
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword = String(req.body?.newPassword || '');
+  const result = await db.execute({ sql:'SELECT password_hash passwordHash FROM users WHERE id = ?', args:[req.user.id] });
+  if (!verifyPassword(currentPassword, result.rows[0]?.passwordHash)) return res.status(400).json({ error:'현재 비밀번호가 올바르지 않습니다.' });
+  if (newPassword.length < 8 || !/[A-Za-z]/.test(newPassword) || !/\d/.test(newPassword) || !/[^A-Za-z0-9]/.test(newPassword)) {
+    return res.status(400).json({ error:'새 비밀번호는 8자 이상이며 영문, 숫자, 특수문자를 포함해야 합니다.' });
+  }
+  if (currentPassword === newPassword) return res.status(400).json({ error:'현재 비밀번호와 다른 비밀번호를 입력해주세요.' });
+  await db.execute({ sql:'UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?', args:[hashPassword(newPassword),req.user.id] });
+  await db.execute({ sql:'DELETE FROM web_sessions WHERE user_id = ?', args:[req.user.id] });
+  await createSession(res, req.user.id, req);
+  res.json({ ok:true });
+});
+
+app.get('/api/users', requireAuth, requireManager, async (req, res) => {
+  const superFilter = req.user.role === 'super' ? '' : `WHERE role <> 'super'`;
+  const result = await db.execute(`SELECT id, login_id loginId, display_name displayName, role, avatar_path avatar, is_active isActive FROM users ${superFilter} ORDER BY CASE role WHEN 'super' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, id`);
+  res.json(result.rows);
+});
+
+app.post('/api/users', requireAuth, requireManager, async (req, res) => {
+  const loginId = String(req.body?.loginId || '').trim().toLowerCase();
+  const displayName = String(req.body?.displayName || '').trim();
+  const role = ['admin','member'].includes(req.body?.role) ? req.body.role : 'member';
+  if (!/^[a-z0-9._-]{3,30}$/.test(loginId)) return res.status(400).json({ error:'아이디는 영문 소문자, 숫자, 점, 밑줄, 하이픈으로 3~30자 입력해주세요.' });
+  if (displayName.length < 1 || displayName.length > 20) return res.status(400).json({ error:'이름은 1~20자로 입력해주세요.' });
+  try {
+    const created = await db.execute({
+      sql:'INSERT INTO users (login_id, display_name, role, password_hash, must_change_password) VALUES (?, ?, ?, ?, 1)',
+      args:[loginId,displayName,role,hashPassword(MEMBER_INITIAL_PASSWORD)]
+    });
+    const result = await db.execute({ sql:'SELECT id, login_id loginId, display_name displayName, role, avatar_path avatar, is_active isActive FROM users WHERE id = ?', args:[created.lastInsertRowid] });
+    res.status(201).json({ ...result.rows[0], temporaryPassword:MEMBER_INITIAL_PASSWORD });
+  } catch (error) {
+    if (String(error.message).includes('UNIQUE')) return res.status(409).json({ error:'이미 사용 중인 아이디입니다.' });
+    throw error;
+  }
+});
+
+app.put('/api/users/:id/status', requireAuth, requireManager, async (req, res) => {
+  const targetId = Number(req.params.id);
+  const active = Boolean(req.body?.active);
+  const result = await db.execute({ sql:'SELECT id, role FROM users WHERE id = ?', args:[targetId] });
+  const target = result.rows[0];
+  if (!target) return res.status(404).json({ error:'계정을 찾을 수 없습니다.' });
+  if (target.id === req.user.id) return res.status(400).json({ error:'자신의 계정은 중지할 수 없습니다.' });
+  if (target.role === 'super') return res.status(403).json({ error:'이 계정은 변경할 수 없습니다.' });
+  await db.execute({ sql:'UPDATE users SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', args:[active?1:0,targetId] });
+  if (!active) await db.execute({ sql:'DELETE FROM web_sessions WHERE user_id = ?', args:[targetId] });
+  res.json({ ok:true, active });
+});
+
+app.post('/api/users/:id/reset-password', requireAuth, requireManager, async (req, res) => {
+  const targetId = Number(req.params.id);
+  const result = await db.execute({ sql:'SELECT id, role FROM users WHERE id = ?', args:[targetId] });
+  const target = result.rows[0];
+  if (!target) return res.status(404).json({ error:'계정을 찾을 수 없습니다.' });
+  if (target.id === req.user.id) return res.status(400).json({ error:'본인 비밀번호는 상단 프로필 메뉴에서 변경해주세요.' });
+  if (target.role === 'super') return res.status(403).json({ error:'이 계정은 변경할 수 없습니다.' });
+  await db.execute({ sql:'UPDATE users SET password_hash = ?, must_change_password = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?', args:[hashPassword(MEMBER_INITIAL_PASSWORD),targetId] });
+  await db.execute({ sql:'DELETE FROM web_sessions WHERE user_id = ?', args:[targetId] });
+  res.json({ ok:true, temporaryPassword:MEMBER_INITIAL_PASSWORD });
+});
+
+app.get('/api/dashboard', requireAuth, async (req, res) => {
   const session = await activeSession();
   const [donations, ranking, savedSettings] = await Promise.all([
-    db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, received_at receivedAt FROM donations WHERE session_id = ? ORDER BY id DESC LIMIT 100`, args:[session.id] }),
-    db.execute({ sql:`SELECT donor_name donorName, SUM(amount) amount, COUNT(*) count FROM donations WHERE session_id = ? GROUP BY donor_name ORDER BY amount DESC, donor_name`, args:[session.id] }),
-    db.execute('SELECT value FROM settings WHERE id = 1')
+    db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 100`, args:[session.id] }),
+    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName`, args:[session.id] }),
+    db.execute({ sql:'SELECT value FROM user_settings WHERE user_id = ?', args:[req.user.id] })
   ]);
   res.json({ session, donations:donations.rows, ranking:ranking.rows, settings:{ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) } });
+});
+
+app.get('/api/my/analytics', requireAuth, async (req, res) => {
+  const period = ['today','7d','30d','month','all'].includes(req.query.period) ? req.query.period : 'month';
+  const filters = {
+    today: `strftime('%Y-%m-%d', datetime(d.received_at, '+9 hours')) = strftime('%Y-%m-%d', datetime('now', '+9 hours'))`,
+    '7d': `datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of day', '-6 days')`,
+    '30d': `datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of day', '-29 days')`,
+    month: `strftime('%Y-%m', datetime(d.received_at, '+9 hours')) = strftime('%Y-%m', datetime('now', '+9 hours'))`,
+    all: '1 = 1'
+  };
+  const where = `d.recipient_user_id = ? AND d.status = 'included' AND ${filters[period]}`;
+  const execute = sql => db.execute({ sql, args:[req.user.id] });
+  const [summary, donors, weekdays, days, months, hours, largestDonation] = await Promise.all([
+    execute(`SELECT COALESCE(SUM(d.amount), 0) totalAmount, COUNT(*) donationCount, COUNT(DISTINCT ${effectiveDonorName}) donorCount, COALESCE(AVG(d.amount), 0) averageAmount, COALESCE(MAX(d.amount), 0) largestAmount FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where}`),
+    execute(`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count, datetime(MAX(d.received_at), '+9 hours') lastReceivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where} GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName LIMIT 100`),
+    execute(`SELECT CAST(strftime('%w', datetime(d.received_at, '+9 hours')) AS INTEGER) weekday, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where} GROUP BY weekday ORDER BY weekday`),
+    period === 'all'
+      ? Promise.resolve({ rows:[] })
+      : execute(`SELECT strftime('%Y-%m-%d', datetime(d.received_at, '+9 hours')) day, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where} GROUP BY day ORDER BY day`),
+    execute(`SELECT strftime('%Y-%m', datetime(d.received_at, '+9 hours')) month, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND d.status = 'included' AND datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of month', '-11 months') GROUP BY month ORDER BY month`),
+    period === 'today'
+      ? execute(`SELECT CAST(strftime('%H', datetime(d.received_at, '+9 hours')) AS INTEGER) hour, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where} GROUP BY hour ORDER BY hour`)
+      : Promise.resolve({ rows:[] }),
+    period === 'today'
+      ? execute(`SELECT ${effectiveDonorName} donorName, d.amount, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where} ORDER BY d.amount DESC, d.id DESC LIMIT 1`)
+      : Promise.resolve({ rows:[] })
+  ]);
+  res.json({ period, summary:summary.rows[0], donors:donors.rows, weekdays:weekdays.rows, days:days.rows, months:months.rows, hours:hours.rows, largestDonation:largestDonation.rows[0] || null });
+});
+
+app.get('/api/my/deposits', requireAuth, async (req, res) => {
+  const range = ['today','yesterday','7d','30d','month','custom','all'].includes(req.query.range) ? req.query.range : 'today';
+  const query = String(req.query.query || '').trim().slice(0, 40);
+  const status = ['included','excluded','below_minimum','needs_review'].includes(req.query.status) ? req.query.status : '';
+  const dateClauses = {
+    today:`date(datetime(d.received_at, '+9 hours')) = date(datetime('now', '+9 hours'))`,
+    yesterday:`date(datetime(d.received_at, '+9 hours')) = date(datetime('now', '+9 hours', '-1 day'))`,
+    '7d':`datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of day', '-6 days')`,
+    '30d':`datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of day', '-29 days')`,
+    month:`strftime('%Y-%m', datetime(d.received_at, '+9 hours')) = strftime('%Y-%m', datetime('now', '+9 hours'))`,
+    all:'1 = 1'
+  };
+  const args = [req.user.id];
+  let dateClause = dateClauses[range] || dateClauses.today;
+  if (range === 'custom') {
+    const from = String(req.query.from || '');
+    const to = String(req.query.to || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to) || from > to) return res.status(400).json({ error:'조회 시작일과 종료일을 확인해주세요.' });
+    dateClause = `date(datetime(d.received_at, '+9 hours')) BETWEEN date(?) AND date(?)`;
+    args.push(from,to);
+  }
+  const clauses = [`d.recipient_user_id = ?`,dateClause];
+  if (status) { clauses.push(`d.status = ?`); args.push(status); }
+  if (query) { clauses.push(`(${effectiveDonorName} LIKE ? OR d.donor_name LIKE ?)`); args.push(`%${query}%`,`%${query}%`); }
+  const where = clauses.join(' AND ');
+  const fromSql = `FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where}`;
+  const [summary, rows, donorNames] = await Promise.all([
+    db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) totalAmount, COUNT(*) depositCount, COUNT(DISTINCT ${effectiveDonorName}) donorCount, COALESCE(AVG(d.amount),0) averageAmount ${fromSql}`, args }),
+    db.execute({ sql:`SELECT d.id, d.donor_name rawDonorName, ${effectiveDonorName} donorName, d.amount, d.bank, d.status, datetime(d.received_at, '+9 hours') receivedAt, CASE WHEN ${effectiveDonorName} <> d.donor_name THEN 1 ELSE 0 END nameAdjusted ${fromSql} ORDER BY d.received_at DESC, d.id DESC LIMIT 500`, args }),
+    db.execute({ sql:`SELECT DISTINCT ${effectiveDonorName} donorName FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? ORDER BY donorName LIMIT 300`, args:[req.user.id] })
+  ]);
+  res.json({ range, summary:summary.rows[0], deposits:rows.rows, donorNames:donorNames.rows.map(row=>row.donorName) });
+});
+
+app.put('/api/my/deposits/:id/donor', requireAuth, async (req, res) => {
+  const donationId = Number(req.params.id);
+  const canonicalName = String(req.body?.canonicalName || '').trim();
+  const scope = req.body?.scope === 'same_name' ? 'same_name' : 'single';
+  if (canonicalName.length > 40) return res.status(400).json({ error:'후원자 이름은 40자 이하로 입력해주세요.' });
+  const found = await db.execute({ sql:'SELECT id, donor_name rawDonorName FROM donations WHERE id = ? AND recipient_user_id = ? LIMIT 1', args:[donationId,req.user.id] });
+  const donation = found.rows[0];
+  if (!donation) return res.status(404).json({ error:'입금 내역을 찾을 수 없습니다.' });
+  if (scope === 'same_name') {
+    if (canonicalName) {
+      await db.execute({ sql:`INSERT INTO donor_aliases (recipient_user_id, raw_name, canonical_name, created_by_user_id) VALUES (?, ?, ?, ?) ON CONFLICT(recipient_user_id, raw_name) DO UPDATE SET canonical_name = excluded.canonical_name, created_by_user_id = excluded.created_by_user_id, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,donation.rawDonorName,canonicalName,req.user.id] });
+    } else {
+      await db.execute({ sql:'DELETE FROM donor_aliases WHERE recipient_user_id = ? AND raw_name = ?', args:[req.user.id,donation.rawDonorName] });
+    }
+    await db.execute({ sql:'UPDATE donations SET donor_override_name = NULL WHERE recipient_user_id = ? AND donor_name = ?', args:[req.user.id,donation.rawDonorName] });
+  } else {
+    await db.execute({ sql:'UPDATE donations SET donor_override_name = ? WHERE id = ?', args:[canonicalName || null,donationId] });
+  }
+  await db.execute({ sql:'INSERT INTO donor_name_changes (donation_id, changed_by_user_id, raw_name, canonical_name, scope) VALUES (?, ?, ?, ?, ?)', args:[donationId,req.user.id,donation.rawDonorName,canonicalName || null,scope] });
+  res.json({ ok:true });
+});
+
+app.put('/api/my/deposits/:id/status', requireAuth, async (req, res) => {
+  const donationId = Number(req.params.id);
+  const status = ['included','excluded','needs_review'].includes(req.body?.status) ? req.body.status : '';
+  const note = String(req.body?.note || '').trim().slice(0, 200);
+  if (!status) return res.status(400).json({ error:'처리 상태를 선택해주세요.' });
+  const found = await db.execute({ sql:'SELECT id, status FROM donations WHERE id = ? AND recipient_user_id = ? LIMIT 1', args:[donationId,req.user.id] });
+  const donation = found.rows[0];
+  if (!donation) return res.status(404).json({ error:'입금 내역을 찾을 수 없습니다.' });
+  if (donation.status !== status) {
+    await db.execute({ sql:'UPDATE donations SET status = ? WHERE id = ?', args:[status,donationId] });
+    await db.execute({ sql:'INSERT INTO donation_status_changes (donation_id, changed_by_user_id, previous_status, new_status, note) VALUES (?, ?, ?, ?, ?)', args:[donationId,req.user.id,donation.status,status,note || null] });
+  }
+  res.json({ ok:true, status });
 });
 
 app.get('/api/widgets', async (_req, res) => {
   const session = await activeSession();
   const [donations, ranking] = await Promise.all([
-    db.execute({ sql:`SELECT id, donor_name donorName, amount, received_at receivedAt FROM donations WHERE session_id = ? AND received_at >= ? ORDER BY id DESC LIMIT 20`, args:[session.id,session.display_after] }),
-    db.execute({ sql:`SELECT donor_name donorName, SUM(amount) amount, COUNT(*) count FROM donations WHERE session_id = ? AND received_at >= ? GROUP BY donor_name ORDER BY amount DESC, donor_name LIMIT 20`, args:[session.id,session.display_after] })
+    db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.received_at >= ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 20`, args:[session.id,session.display_after] }),
+    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.received_at >= ? AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName LIMIT 20`, args:[session.id,session.display_after] })
   ]);
   res.json({ donations:donations.rows, ranking:ranking.rows });
+});
+
+app.get('/api/overlay/bootstrap', async (_req, res) => {
+  const session = await activeSession();
+  const [latest, savedSettings] = await Promise.all([
+    db.execute({ sql:'SELECT COALESCE(MAX(id), 0) lastDonationId FROM donations WHERE session_id = ?', args:[session.id] }),
+    db.execute('SELECT value FROM settings WHERE id = 1')
+  ]);
+  res.json({ lastDonationId:Number(latest.rows[0].lastDonationId)||0, settings:{ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) } });
+});
+
+app.get('/api/overlay/preview', requireAuth, async (req, res) => {
+  res.json({ lastDonationId:0, settings:await getUserSettings(req.user.id) });
 });
 
 app.get('/api/donations', async (req, res) => {
   const after = Math.max(0, Number(req.query.after) || 0);
   const session = await activeSession();
-  const result = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, received_at receivedAt FROM donations WHERE session_id = ? AND id > ? ORDER BY id ASC LIMIT 50`, args:[session.id,after] });
+  const savedSettings = await db.execute('SELECT value FROM settings WHERE id = 1');
+  const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) };
+  const result = await db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.id > ? AND d.amount >= ? AND d.status = 'included' ORDER BY d.id ASC LIMIT 50`, args:[session.id,after,settings.alertMinimumAmount] });
   res.json(result.rows);
 });
 
-app.post('/api/donations', async (req, res) => {
+app.post('/api/donations', requireAuth, async (req, res) => {
   try {
     const input = normalizeDonation(req.body);
-    const savedSettings = await db.execute('SELECT value FROM settings WHERE id = 1');
-    const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) };
+    const settings = await getUserSettings(req.user.id);
     if (input.amount < Number(settings.minimumDonationAmount || 0)) {
       return res.status(202).json({ ignored:true, minimumDonationAmount:settings.minimumDonationAmount, message:`${settings.minimumDonationAmount.toLocaleString('ko-KR')}원 미만 입금은 후원 리스트에 기록하지 않습니다.` });
     }
     const session = await activeSession();
-    const result = await db.execute({ sql:`INSERT INTO donations (session_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, ?)`, args:[session.id,input.donorName,input.amount,input.bank,input.externalId] });
-    const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, received_at receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
+    const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, ?, ?)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId] });
+    const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
     res.status(201).json(saved.rows[0]);
   } catch (error) {
     const duplicate = String(error.message).includes('UNIQUE constraint');
@@ -65,27 +362,17 @@ app.post('/api/donations', async (req, res) => {
   }
 });
 
-app.get('/api/settings', async (_req, res) => {
-  const result = await db.execute('SELECT value FROM settings WHERE id = 1');
-  res.json({ ...DEFAULT_SETTINGS, ...JSON.parse(result.rows[0].value) });
+app.get('/api/settings', requireAuth, async (req, res) => {
+  res.json(await getUserSettings(req.user.id));
 });
 
-app.put('/api/settings', async (req, res) => {
-  const settings = { ...DEFAULT_SETTINGS, ...req.body };
-  settings.minimumDonationAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.minimumDonationAmount) || 0)));
-  settings.rankingLimit = Math.max(1, Math.min(50, Math.floor(Number(settings.rankingLimit) || DEFAULT_SETTINGS.rankingLimit)));
-  settings.rankingFontSize = Math.max(16, Math.min(72, Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize)));
-  settings.rankingRowGap = Math.max(0, Math.min(40, Math.floor(Number(settings.rankingRowGap) || 0)));
-  settings.rankingAlign = ['left', 'center', 'right'].includes(settings.rankingAlign) ? settings.rankingAlign : DEFAULT_SETTINGS.rankingAlign;
-  settings.rankingTheme = ['midnight', 'clean', 'neon'].includes(settings.rankingTheme) ? settings.rankingTheme : DEFAULT_SETTINGS.rankingTheme;
-  settings.rankingShowRank = Boolean(settings.rankingShowRank);
-  settings.rankingShowCount = Boolean(settings.rankingShowCount);
-  settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);
-  await db.execute({ sql:`UPDATE settings SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 1`, args:[JSON.stringify(settings)] });
+app.put('/api/settings', requireAuth, async (req, res) => {
+  const settings = cleanSettings(req.body);
+  await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
   res.json(settings);
 });
 
-app.post('/api/sessions', async (req, res) => {
+app.post('/api/sessions', requireAuth, async (req, res) => {
   const current = await activeSession();
   await db.execute({ sql:'UPDATE broadcast_sessions SET ended_at = CURRENT_TIMESTAMP WHERE id = ?', args:[current.id] });
   const title = String(req.body?.title || `방송 ${Number(current.id)+1}회차`).trim().slice(0,60);
@@ -94,13 +381,13 @@ app.post('/api/sessions', async (req, res) => {
   res.status(201).json(created.rows[0]);
 });
 
-app.post('/api/display/reset', async (_req, res) => {
+app.post('/api/display/reset', requireAuth, async (_req, res) => {
   const session = await activeSession();
   await db.execute({ sql:'UPDATE broadcast_sessions SET display_after = CURRENT_TIMESTAMP WHERE id = ?', args:[session.id] });
   res.json({ ok:true });
 });
 
-app.post('/api/display/restore', async (_req, res) => {
+app.post('/api/display/restore', requireAuth, async (_req, res) => {
   const session = await activeSession();
   await db.execute({ sql:'UPDATE broadcast_sessions SET display_after = started_at WHERE id = ?', args:[session.id] });
   res.json({ ok:true });
