@@ -1,5 +1,5 @@
 import express from 'express';
-import { DEFAULT_SETTINGS } from '@deposit-studio/shared';
+import { DEFAULT_SETTINGS, normalizeDonation } from '@deposit-studio/shared';
 import { activeSession, db } from './db.js';
 import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, verifyPassword } from './auth.js';
 import { parseNotification, validateRuleInput } from './notification-parser.js';
@@ -9,6 +9,19 @@ const phoneTestClients = new Map();
 const sendSse = (res,event,data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 function publishPhoneTest(userId, data) {
   for (const client of phoneTestClients.get(Number(userId)) || []) sendSse(client,'notification',data);
+}
+const overlayClients = new Set();
+
+function sendOverlayEvent(res, event, data, id) {
+  if (id != null) res.write(`id: ${id}\n`);
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+function publishOverlayDonation(donation) {
+  for (const client of overlayClients) {
+    if (client.ready) sendOverlayEvent(client.res, 'donation', donation, donation.id);
+    else client.pending.push(donation);
+  }
 }
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.WEB_ORIGIN || req.headers.origin || '*');
@@ -59,9 +72,9 @@ async function getUserSettings(userId) {
   const result = await db.execute({ sql:'SELECT value FROM user_settings WHERE user_id = ? LIMIT 1', args:[userId] });
   if (!result.rows.length) {
     await db.execute({ sql:'INSERT INTO user_settings (user_id, value) VALUES (?, ?)', args:[userId,JSON.stringify(DEFAULT_SETTINGS)] });
-    return { ...DEFAULT_SETTINGS };
+    return cleanSettings(DEFAULT_SETTINGS);
   }
-  return { ...DEFAULT_SETTINGS, ...JSON.parse(result.rows[0].value) };
+  return cleanSettings(JSON.parse(result.rows[0].value));
 }
 
 function cleanSettings(input) {
@@ -86,6 +99,7 @@ function cleanSettings(input) {
   settings.exitAnimation = ['fade-out','zoom-out','slide-down-out','slide-up-out'].includes(settings.exitAnimation) ? settings.exitAnimation : 'fade-out';
   settings.soundPreset = ['coin','chime','pop','fanfare','custom','none'].includes(settings.soundPreset) || String(settings.soundPreset).startsWith('library:') ? settings.soundPreset : 'coin';
   settings.backgroundEnabled = Boolean(settings.backgroundEnabled);
+  settings.outlineEnabled = settings.outlineEnabled !== false;
   settings.textShadow = Boolean(settings.textShadow);
   settings.soundEnabled = Boolean(settings.soundEnabled);
   settings.crewGradeEnabled = Boolean(settings.crewGradeEnabled);
@@ -542,6 +556,50 @@ app.get('/api/overlay/preview', requireAuth, async (req, res) => {
   res.json({ lastDonationId:0, settings:await getUserSettings(req.user.id) });
 });
 
+app.get('/api/overlay/events', async (req, res) => {
+  res.set({
+    'Content-Type':'text/event-stream',
+    'Cache-Control':'no-cache, no-transform',
+    'Connection':'keep-alive',
+    'X-Accel-Buffering':'no'
+  });
+  res.flushHeaders();
+
+  const requestedAfter = Math.max(0, Number(req.get('Last-Event-ID')) || Number(req.query.after) || 0);
+  const resuming = Boolean(req.get('Last-Event-ID') || req.query.after);
+  const client = { res, ready:false, pending:[] };
+  overlayClients.add(client);
+  const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000);
+  res.on('close', () => {
+    clearInterval(heartbeat);
+    overlayClients.delete(client);
+  });
+
+  try {
+    const session = await activeSession();
+    const [latest, savedSettings, missed] = await Promise.all([
+      db.execute({ sql:'SELECT COALESCE(MAX(id), 0) lastDonationId FROM donations WHERE session_id = ?', args:[session.id] }),
+      db.execute('SELECT value FROM settings WHERE id = 1'),
+      resuming
+        ? db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.id > ? AND d.status = 'included' ORDER BY d.id ASC`, args:[session.id,requestedAfter] })
+        : Promise.resolve({ rows:[] })
+    ]);
+    const latestId = Number(latest.rows[0].lastDonationId) || 0;
+    const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) };
+    sendOverlayEvent(res, 'bootstrap', { lastDonationId:resuming ? requestedAfter : latestId, settings }, resuming ? requestedAfter : latestId);
+
+    const queued = [...missed.rows, ...client.pending]
+      .filter((donation, index, rows) => donation.id > requestedAfter && rows.findIndex(row => row.id === donation.id) === index)
+      .sort((a,b) => a.id - b.id);
+    client.ready = true;
+    client.pending = [];
+    for (const donation of queued) sendOverlayEvent(res, 'donation', donation, donation.id);
+  } catch (error) {
+    sendOverlayEvent(res, 'stream-error', { message:'OBS 이벤트 스트림을 시작하지 못했습니다.' });
+    res.end();
+  }
+});
+
 app.get('/api/donations', async (req, res) => {
   const after = Math.max(0, Number(req.query.after) || 0);
   const session = await activeSession();
@@ -551,6 +609,23 @@ app.get('/api/donations', async (req, res) => {
   res.json(result.rows);
 });
 
+app.post('/api/donations', requireAuth, async (req, res) => {
+  try {
+    const input = normalizeDonation(req.body);
+    const settings = await getUserSettings(req.user.id);
+    if (input.amount < Number(settings.minimumDonationAmount || 0)) {
+      return res.status(202).json({ ignored:true, minimumDonationAmount:settings.minimumDonationAmount, message:`${settings.minimumDonationAmount.toLocaleString('ko-KR')}원 미만 입금은 후원 리스트에 기록하지 않습니다.` });
+    }
+    const session = await activeSession();
+    const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, ?, ?)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId] });
+    const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
+    publishOverlayDonation(saved.rows[0]);
+    res.status(201).json(saved.rows[0]);
+  } catch (error) {
+    const duplicate = String(error.message).includes('UNIQUE constraint');
+    res.status(duplicate ? 409 : 400).json({ error:duplicate ? '이미 처리한 입금입니다.' : error.message });
+  }
+});
 app.get('/api/settings', requireAuth, async (req, res) => {
   res.json(await getUserSettings(req.user.id));
 });

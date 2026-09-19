@@ -1,3 +1,5 @@
+export const MINIMUM_DONATION_AMOUNT = 10000;
+
 export const DEFAULT_SETTINGS = Object.freeze({
   messageTemplate: '{name}님\n{amount}원 감사합니다!',
   durationMs: 5000,
@@ -9,6 +11,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   lineHeight: 1.35,
   letterSpacing: 0,
   textColor: '#ffffff',
+  outlineEnabled: true,
   outlineColor: '#000000',
   outlineWidth: 3,
   textShadow: true,
@@ -27,8 +30,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   soundLibrary: [],
   amountTiers: [],
   crewGradeEnabled: false,
-  minimumDonationAmount: 1000,
-  alertMinimumAmount: 1000,
+  minimumDonationAmount: MINIMUM_DONATION_AMOUNT,
+  alertMinimumAmount: MINIMUM_DONATION_AMOUNT,
   rankingTitle: '오늘의 후원',
   rankingLimit: 10,
   rankingFontSize: 30,
