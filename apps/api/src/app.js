@@ -232,7 +232,7 @@ app.get('/api/my/analytics', requireAuth, async (req, res) => {
     period === 'all'
       ? Promise.resolve({ rows:[] })
       : execute(`SELECT strftime('%Y-%m-%d', datetime(d.received_at, '+9 hours')) day, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where} GROUP BY day ORDER BY day`),
-    execute(`SELECT strftime('%Y-%m', datetime(d.received_at, '+9 hours')) month, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND d.status = 'included' AND datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of month', '-11 months') GROUP BY month ORDER BY month`),
+    execute(`SELECT strftime('%Y-%m', datetime(d.received_at, '+9 hours')) month, SUM(d.amount) amount, COUNT(*) count, COUNT(DISTINCT ${effectiveDonorName}) donorCount FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND d.status = 'included' AND datetime(d.received_at, '+9 hours') >= datetime('now', '+9 hours', 'start of month', '-11 months') GROUP BY month ORDER BY month`),
     period === 'today'
       ? execute(`SELECT CAST(strftime('%H', datetime(d.received_at, '+9 hours')) AS INTEGER) hour, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${where} GROUP BY hour ORDER BY hour`)
       : Promise.resolve({ rows:[] }),

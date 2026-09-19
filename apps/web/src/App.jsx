@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
+import Chart from 'react-apexcharts';
 import { DEFAULT_SETTINGS, formatWon } from '@deposit-studio/shared';
 import { ApiTest } from './ApiTest';
 
@@ -147,7 +148,7 @@ function PageLayout({ children }) {
         <Link href="/" label="내 후원 현황" hint="나의 방송과 후원 통계"/>
         <Link href="/crew-dashboard" label="크루 후원 현황" hint="크루 전체 후원자 현황"/>
         <span className="nav-label nav-group">후원 관리</span>
-        <Link href="/deposits" label="입금 내역" hint="날짜별 입금과 후원자 연결"/>
+        <Link href="/deposits" label="입금 내역" hint="날짜별 입금과 입금자명 관리"/>
         <span className="nav-label nav-group">내 방송</span>
         <Link href="/settings/alert" label="후원 알림 설정" hint="문구 · 디자인 · 표시 시간"/>
         <Link href="/settings/ranking" label="후원 순위표 설정" hint="순위 · 테마 · 표시 인원"/>
@@ -169,7 +170,7 @@ function MyDashboard() {
   const [message, setMessage] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   useEffect(() => { setMessage(''); Promise.all([api('/api/my/analytics?period=month'),api('/api/my/analytics?period=7d')]).then(([month,week])=>{setData(month);setWeekData(week);}).catch(error=>setMessage(error.message)); }, []);
-  const months = Array.from({ length:12 }, (_,offset) => { const date=new Date(); date.setMonth(date.getMonth()-(11-offset)); const key=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`; return { label:`${date.getMonth()+1}월`, key, amount:Number(data.months.find(item=>item.month===key)?.amount || 0) }; });
+  const months = Array.from({ length:12 }, (_,offset) => { const date=new Date(); date.setMonth(date.getMonth()-(11-offset)); const key=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}`; const found=data.months.find(item=>item.month===key);return { label:`${date.getMonth()+1}월`, key, amount:Number(found?.amount||0), count:Number(found?.count||0), donorCount:Number(found?.donorCount||0) }; });
   const weekDays = (() => {
     const today = new Date();
     const start = new Date(today);
@@ -186,37 +187,46 @@ function MyDashboard() {
   const searchedDonor = searchedIndex >= 0 ? data.donors[searchedIndex] : null;
   const selectedPeriodLabel = '이번 달';
   const trendItems = trendPeriod==='week' ? weekDays : months;
+  const currentMonthLabel=`${new Date().getMonth()+1}월`;
+  const monthlyAverageAmount=Math.round(months.reduce((sum,item)=>sum+item.amount,0)/12);
+  const monthlyAverageDonors=Math.round(months.reduce((sum,item)=>sum+item.donorCount,0)/12*10)/10;
+  const monthlyAverageCount=Math.round(months.reduce((sum,item)=>sum+item.count,0)/12*10)/10;
   return <PageLayout><div className="shell">
     <header><div><span className="eyebrow">MY DONATION ANALYTICS</span><h1>{user.displayName}님의 후원 현황</h1><p className="page-description">이번 달 후원 흐름과 후원자 데이터를 정리합니다.</p></div></header>
-    <section className="dashboard-kpis personal-kpis"><article className="kpi primary"><span>{selectedPeriodLabel} 후원금</span><strong>{formatWon(Number(data.summary.totalAmount)||0)}<small>원</small></strong></article><article className="kpi"><span>{selectedPeriodLabel} 후원자</span><strong>{Number(data.summary.donorCount)||0}<small>명</small></strong><p>동일 닉네임은 합산</p></article><article className="kpi"><span>{selectedPeriodLabel} 후원 건수</span><strong>{Number(data.summary.donationCount)||0}<small>건</small></strong></article><article className="kpi"><span>{selectedPeriodLabel} 평균 후원</span><strong>{formatWon(Math.round(Number(data.summary.averageAmount)||0))}<small>원</small></strong></article></section>
+    <section className="dashboard-kpis personal-kpis"><article className="kpi primary"><span>{currentMonthLabel} 후원금</span><strong>{formatWon(Number(data.summary.totalAmount)||0)}<small>원</small></strong></article><article className="kpi"><span>월별 평균 후원자 수</span><strong>{monthlyAverageDonors}<small>명</small></strong><p>최근 12개월 기준</p></article><article className="kpi"><span>월별 평균 후원 건수</span><strong>{monthlyAverageCount}<small>건</small></strong><p>최근 12개월 기준</p></article><article className="kpi"><span>월별 평균 후원</span><strong>{formatWon(monthlyAverageAmount)}<small>원</small></strong><p>최근 12개월 기준</p></article></section>
     {message&&<p className="notice">{message}</p>}
-    <main className="analytics-grid"><AnalyticsChart className="dashboard-trend" title={trendPeriod==='week'?'최근 1주일 후원 추이':'최근 1년 후원 추이'} caption={trendPeriod==='week'?'일별 후원금액':'월별 후원금액'} items={trendItems} focusKey={trendPeriod==='week'?weekDays.at(-1)?.key:null} controls={<div className="chart-segment"><button className={trendPeriod==='week'?'active':''} onClick={()=>setTrendPeriod('week')}>최근 1주일</button><button className={trendPeriod==='year'?'active':''} onClick={()=>setTrendPeriod('year')}>최근 1년</button></div>}/>
+    <main className="analytics-grid"><AnalyticsChart className="dashboard-trend" title={trendPeriod==='week'?'최근 1주일 후원 추이':'최근 1년 후원 추이'} caption={trendPeriod==='week'?'일별 후원금액':'월별 후원금액'} items={trendItems} chartType={trendPeriod==='week'?'area':'bar'} controls={<div className="chart-segment"><button className={trendPeriod==='week'?'active':''} onClick={()=>setTrendPeriod('week')}>최근 1주일</button><button className={trendPeriod==='year'?'active':''} onClick={()=>setTrendPeriod('year')}>최근 1년</button></div>}/>
       <section className="panel"><div className="panel-title"><div><span className="section-kicker">MY RANKING</span><h3>{selectedPeriodLabel} 내 후원자 순위</h3></div><span>상위 20명</span></div><ol className="ranking ranking-large">{data.donors.slice(0,20).map((item,index)=><li key={item.donorName}><i>{index+1}</i><strong>{item.donorName}<small>{item.count}회 후원</small></strong><span>{formatWon(item.amount)}원</span></li>)}{!data.donors.length&&<Empty/>}</ol></section>
       <section className="panel donor-lookup"><div className="panel-title"><div><span className="section-kicker">MY DONOR SEARCH</span><h3>{selectedPeriodLabel} 내 후원자 검색</h3></div></div><label className="donor-search"><span>닉네임 검색</span><input value={searchQuery} onChange={event=>setSearchQuery(event.target.value)} placeholder="예: 폴조지"/></label>{!normalizedQuery&&<div className="search-guide"><b>후원자를 검색해보세요</b><span>{selectedPeriodLabel} 기준 순위, 누적 금액과 후원 건수를 확인합니다.</span></div>}{normalizedQuery&&!searchedDonor&&<div className="search-guide"><b>검색 결과가 없습니다</b><span>기간이나 닉네임을 다시 확인해주세요.</span></div>}{searchedDonor&&<div className="donor-result"><span>검색된 후원자</span><strong>{searchedDonor.donorName}</strong><dl><div><dt>{selectedPeriodLabel} 순위</dt><dd>{searchedIndex+1}위</dd></div><div><dt>누적 후원금</dt><dd>{formatWon(searchedDonor.amount)}원</dd></div><div><dt>후원 건수</dt><dd>{searchedDonor.count}건</dd></div></dl></div>}</section>
     </main>
   </div></PageLayout>;
 }
 
-function AnalyticsChart({ title, caption, items, dense=false, focusKey=null, valueFormatter=formatWon, controls=null, className='' }) {
-  const chartRef = useRef(null);
-  const today = new Date();
-  const todayKey = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-  const max = Math.max(...items.map(item=>item.amount), 1);
+function AnalyticsChart({ title, caption, items, chartType='area', controls=null, className='' }) {
+  const [colorMode,setColorMode] = useState(()=>document.documentElement.dataset.theme||'dark');
   useEffect(() => {
-    const chart = chartRef.current;
-    if (!dense || !chart) return;
-    const target = chart.querySelector('[data-focus="true"]');
-    if (!target) return;
-    const frame = requestAnimationFrame(() => {
-      const chartRect = chart.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      const targetCenter = targetRect.left-chartRect.left+chart.scrollLeft+targetRect.width/2;
-      const centered = targetCenter-chart.clientWidth/2;
-      chart.scrollLeft = Math.max(0, Math.min(centered, chart.scrollWidth-chart.clientWidth));
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [dense, focusKey, items.length, items.at(-1)?.key]);
-  return <section className={`panel analytics-chart ${className}`}><div className="panel-title"><div><span className="section-kicker">DONATION TREND</span><h3>{title}</h3></div>{controls||<span>{caption}</span>}</div><div ref={chartRef} className={`bar-chart ${dense?'bar-chart-dense':''}`}>{items.map(item=>{const isFocused=item.key===(focusKey||todayKey);return <div className={`bar-item ${isFocused?'today':''}`} data-focus={isFocused?'true':undefined} key={item.key||item.label}><div className="bar-value">{item.amount ? valueFormatter(item.amount) : ''}</div><div className="bar-track"><i style={{height:`${item.amount ? Math.max(5,item.amount/max*100) : 2}%`}}/></div><span>{item.label}{isFocused&&<small>{item.note||'오늘'}</small>}</span></div>})}</div></section>;
+    const root=document.documentElement;
+    const update=()=>setColorMode(root.dataset.theme||'dark');
+    const observer=new MutationObserver(update);observer.observe(root,{attributes:true,attributeFilter:['data-theme']});
+    return()=>observer.disconnect();
+  },[]);
+  const isLight=colorMode==='light';
+  const compact=value=>value>=100000000?`${(value/100000000).toFixed(value%100000000?1:0)}억`:value>=10000?`${Math.round(value/10000)}만`:formatWon(value);
+  const options={
+    chart:{type:chartType,toolbar:{show:false},zoom:{enabled:false},fontFamily:'Pretendard, "Noto Sans KR", sans-serif',foreColor:isLight?'#65778e':'#8295b0',animations:{enabled:true,easing:'easeinout',speed:550}},
+    colors:['#5b8cff'],
+    dataLabels:{enabled:true,formatter:value=>value?compact(value):'',offsetY:chartType==='bar'?-10:-7,style:{fontSize:'10px',fontWeight:700,colors:[isLight?'#355b89':'#a9ceff']},background:{enabled:false}},
+    stroke:{curve:chartType==='area'?'smooth':'straight',width:chartType==='area'?3:0},
+    fill:chartType==='area'?{type:'gradient',gradient:{shade:isLight?'light':'dark',type:'vertical',opacityFrom:.5,opacityTo:.05,stops:[0,92,100]}}:{type:'gradient',gradient:{type:'vertical',opacityFrom:1,opacityTo:.72,stops:[0,100]}},
+    markers:{size:chartType==='area'?4:0,strokeWidth:3,strokeColors:[isLight?'#fff':'#111b2e'],hover:{size:6}},
+    plotOptions:{bar:{borderRadius:7,borderRadiusApplication:'end',columnWidth:'46%'}},
+    grid:{borderColor:isLight?'#dce5ef':'#263a58',strokeDashArray:4,padding:{top:20,right:12,left:10,bottom:0}},
+    xaxis:{categories:items.map(item=>item.label),axisBorder:{show:false},axisTicks:{show:false},labels:{style:{fontSize:'10px'}}},
+    yaxis:{min:0,forceNiceScale:true,labels:{formatter:compact,style:{fontSize:'10px'}}},
+    tooltip:{theme:isLight?'light':'dark',y:{formatter:value=>`${formatWon(value)}원`},marker:{show:true}},
+    legend:{show:false}
+  };
+  return <section className={`panel analytics-chart apex-donation-chart ${className}`}><div className="panel-title"><div><span className="section-kicker">DONATION TREND</span><h3>{title}</h3><p>{caption}</p></div>{controls}</div><Chart key={`${chartType}-${colorMode}`} options={options} series={[{name:'후원금',data:items.map(item=>item.amount)}]} type={chartType} height={300}/></section>;
 }
 
 function DepositHistory() {
@@ -227,8 +237,7 @@ function DepositHistory() {
   const [message, setMessage] = useState('');
   const [editing, setEditing] = useState(null);
   const [donorForm, setDonorForm] = useState({ canonicalName:'', scope:'single' });
-  const [processing, setProcessing] = useState(null);
-  const [statusForm, setStatusForm] = useState({ status:'included', note:'' });
+  const [statusSaving, setStatusSaving] = useState(null);
   const ranges = [['today','오늘'],['yesterday','어제'],['7d','최근 7일'],['30d','최근 30일'],['month','이번 달'],['custom','직접 선택'],['all','전체']];
   const statuses = { included:'후원 반영', excluded:'후원 제외', below_minimum:'기준 미달', needs_review:'확인 필요' };
   const bankNames = { tossbank:'토스뱅크',kbank:'케이뱅크',kakao:'카카오뱅크',ibk:'기업은행' };
@@ -243,19 +252,19 @@ function DepositHistory() {
   useEffect(()=>{const timer=setTimeout(load,filters.query?250:0);return()=>clearTimeout(timer);},[filters.range,filters.query,filters.status,filters.from,filters.to]);
   const groups = data.deposits.reduce((result,item)=>{const day=String(item.receivedAt).slice(0,10);(result[day] ||= []).push(item);return result;},{});
   function openDonor(item) { setEditing(item); setDonorForm({canonicalName:item.donorName,scope:'single'}); }
-  function openStatus(item) { setProcessing(item); setStatusForm({status:item.status==='below_minimum'?'included':item.status,note:''}); }
   async function saveDonor(event) {
     event.preventDefault();
-    try { await api(`/api/my/deposits/${editing.id}/donor`,{method:'PUT',body:JSON.stringify(donorForm)}); setEditing(null); setMessage(donorForm.canonicalName?'후원자 연결을 저장했습니다.':'은행 원본 이름으로 되돌렸습니다.'); await load(); }
+    try { await api(`/api/my/deposits/${editing.id}/donor`,{method:'PUT',body:JSON.stringify(donorForm)}); setEditing(null); setMessage(donorForm.canonicalName?'입금자명을 변경했습니다.':'은행 원본 이름으로 되돌렸습니다.'); await load(); }
     catch(error){setMessage(error.message);}
   }
-  async function saveStatus(event) {
-    event.preventDefault();
-    try { await api(`/api/my/deposits/${processing.id}/status`,{method:'PUT',body:JSON.stringify(statusForm)}); const label=statuses[statusForm.status]||statusForm.status; setProcessing(null); setMessage(`처리 상태를 '${label}'로 변경했습니다.`); await load(); }
-    catch(error){setMessage(error.message);}
+  async function changeStatus(item) {
+    const status=item.status==='included'?'excluded':'included';
+    setStatusSaving(item.id);
+    try { await api(`/api/my/deposits/${item.id}/status`,{method:'PUT',body:JSON.stringify({status,note:''})}); setMessage(status==='included'?'후원 금액에 다시 반영했습니다.':'후원 금액에서 제외했습니다.'); await load(); }
+    catch(error){setMessage(error.message);} finally { setStatusSaving(null); }
   }
   const formatDay = value => { const [year,month,day]=value.split('-'); return `${year}년 ${Number(month)}월 ${Number(day)}일`; };
-  return <PageLayout><div className="shell deposit-page"><header><div><h1>입금 내역</h1><p className="page-description">내 계정으로 들어온 입금을 날짜별로 확인하고 후원자를 직접 연결합니다.</p></div></header><section className="deposit-filters"><div className="period-tabs">{ranges.map(([value,label])=><button className={filters.range===value?'active':''} onClick={()=>setFilters({...filters,range:value})} key={value}>{label}</button>)}</div><div className="deposit-search"><input value={filters.query} onChange={event=>setFilters({...filters,query:event.target.value})} placeholder="입금자 또는 연결된 후원자 검색"/><select value={filters.status} onChange={event=>setFilters({...filters,status:event.target.value})}><option value="">전체 상태</option>{Object.entries(statuses).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></div>{filters.range==='custom'&&<div className="custom-dates"><label>시작일<input type="date" value={filters.from} max={filters.to} onChange={event=>setFilters({...filters,from:event.target.value})}/></label><i>–</i><label>종료일<input type="date" value={filters.to} min={filters.from} onChange={event=>setFilters({...filters,to:event.target.value})}/></label></div>}</section>{message&&<p className="notice">{message}</p>}<section className="deposit-kpis"><article><span>조회 기간 입금액</span><b>{formatWon(Number(data.summary.totalAmount)||0)}<small>원</small></b></article><article><span>입금 건수</span><b>{Number(data.summary.depositCount)||0}<small>건</small></b></article><article><span>입금자 수</span><b>{Number(data.summary.donorCount)||0}<small>명</small></b></article><article><span>평균 입금액</span><b>{formatWon(Math.round(Number(data.summary.averageAmount)||0))}<small>원</small></b></article></section><section className="panel deposit-list-panel"><div className="deposit-table-head"><span>입금 시각</span><span>입금자</span><span>은행</span><span>처리 상태</span><span>금액</span><span></span></div>{Object.entries(groups).map(([day,items])=><div className="deposit-day" key={day}><div className="deposit-day-title"><b>{formatDay(day)}</b><span>{items.length}건 · {formatWon(items.reduce((sum,item)=>sum+Number(item.amount),0))}원</span></div>{items.map(item=><article className="deposit-row" key={item.id}><time>{String(item.receivedAt).slice(11,16)}</time><div className="deposit-donor"><strong>{item.donorName}</strong>{Boolean(item.nameAdjusted)&&<small>은행 원문 · {item.rawDonorName}</small>}</div><span>{bankNames[item.bank]||item.bank}</span><em className={`deposit-status ${item.status}`}>{statuses[item.status]||item.status}</em><b>{formatWon(item.amount)}원</b><div className="deposit-actions"><button onClick={()=>openDonor(item)}>후원자 연결</button><button className="status-action" onClick={()=>openStatus(item)}>처리</button></div></article>)}</div>)}{!data.deposits.length&&<div className="empty deposit-empty">선택한 조건의 입금 내역이 없습니다.</div>}</section></div>{editing&&<div className="dialog-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setEditing(null);}}><section className="profile-dialog donor-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><div><small>은행 원본 · {editing.rawDonorName}</small><h2>후원자 연결</h2><p>시스템이 자동으로 합치지 않습니다. 확인한 후원자 이름을 직접 입력해주세요.</p></div><button onClick={()=>setEditing(null)} aria-label="닫기">×</button></div><form onSubmit={saveDonor}><label>순위표에 표시할 후원자 이름<input autoFocus list="known-donors" maxLength="40" value={donorForm.canonicalName} onChange={event=>setDonorForm({...donorForm,canonicalName:event.target.value})}/><datalist id="known-donors">{data.donorNames.map(name=><option value={name} key={name}/>)}</datalist></label><div className="donor-scope"><label><input type="radio" name="scope" checked={donorForm.scope==='single'} onChange={()=>setDonorForm({...donorForm,scope:'single'})}/><span><b>이번 입금만</b><small>선택한 한 건에만 적용합니다.</small></span></label><label><input type="radio" name="scope" checked={donorForm.scope==='same_name'} onChange={()=>setDonorForm({...donorForm,scope:'same_name'})}/><span><b>같은 입금자명 전체</b><small>앞으로 같은 원본 이름에도 적용합니다.</small></span></label></div><button type="button" className="restore-name" onClick={()=>setDonorForm({...donorForm,canonicalName:''})}>은행 원본 이름으로 되돌리기</button><button className="primary-button">후원자 연결 저장</button></form></section></div>}{processing&&<div className="dialog-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setProcessing(null);}}><section className="profile-dialog status-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><div><small>{processing.rawDonorName} · {formatWon(processing.amount)}원</small><h2>입금 처리</h2><p>선택한 상태에 따라 후원 현황·순위표·OBS 반영 여부가 바뀝니다.</p></div><button onClick={()=>setProcessing(null)} aria-label="닫기">×</button></div><form onSubmit={saveStatus}><div className="status-choices"><label className={statusForm.status==="included"?"selected":""}><input type="radio" name="deposit-status" checked={statusForm.status==="included"} onChange={()=>setStatusForm({...statusForm,status:"included"})}/><span><b>후원 반영</b><small>후원 현황·순위표·OBS에 포함합니다.</small></span></label><label className={statusForm.status==="excluded"?"selected":""}><input type="radio" name="deposit-status" checked={statusForm.status==="excluded"} onChange={()=>setStatusForm({...statusForm,status:"excluded"})}/><span><b>후원 제외</b><small>개인 송금 등 후원이 아닌 입금입니다.</small></span></label><label className={statusForm.status==="needs_review"?"selected":""}><input type="radio" name="deposit-status" checked={statusForm.status==="needs_review"} onChange={()=>setStatusForm({...statusForm,status:"needs_review"})}/><span><b>확인 필요</b><small>판단을 보류하고 어떤 통계에도 반영하지 않습니다.</small></span></label></div><label>처리 메모<textarea maxLength="200" value={statusForm.note} onChange={event=>setStatusForm({...statusForm,note:event.target.value})} placeholder="예: 개인 송금으로 확인"/></label><p className="status-current">현재 상태 · <b>{statuses[processing.status]||processing.status}</b></p><button className="primary-button">처리 상태 저장</button></form></section></div>}</PageLayout>;
+  return <PageLayout><div className="shell deposit-page"><header><div><h1>입금 내역</h1><p className="page-description">내 계정으로 들어온 입금을 확인하고 입금자명과 후원 반영 여부를 관리합니다.</p></div></header><section className="deposit-filters"><div className="period-tabs">{ranges.map(([value,label])=><button className={filters.range===value?'active':''} onClick={()=>setFilters({...filters,range:value})} key={value}>{label}</button>)}</div><div className="deposit-search"><input value={filters.query} onChange={event=>setFilters({...filters,query:event.target.value})} placeholder="입금자명 검색"/><select value={filters.status} onChange={event=>setFilters({...filters,status:event.target.value})}><option value="">전체 상태</option>{Object.entries(statuses).map(([value,label])=><option value={value} key={value}>{label}</option>)}</select></div>{filters.range==='custom'&&<div className="custom-dates"><label>시작일<input type="date" value={filters.from} max={filters.to} onChange={event=>setFilters({...filters,from:event.target.value})}/></label><i>–</i><label>종료일<input type="date" value={filters.to} min={filters.from} onChange={event=>setFilters({...filters,to:event.target.value})}/></label></div>}</section>{message&&<p className="notice">{message}</p>}<section className="deposit-kpis"><article><span>조회 기간 입금액</span><b>{formatWon(Number(data.summary.totalAmount)||0)}<small>원</small></b></article><article><span>입금 건수</span><b>{Number(data.summary.depositCount)||0}<small>건</small></b></article><article><span>입금자 수</span><b>{Number(data.summary.donorCount)||0}<small>명</small></b></article><article><span>평균 입금액</span><b>{formatWon(Math.round(Number(data.summary.averageAmount)||0))}<small>원</small></b></article></section><section className="panel deposit-list-panel"><div className="deposit-table-head"><span>입금 시각</span><span>입금자</span><span>은행</span><span>후원 반영</span><span>금액</span></div>{Object.entries(groups).map(([day,items])=><div className="deposit-day" key={day}><div className="deposit-day-title"><b>{formatDay(day)}</b><span>{items.length}건 · {formatWon(items.reduce((sum,item)=>sum+Number(item.amount),0))}원</span></div>{items.map(item=><article className="deposit-row" key={item.id}><time>{String(item.receivedAt).slice(11,16)}</time><div className="deposit-donor"><div><strong>{item.donorName}</strong><button type="button" onClick={()=>openDonor(item)}>입금자명 변경</button></div>{Boolean(item.nameAdjusted)&&<small>은행 원문 · {item.rawDonorName}</small>}</div><span>{bankNames[item.bank]||item.bank}</span><div className="deposit-status-control"><em className={`deposit-status ${item.status}`}>{statuses[item.status]||item.status}</em><button type="button" disabled={statusSaving===item.id} onClick={()=>changeStatus(item)}>{statusSaving===item.id?"변경 중":item.status==="included"?"후원 제외":"후원 반영"}</button></div><b>{formatWon(item.amount)}원</b></article>)}</div>)}{!data.deposits.length&&<div className="empty deposit-empty">선택한 조건의 입금 내역이 없습니다.</div>}</section></div>{editing&&<div className="dialog-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setEditing(null);}}><section className="profile-dialog donor-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><div><small>은행 원본 · {editing.rawDonorName}</small><h2>입금자명 변경</h2><p>같은 후원자가 다른 이름으로 입금했을 때 순위표에 표시할 이름을 직접 정할 수 있습니다.</p></div><button onClick={()=>setEditing(null)} aria-label="닫기">×</button></div><form onSubmit={saveDonor}><label>변경할 입금자명<input autoFocus list="known-donors" maxLength="40" value={donorForm.canonicalName} onChange={event=>setDonorForm({...donorForm,canonicalName:event.target.value})}/><datalist id="known-donors">{data.donorNames.map(name=><option value={name} key={name}/>)}</datalist></label><div className="donor-scope"><label><input type="radio" name="scope" checked={donorForm.scope==='single'} onChange={()=>setDonorForm({...donorForm,scope:'single'})}/><span><b>이번 입금만</b><small>선택한 한 건에만 적용합니다.</small></span></label><label><input type="radio" name="scope" checked={donorForm.scope==='same_name'} onChange={()=>setDonorForm({...donorForm,scope:'same_name'})}/><span><b>같은 입금자명 전체</b><small>앞으로 같은 원본 이름에도 적용합니다.</small></span></label></div><button type="button" className="restore-name" onClick={()=>setDonorForm({...donorForm,canonicalName:''})}>은행 원본 이름으로 되돌리기</button><button className="primary-button">입금자명 저장</button></form></section></div>}</PageLayout>;
 }
 
 function AdminAccounts() {
