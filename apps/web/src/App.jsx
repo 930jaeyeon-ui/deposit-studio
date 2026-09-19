@@ -1,7 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import Chart from 'react-apexcharts';
 import { DEFAULT_SETTINGS, formatWon } from '@deposit-studio/shared';
-import { ApiTest } from './ApiTest';
 
 const ROLE_LABELS = { super:'슈퍼 계정', admin:'관리자', member:'일반 계정' };
 const AuthContext = createContext(null);
@@ -33,6 +32,12 @@ async function api(path, options) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || '요청에 실패했습니다.');
   return data;
+}
+
+function apiUrl(path) {
+  const configuredHost = import.meta.env.VITE_API_HOST;
+  const baseUrl = import.meta.env.VITE_API_URL || (configuredHost ? `https://${configuredHost}` : '');
+  return `${baseUrl}${path}`;
 }
 
 export function App() {
@@ -77,7 +82,9 @@ function AuthenticatedRoutes() {
   if (location.pathname === '/' || location.pathname === '/my-dashboard') return <MyDashboard/>;
   if (location.pathname === '/crew-dashboard') return <Dashboard/>;
   if (location.pathname === '/deposits') return <DepositHistory/>;
-  if (location.pathname === '/api-test') return canManage?<PageLayout><ApiTest/></PageLayout>:<AccessDenied/>;
+  if (location.pathname === '/phone-test') return <PhoneTestPage/>;
+  if (location.pathname === '/admin/notification-rules') return canManage?<NotificationRules/>:<AccessDenied/>;
+  if (location.pathname === '/admin/api-logs') return canManage?<ApiLogs/>:<AccessDenied/>;
   if (location.pathname === '/admin/users') return <AdminAccounts/>;
   if (location.pathname === '/obs') return <ObsSetup/>;
   if (location.pathname === '/settings/ranking') return <Settings mode="ranking"/>;
@@ -103,9 +110,9 @@ function AccessDenied() { return <PageLayout><div className="shell"><section cla
 
 const PAGE_INFO = {
   '/':['후원 현황','내 후원 현황'], '/my-dashboard':['후원 현황','내 후원 현황'], '/crew-dashboard':['후원 현황','크루 후원 현황'],
-  '/deposits':['후원 관리','입금 내역'],
+  '/deposits':['후원 관리','입금 내역'], '/phone-test':['내 방송','휴대폰 연동 테스트'],
   '/settings/alert':['내 방송','후원 알림 설정'], '/settings':['내 방송','후원 알림 설정'], '/settings/ranking':['내 방송','후원 순위표 설정'],
-  '/obs':['내 방송','OBS 연결'], '/admin/users':['관리','계정 관리'], '/api-test':['관리','API 수신 테스트']
+  '/obs':['내 방송','OBS 연결'], '/admin/users':['관리','계정 관리'], '/admin/notification-rules':['관리','알림 파싱 규칙'], '/admin/api-logs':['관리','API 로그']
 };
 
 async function resizeAvatar(file) {
@@ -173,7 +180,8 @@ function PageLayout({ children }) {
         <Link href="/settings/alert" label="후원 알림 설정" hint="문구 · 디자인 · 표시 시간"/>
         <Link href="/settings/ranking" label="후원 순위표 설정" hint="순위 · 테마 · 표시 인원"/>
         <Link href="/obs" label="OBS 연결" hint="송출 주소 · 해상도 · 미리보기"/>
-        {canManage && <><span className="nav-label nav-group">관리</span><Link href="/admin/users" label="계정 관리" hint="크루 멤버와 권한"/><Link href="/api-test" label="API 수신 테스트" hint="휴대폰 · 외부 연동 확인"/></>}
+        <Link href="/phone-test" label="휴대폰 연동 테스트" hint="내 알림 API 실시간 확인"/>
+        {canManage && <><span className="nav-label nav-group">관리</span><Link href="/admin/users" label="계정 관리" hint="크루 멤버와 권한"/><Link href="/admin/notification-rules" label="알림 파싱 규칙" hint="앱별 입금 정규식 CRUD"/><Link href="/admin/api-logs" label="API 로그" hint="요청 · 응답 · 처리 결과"/></>}
       </nav>
       <ThemeSelector/>
     </aside>
@@ -396,6 +404,139 @@ function AdminAccounts() {
   return <PageLayout><div className="shell"><header><div><h1>계정 관리</h1><p className="page-description">크루원 계정을 만들고 권한, 로그인 상태와 비밀번호를 관리합니다.</p></div><button className="header-button" onClick={()=>setShowCreate(value=>!value)}>{showCreate?'취소':'새 계정 만들기'}</button></header>{showCreate&&<section className="panel create-account"><div><h3>새 크루 계정</h3><p>관리자·일반 계정의 초기 비밀번호는 <b>Init1234!!</b>입니다.</p></div><form onSubmit={createAccount}><label>이름<input autoFocus maxLength="20" value={form.displayName} onChange={event=>setForm({...form,displayName:event.target.value})} placeholder="예: 새 크루원"/></label><label>로그인 아이디<input maxLength="30" value={form.loginId} onChange={event=>setForm({...form,loginId:event.target.value.toLowerCase()})} placeholder="영문 소문자와 숫자"/></label><label>계정 등급<select value={form.role} onChange={event=>setForm({...form,role:event.target.value})}><option value="member">일반 계정</option><option value="admin">관리자</option></select></label><button className="primary-button" disabled={creating}>{creating?'생성 중...':'계정 생성'}</button></form></section>}{message&&<p className="notice">{message}</p>}<section className={`account-summary ${isSuper?'':'three'}`}><article><b>{accounts.filter(item=>item.isActive).length}</b><span>활성 계정</span></article>{isSuper&&<article><b>{accounts.filter(item=>item.role==='super').length}</b><span>슈퍼 계정</span></article>}<article><b>{accounts.filter(item=>item.role==='admin'&&item.isActive).length}</b><span>관리자 계정</span></article><article><b>{accounts.filter(item=>item.role==='member'&&item.isActive).length}</b><span>일반 계정</span></article></section><section className="panel account-panel"><div className="panel-title"><div><h3>크루 계정</h3><p className="account-explain">나간 크루원은 계정을 중지하면 로그인만 차단되고 기존 후원 기록은 보존됩니다.</p></div><span>{accounts.length}개 계정</span></div><div className="account-list">{accounts.map(account=><article className={account.isActive?'':'inactive'} key={account.loginId}>{account.avatar?<img className="account-avatar" src={account.avatar} alt={`${account.displayName} 프로필`}/>:<span className="account-avatar">{account.displayName.slice(0,1)}</span>}<div><strong>{account.displayName}</strong><small>아이디 {account.loginId} · {ROLE_LABELS[account.role]}</small></div><em className={account.isActive?'status-active':'status-paused'}>{account.isActive?'활성':'중지'}</em>{canReset(account)&&<div className="account-actions"><button className="account-reset" type="button" onClick={()=>resetPassword(account)}>비밀번호 초기화</button><button className="account-toggle" type="button" onClick={()=>toggleAccount(account)}>{account.isActive?'계정 중지':'다시 활성화'}</button></div>}</article>)}</div></section><section className="panel password-policy"><div className="panel-title"><h3>계정 운영 기준</h3><span>후원 기록 보존</span></div><div><article><b>새 크루원</b><p>초기 비밀번호 Init1234!!로 로그인한 뒤 본인이 새 비밀번호로 변경합니다.</p></article><article><b>비밀번호 분실</b><p>관리자가 Init1234!!로 재설정하며, 기존 로그인 세션은 종료됩니다.</p></article><article><b>크루 탈퇴</b><p>계정을 중지해 로그인을 차단합니다. 통계와 후원 기록은 삭제하지 않습니다.</p></article></div></section></div></PageLayout>;
 }
 
+function PhoneTestPage() {
+  const { user } = useAuth();
+  const [events,setEvents] = useState([]);
+  const [connection,setConnection] = useState('connecting');
+  const [copied,setCopied] = useState(false);
+  const endpoint = apiUrl('/api/notifications');
+  useEffect(()=>{
+    const source = new EventSource(apiUrl('/api/my/phone-test/events'),{withCredentials:true});
+    source.addEventListener('connected',()=>setConnection('connected'));
+    source.addEventListener('snapshot',event=>{
+      try { setEvents(JSON.parse(event.data)); }
+      catch { /* 잘못된 초기 내역은 무시 */ }
+    });
+    source.addEventListener('notification',event=>{
+      try { const item=JSON.parse(event.data); setEvents(current=>[item,...current].slice(0,100)); }
+      catch { /* 잘못된 SSE 이벤트는 무시 */ }
+    });
+    source.onerror=()=>setConnection('reconnecting');
+    return()=>source.close();
+  },[]);
+  async function copyEndpoint() { await navigator.clipboard.writeText(endpoint); setCopied(true); setTimeout(()=>setCopied(false),1500); }
+  return <PageLayout><div className="shell phone-test-page"><header><div><h1>휴대폰 연동 테스트</h1><p className="page-description">휴대폰에서 내 계정으로 전송한 알림이 서버에 도착하는지 실시간으로 확인합니다.</p></div><span className={`sse-status ${connection}`}><i/>{connection==='connected'?'실시간 연결됨':connection==='reconnecting'?'재연결 중':'연결 중'}</span></header><section className="panel phone-test-guide"><div><span className="section-kicker">YOUR ENDPOINT</span><h3>알림 전송 주소</h3><code>{endpoint}</code></div><button className="secondary-button" onClick={copyEndpoint}>{copied?'복사 완료':'주소 복사'}</button><p>휴대폰 요청의 HTTP Basic Auth에 내 로그인 아이디 <b>{user.loginId}</b>와 비밀번호를 사용하세요. 이 화면에는 해당 계정으로 인증된 요청만 표시됩니다.</p></section><section className="panel phone-request-guide"><div className="panel-title"><div><span className="section-kicker">REQUEST FORMAT</span><h3>휴대폰 요청 설정</h3></div></div><div className="phone-request-grid"><article><span>인증 헤더</span><code>Authorization: Basic Base64(${user.loginId}:비밀번호)</code><small>휴대폰 HTTP 클라이언트의 Basic Auth 기능을 사용하면 자동으로 인코딩됩니다.</small></article><article><span>요청 바디</span><pre>{`{\n  "packageName": "com.example.bank",\n  "title": "입금 알림",\n  "content": "홍길동님이 50,000원을 입금했습니다."\n}`}</pre></article></div></section><section className="panel phone-test-stream"><div className="panel-title"><div><span className="section-kicker">LIVE EVENTS</span><h3>최근 수신 내역</h3><p className="phone-test-caption">저장된 최근 20건과 새 실시간 요청을 표시합니다. 실패 응답도 함께 표시됩니다.</p></div><button className="secondary-button" onClick={()=>setEvents([])} disabled={!events.length}>화면 비우기</button></div>{events.map((item,index)=><article className={Number(item.response?.status)>=400?'failed':''} key={`${item.receivedAt}-${index}`}><div className="phone-test-event-head"><time>{new Date(item.receivedAt).toLocaleString('ko-KR')}</time><em className={`http-status status-${Math.floor(Number(item.response?.status)/100)}`}>{item.response?.status}</em><strong>{Number(item.response?.status)>=400?'실패':Number(item.response?.status)===202?'처리 제외':'성공'}</strong><span>{item.durationMs}ms</span></div><dl><div><dt>패키지명</dt><dd>{item.request?.packageName||'-'}</dd></div><div><dt>제목</dt><dd>{item.request?.title||'-'}</dd></div><div><dt>내용</dt><dd>{item.request?.content||'-'}</dd></div></dl><pre>{JSON.stringify(item.response?.body??null,null,2)}</pre></article>)}{!events.length&&<div className="phone-test-waiting"><i/><b>휴대폰 요청을 기다리고 있습니다</b><p>요청이 들어오면 새 항목이 이 화면에 바로 나타납니다.</p></div>}</section></div></PageLayout>;
+}
+
+const emptyNotificationRule = { packageName:'', contentPattern:'(?<donor>.+?)님.*?(?<amount>[\\d,]+)원' };
+
+function NotificationRules() {
+  const { user } = useAuth();
+  const canManage = ['super','admin'].includes(user.role);
+  const [rules,setRules] = useState([]);
+  const [editing,setEditing] = useState(null);
+  const [dialogOpen,setDialogOpen] = useState(false);
+  const [form,setForm] = useState(emptyNotificationRule);
+  const [message,setMessage] = useState('');
+  const [saving,setSaving] = useState(false);
+  const load = () => api('/api/notification-rules').then(setRules).catch(error=>setMessage(error.message));
+  useEffect(()=>{ if(canManage) load(); },[]);
+  if (!canManage) return <AccessDenied/>;
+
+  function openCreate() {
+    setEditing(null);
+    setForm(emptyNotificationRule);
+    setMessage('');
+    setDialogOpen(true);
+  }
+
+  function openEdit(rule) {
+    setEditing(rule.packageName);
+    setForm({ packageName:rule.packageName, contentPattern:rule.contentPattern });
+    setMessage('');
+    setDialogOpen(true);
+  }
+
+  async function save(event) {
+    event.preventDefault();
+    setSaving(true);
+    setMessage('');
+    try {
+      await api(editing?`/api/notification-rules/${encodeURIComponent(editing)}`:'/api/notification-rules', {
+        method:editing?'PUT':'POST',
+        body:JSON.stringify(form)
+      });
+      setDialogOpen(false);
+      setMessage(editing?'규칙을 수정했습니다.':'규칙을 추가했습니다.');
+      await load();
+    } catch(error) {
+      setMessage(error.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(rule) {
+    if (!confirm(`${rule.packageName} 규칙을 삭제할까요?`)) return;
+    try {
+      await api(`/api/notification-rules/${encodeURIComponent(rule.packageName)}`,{method:'DELETE'});
+      setMessage('규칙을 삭제했습니다.');
+      await load();
+    } catch(error) {
+      setMessage(error.message);
+    }
+  }
+
+  return <PageLayout>
+    <div className="shell notification-rules-page">
+      <header><div><h1>알림 파싱 규칙</h1><p className="page-description">앱 패키지별 내용 정규식으로 푸시 알림에서 입금자와 금액을 추출합니다.</p></div></header>
+      {message&&<p className="notice">{message}</p>}
+      <section className="panel rule-list">
+        <div className="panel-title"><div><span className="section-kicker">PACKAGE RULES</span><h3>등록된 규칙</h3></div><button className="primary-button" type="button" onClick={openCreate}>규칙 추가</button></div>
+        {rules.map(rule=><article key={rule.packageName}><div><strong>{rule.packageName}</strong><code>{rule.contentPattern}</code></div><div className="rule-actions"><button type="button" onClick={()=>openEdit(rule)}>수정</button><button type="button" className="danger" onClick={()=>remove(rule)}>삭제</button></div></article>)}
+        {!rules.length&&<p className="empty">등록된 알림 규칙이 없습니다.</p>}
+      </section>
+      <section className="panel api-guide"><h3>통합 알림 API</h3><code>POST /api/notifications</code><pre>{`{\n  "packageName": "com.example.bank",\n  "title": "입금 알림",\n  "content": "홍길동님이 50,000원을 입금했습니다."\n}`}</pre></section>
+    </div>
+    {dialogOpen&&<div className="dialog-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget&&!saving)setDialogOpen(false);}}>
+      <section className="profile-dialog rule-dialog" role="dialog" aria-modal="true">
+        <div className="dialog-title"><div><small>NOTIFICATION PARSER</small><h2>{editing?'규칙 수정':'규칙 추가'}</h2></div><button type="button" onClick={()=>setDialogOpen(false)} aria-label="닫기">×</button></div>
+        <form onSubmit={save}>
+          <label>앱 패키지명<input autoFocus required value={form.packageName} onChange={event=>setForm({...form,packageName:event.target.value})} placeholder="com.example.bank"/></label>
+          <label>내용 정규식<textarea required value={form.contentPattern} onChange={event=>setForm({...form,contentPattern:event.target.value})}/><small><code>(?&lt;donor&gt;...)</code>와 <code>(?&lt;amount&gt;...)</code> 캡처 그룹을 사용하세요.</small></label>
+          <button className="primary-button" disabled={saving}>{saving?'저장 중...':'저장'}</button>
+        </form>
+      </section>
+    </div>}
+  </PageLayout>;
+}
+
+function ApiLogs() {
+  const { user } = useAuth();
+  const canManage = ['super','admin'].includes(user.role);
+  const [logs,setLogs] = useState([]);
+  const [selected,setSelected] = useState(null);
+  const [message,setMessage] = useState('');
+  const [loading,setLoading] = useState(true);
+  const [page,setPage] = useState(1);
+  const [pagination,setPagination] = useState({total:0,totalPages:1,pageSize:50});
+  const load = async (targetPage=page) => {
+    setLoading(true);
+    try { const result=await api(`/api/api-logs?page=${targetPage}&pageSize=50`); setLogs(result.items); setPagination({total:result.total,totalPages:result.totalPages,pageSize:result.pageSize}); setMessage(''); }
+    catch(error) { setMessage(error.message); }
+    finally { setLoading(false); }
+  };
+  useEffect(()=>{ if(canManage) load(page); },[page]);
+  if (!canManage) return <AccessDenied/>;
+  async function clearLogs() {
+    if (!confirm('저장된 API 로그를 모두 삭제할까요?')) return;
+    try { await api('/api/api-logs',{method:'DELETE'}); setSelected(null); setLogs([]); setPagination({total:0,totalPages:1,pageSize:50}); setPage(1); setMessage('API 로그를 모두 삭제했습니다.'); }
+    catch(error) { setMessage(error.message); }
+  }
+  const pretty = value => JSON.stringify(value ?? null,null,2);
+  return <PageLayout><div className="shell api-logs-page"><header><div><h1>API 로그</h1><p className="page-description">푸시 알림 API의 요청 헤더와 바디, 서버 응답을 확인합니다.</p></div><nav><button className="header-button" onClick={()=>load(page)} disabled={loading}>{loading?'불러오는 중':'새로고침'}</button><button className="header-button danger-button" onClick={clearLogs} disabled={!pagination.total}>전체 삭제</button></nav></header>{message&&<p className="notice">{message}</p>}<section className="panel api-log-list"><div className="api-log-head"><span>시각</span><span>상태</span><span>패키지명</span><span>처리 시간</span></div>{logs.map(log=><button className="api-log-row" type="button" key={log.id} onClick={()=>setSelected(log)}><time>{log.createdAt}</time><em className={`http-status status-${Math.floor(Number(log.responseStatus)/100)}`}>{log.responseStatus}</em><strong>{log.requestBody?.packageName||'패키지명 없음'}</strong><span>{log.durationMs}ms</span></button>)}{!loading&&!logs.length&&<p className="empty">저장된 API 로그가 없습니다.</p>}<nav className="api-log-pagination"><span>전체 {pagination.total.toLocaleString('ko-KR')}건</span><div><button type="button" disabled={loading||page<=1} onClick={()=>setPage(value=>value-1)}>이전</button><b>{page} / {pagination.totalPages}</b><button type="button" disabled={loading||page>=pagination.totalPages} onClick={()=>setPage(value=>value+1)}>다음</button></div></nav></section></div>{selected&&<div className="dialog-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setSelected(null);}}><section className="api-log-dialog" role="dialog" aria-modal="true"><div className="dialog-title"><div><small>API REQUEST #{selected.id}</small><h2>{selected.method} {selected.path}</h2><p>{selected.createdAt} · {selected.durationMs}ms</p></div><button onClick={()=>setSelected(null)} aria-label="닫기">×</button></div><div className="api-log-meta"><span>응답 상태 <b className={`http-status status-${Math.floor(Number(selected.responseStatus)/100)}`}>{selected.responseStatus}</b></span><span>요청 IP <b>{selected.remoteAddress||'-'}</b></span></div><section><h3>요청 헤더</h3><pre>{pretty(selected.requestHeaders)}</pre></section><section><h3>요청 바디</h3><pre>{pretty(selected.requestBody)}</pre></section><section><h3>응답 바디</h3><pre>{pretty(selected.responseBody)}</pre></section></section></div>}</PageLayout>;
+}
+
 function ObsSetup() {
   const [copied, setCopied] = useState('');
   const sources = [{key:'alert',title:'후원 알림',description:'새 후원이 들어올 때 잠시 나타나는 화면',path:'/overlay',previewPath:'/overlay?preview=1',size:'1920 × 1080'},{key:'ranking',title:'후원 순위표',description:'방송 화면에 계속 표시하는 누적 후원 순위',path:'/ranking',previewPath:'/ranking',size:'600 × 800'}];
@@ -409,21 +550,9 @@ function ObsSetup() {
 
 function Dashboard() {
   const [data, setData] = useState({ session: {}, donations: [], summary:{ totalAmount:0, donationCount:0, donorCount:0 }, settings: DEFAULT_SETTINGS });
-  const [form, setForm] = useState({ donorName: '폴조지', amount: 50000, bank: '테스트' });
   const [message, setMessage] = useState('');
-  const [donorListVersion, setDonorListVersion] = useState(0);
   const load = () => api('/api/dashboard').then(setData).catch(e => setMessage(e.message));
   useEffect(() => { load(); }, []);
-
-  async function submit(event) {
-    event.preventDefault();
-    try {
-      const result = await api('/api/donations', { method: 'POST', body: JSON.stringify({ ...form, amount: Number(form.amount) }) });
-      setMessage(result.ignored ? result.message : '후원 리스트에 반영했습니다. 같은 입금자명은 자동으로 합산됩니다.');
-      load();
-      setDonorListVersion(value=>value+1);
-    } catch (error) { setMessage(error.message); }
-  }
 
   const total = Number(data.summary?.totalAmount||0);
   const donationCount = Number(data.summary?.donationCount||0);
@@ -437,10 +566,7 @@ function Dashboard() {
     </section>
     {message && <p className="notice">{message}</p>}
     <main className="dashboard-main">
-      <VirtualDonorList key={donorListVersion} endpoint="/api/dashboard/donors" title="후원자 목록" kicker="CREW DONORS"/>
-      <section className="panel wide test-panel test-panel-bottom"><div className="panel-title"><div><span className="section-kicker">TEST TOOL</span><h3>후원 수동 추가</h3></div><span>테스트 및 누락 내역 입력용</span></div>
-        <form onSubmit={submit}><label>입금자명<input placeholder="예: 폴조지" value={form.donorName} onChange={e=>setForm({...form,donorName:e.target.value})}/></label><label>금액<input type="number" min="1" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})}/></label><label>입금 경로<input placeholder="예: 카카오뱅크" value={form.bank} onChange={e=>setForm({...form,bank:e.target.value})}/></label><button>후원 리스트에 추가</button></form>
-      </section>
+      <VirtualDonorList endpoint="/api/dashboard/donors" title="후원자 목록" kicker="CREW DONORS"/>
     </main>
   </div></PageLayout>;
 }

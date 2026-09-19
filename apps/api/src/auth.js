@@ -58,3 +58,8 @@ export function requireManager(req, res, next) {
   if (!['super','admin'].includes(req.user?.role)) return res.status(403).json({ error:'관리자 권한이 필요합니다.' });
   next();
 }
+
+export function requireSuper(req, res, next) {
+  if (req.user?.role !== 'super') return res.status(403).json({ error:'최고 관리자 권한이 필요합니다.' });
+  next();
+}

@@ -94,12 +94,75 @@ export async function initializeDatabase() {
       new_status TEXT NOT NULL,
       note TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS notification_rules (
+      package_name TEXT PRIMARY KEY,
+      content_pattern TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS notification_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      package_name TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT NOT NULL,
+      rule_package_name TEXT REFERENCES notification_rules(package_name) ON UPDATE CASCADE ON DELETE SET NULL,
+      donation_id INTEGER REFERENCES donations(id) ON DELETE SET NULL,
+      status TEXT NOT NULL,
+      error TEXT,
+      received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS api_request_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      method TEXT NOT NULL,
+      path TEXT NOT NULL,
+      request_headers TEXT NOT NULL,
+      request_body TEXT NOT NULL,
+      response_status INTEGER NOT NULL,
+      response_body TEXT NOT NULL,
+      remote_address TEXT,
+      recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      duration_ms INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`
   ]);
   const donationColumns = new Set((await db.execute(`PRAGMA table_info(donations)`)).rows.map(column => column.name));
   if (!donationColumns.has('recipient_user_id')) await db.execute(`ALTER TABLE donations ADD COLUMN recipient_user_id INTEGER REFERENCES users(id)`);
   if (!donationColumns.has('donor_override_name')) await db.execute(`ALTER TABLE donations ADD COLUMN donor_override_name TEXT`);
   if (!donationColumns.has('status')) await db.execute(`ALTER TABLE donations ADD COLUMN status TEXT NOT NULL DEFAULT 'included'`);
+  const notificationRuleColumns = new Set((await db.execute(`PRAGMA table_info(notification_rules)`)).rows.map(column => column.name));
+  if (notificationRuleColumns.has('id')) {
+    await db.batch([
+      `ALTER TABLE notification_events RENAME TO notification_events_legacy`,
+      `ALTER TABLE notification_rules RENAME TO notification_rules_legacy`,
+      `CREATE TABLE notification_rules (
+        package_name TEXT PRIMARY KEY,
+        content_pattern TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `INSERT OR IGNORE INTO notification_rules (package_name, content_pattern, created_at, updated_at)
+        SELECT package_name, content_pattern, created_at, updated_at FROM notification_rules_legacy`,
+      `CREATE TABLE notification_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        package_name TEXT NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        rule_package_name TEXT REFERENCES notification_rules(package_name) ON UPDATE CASCADE ON DELETE SET NULL,
+        donation_id INTEGER REFERENCES donations(id) ON DELETE SET NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`,
+      `INSERT INTO notification_events (id, package_name, title, content, rule_package_name, donation_id, status, error, received_at)
+        SELECT e.id, e.package_name, e.title, e.content, r.package_name, e.donation_id, e.status, e.error, e.received_at
+        FROM notification_events_legacy e LEFT JOIN notification_rules_legacy r ON r.id = e.rule_id`,
+      `DROP TABLE notification_events_legacy`,
+      `DROP TABLE notification_rules_legacy`
+    ]);
+  }
+  const apiLogColumns = new Set((await db.execute(`PRAGMA table_info(api_request_logs)`)).rows.map(column => column.name));
+  if (!apiLogColumns.has('recipient_user_id')) await db.execute(`ALTER TABLE api_request_logs ADD COLUMN recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
   if (!await activeSession()) {
     await db.execute({ sql: 'INSERT INTO broadcast_sessions (title) VALUES (?)', args: ['첫 방송'] });
   }
@@ -130,7 +193,6 @@ export async function initializeDatabase() {
     }
     await db.execute({ sql:`INSERT INTO app_meta (key, value) VALUES (?, ?)`, args:['member_initial_password_v2','Init1234'] });
   }
-  await db.execute(`UPDATE donations SET recipient_user_id = (SELECT id FROM users WHERE login_id = 'm1562') WHERE recipient_user_id IS NULL`);
   await db.execute(`DELETE FROM web_sessions WHERE expires_at <= CURRENT_TIMESTAMP`);
 }
 

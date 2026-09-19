@@ -1,25 +1,55 @@
 import express from 'express';
-import { apiTest } from './api-test.js';
-import { DEFAULT_SETTINGS, normalizeDonation } from '@deposit-studio/shared';
+import { DEFAULT_SETTINGS } from '@deposit-studio/shared';
 import { activeSession, db } from './db.js';
 import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, verifyPassword } from './auth.js';
+import { parseNotification, validateRuleInput } from './notification-parser.js';
 
 export const app = express();
+const phoneTestClients = new Map();
+const sendSse = (res,event,data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+function publishPhoneTest(userId, data) {
+  for (const client of phoneTestClients.get(Number(userId)) || []) sendSse(client,'notification',data);
+}
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.WEB_ORIGIN || req.headers.origin || '*');
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
 app.use(express.json({ limit: '15mb' }));
-app.use('/api/test', apiTest);
-app.use((error, req, res, next) => {
-  if (!req.path.startsWith('/api/test/')) return next(error);
-  res.status(error.status || 500).json({
-    error: error.status === 413 ? 'JSON은 100KB 이하로 보내세요.' : '올바른 JSON 객체를 보내세요.'
+app.use((req, res, next) => {
+  if (req.method !== 'POST' || req.path !== '/api/notifications') return next();
+  const startedAt = Date.now();
+  let responseBody = null;
+  const originalJson = res.json.bind(res);
+  res.json = body => {
+    responseBody = body;
+    return originalJson(body);
+  };
+  res.on('finish', () => {
+    const headers = { ...req.headers };
+    for (const key of ['authorization','x-api-key','cookie']) {
+      if (headers[key]) headers[key] = '[REDACTED]';
+    }
+    const serialize = (value, limit) => {
+      try { return JSON.stringify(value ?? null).slice(0, limit); }
+      catch { return JSON.stringify({ error:'직렬화할 수 없는 값입니다.' }); }
+    };
+    db.execute({ sql:`INSERT INTO api_request_logs
+      (method, path, request_headers, request_body, response_status, response_body, remote_address, recipient_user_id, duration_ms)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args:[req.method,req.originalUrl,serialize(headers,10000),serialize(req.body,20000),res.statusCode,serialize(responseBody,20000),String(req.ip||req.socket.remoteAddress||'').slice(0,100),req.notificationUserId||null,Date.now()-startedAt] })
+      .then(() => db.execute(`DELETE FROM api_request_logs WHERE id NOT IN (SELECT id FROM api_request_logs ORDER BY id DESC LIMIT 1000)`))
+      .catch(error => console.error('API 로그 저장 실패:', error.message));
+    if (req.notificationUserId) publishPhoneTest(req.notificationUserId, {
+      receivedAt:new Date().toISOString(),
+      request:{ packageName:req.body?.packageName, title:req.body?.title, content:req.body?.content },
+      response:{ status:res.statusCode, body:responseBody },
+      durationMs:Date.now()-startedAt
+    });
   });
+  next();
 });
 app.get('/api/health', (_req, res) => res.json({ ok:true }));
 const effectiveDonorName = `COALESCE(NULLIF(d.donor_override_name, ''), NULLIF(a.canonical_name, ''), d.donor_name)`;
@@ -119,6 +149,23 @@ app.get('/api/auth/me', async (req, res) => {
   const user = await currentUser(req);
   if (!user) return res.status(401).json({ error:'로그인이 필요합니다.' });
   res.json(user);
+});
+
+app.get('/api/my/phone-test/events', requireAuth, async (req, res) => {
+  res.set({ 'Content-Type':'text/event-stream', 'Cache-Control':'no-cache, no-transform', 'X-Accel-Buffering':'no', Connection:'keep-alive' });
+  res.flushHeaders();
+  sendSse(res,'connected',{ userId:req.user.id, connectedAt:new Date().toISOString() });
+  const history = await db.execute({ sql:`SELECT request_body requestBody, response_status responseStatus,
+    response_body responseBody, duration_ms durationMs, created_at || 'Z' createdAt FROM api_request_logs
+    WHERE recipient_user_id = ? ORDER BY id DESC LIMIT 20`, args:[req.user.id] });
+  const parse = value => { try { return JSON.parse(value); } catch { return value; } };
+  sendSse(res,'snapshot',history.rows.map(row=>({ receivedAt:row.createdAt, request:parse(row.requestBody), response:{ status:Number(row.responseStatus), body:parse(row.responseBody) }, durationMs:Number(row.durationMs) })));
+  const userId = Number(req.user.id);
+  const clients = phoneTestClients.get(userId) || new Set();
+  clients.add(res);
+  phoneTestClients.set(userId,clients);
+  const heartbeat = setInterval(()=>res.write(': heartbeat\n\n'),15000);
+  res.on('close',()=>{ clearInterval(heartbeat); clients.delete(res); if(!clients.size) phoneTestClients.delete(userId); });
 });
 
 app.post('/api/auth/logout', async (req, res) => {
@@ -351,6 +398,128 @@ app.put('/api/my/deposits/:id/status', requireAuth, async (req, res) => {
   res.json({ ok:true, status });
 });
 
+app.get('/api/api-logs', requireAuth, requireManager, async (req, res) => {
+  const page = Math.max(1, Number.parseInt(req.query.page,10) || 1);
+  const pageSize = Math.min(100, Math.max(10, Number.parseInt(req.query.pageSize,10) || 50));
+  const offset = (page-1)*pageSize;
+  const [result,count] = await Promise.all([
+    db.execute({ sql:`SELECT id, method, path, request_headers requestHeaders,
+    request_body requestBody, response_status responseStatus, response_body responseBody,
+    remote_address remoteAddress, duration_ms durationMs,
+    datetime(created_at, '+9 hours') createdAt FROM api_request_logs ORDER BY id DESC LIMIT ? OFFSET ?`, args:[pageSize,offset] }),
+    db.execute('SELECT COUNT(*) total FROM api_request_logs')
+  ]);
+  const total = Number(count.rows[0]?.total || 0);
+  const items = result.rows.map(row => {
+    const parse = value => { try { return JSON.parse(value); } catch { return value; } };
+    return { ...row, requestHeaders:parse(row.requestHeaders), requestBody:parse(row.requestBody), responseBody:parse(row.responseBody) };
+  });
+  res.json({ items, total, page, pageSize, totalPages:Math.max(1,Math.ceil(total/pageSize)) });
+});
+
+app.delete('/api/api-logs', requireAuth, requireManager, async (_req, res) => {
+  await db.execute('DELETE FROM api_request_logs');
+  res.json({ ok:true });
+});
+
+app.get('/api/notification-rules', requireAuth, requireManager, async (_req, res) => {
+  const result = await db.execute(`SELECT package_name packageName, content_pattern contentPattern,
+    created_at createdAt, updated_at updatedAt FROM notification_rules ORDER BY package_name`);
+  res.json(result.rows);
+});
+
+app.post('/api/notification-rules', requireAuth, requireManager, async (req, res) => {
+  try {
+    const rule = validateRuleInput(req.body);
+    await db.execute({ sql:`INSERT INTO notification_rules (package_name, content_pattern) VALUES (?, ?)`, args:[rule.packageName,rule.contentPattern] });
+    res.status(201).json(rule);
+  } catch (error) {
+    const duplicate = String(error.message).includes('UNIQUE');
+    res.status(duplicate?409:400).json({ error:duplicate?'이미 등록된 앱 패키지명입니다.':error.message });
+  }
+});
+
+app.put('/api/notification-rules/:packageName', requireAuth, requireManager, async (req, res) => {
+  try {
+    const rule = validateRuleInput(req.body);
+    const result = await db.execute({ sql:`UPDATE notification_rules SET package_name = ?, content_pattern = ?, updated_at = CURRENT_TIMESTAMP WHERE package_name = ?`, args:[rule.packageName,rule.contentPattern,req.params.packageName] });
+    if (!result.rowsAffected) return res.status(404).json({ error:'정규식 규칙을 찾을 수 없습니다.' });
+    res.json(rule);
+  } catch (error) {
+    const duplicate = String(error.message).includes('UNIQUE');
+    res.status(duplicate?409:400).json({ error:duplicate?'이미 등록된 앱 패키지명입니다.':error.message });
+  }
+});
+
+app.delete('/api/notification-rules/:packageName', requireAuth, requireManager, async (req, res) => {
+  const result = await db.execute({ sql:'DELETE FROM notification_rules WHERE package_name = ?', args:[req.params.packageName] });
+  if (!result.rowsAffected) return res.status(404).json({ error:'정규식 규칙을 찾을 수 없습니다.' });
+  res.json({ ok:true });
+});
+
+async function notificationApiUser(req) {
+  const authorization = String(req.headers.authorization || '');
+  if (!authorization.startsWith('Basic ')) return null;
+  let credentials;
+  try { credentials = Buffer.from(authorization.slice(6), 'base64').toString('utf8'); }
+  catch { return null; }
+  const separator = credentials.indexOf(':');
+  if (separator < 1) return null;
+  const loginId = credentials.slice(0,separator).trim();
+  const password = credentials.slice(separator+1);
+  const result = await db.execute({ sql:`SELECT id, login_id loginId, display_name displayName, password_hash passwordHash
+    FROM users WHERE login_id = ? COLLATE NOCASE AND is_active = 1 LIMIT 1`, args:[loginId] });
+  const user = result.rows[0];
+  if (!user || !verifyPassword(password,user.passwordHash)) return null;
+  return user;
+}
+
+app.post('/api/notifications', async (req, res) => {
+  const configuredKey = String(process.env.NOTIFICATION_API_KEY || '');
+  const suppliedKey = String(req.headers['x-api-key'] || String(req.headers.authorization || '').replace(/^Bearer\s+/i, ''));
+  if (configuredKey && suppliedKey !== configuredKey) return res.status(401).json({ error:'알림 API 키가 올바르지 않습니다.' });
+  const apiUser = await notificationApiUser(req);
+  if (!apiUser) {
+    res.setHeader('WWW-Authenticate','Basic realm="N9 SIGNAL Notification API"');
+    return res.status(401).json({ error:'API 아이디 또는 비밀번호가 올바르지 않습니다.' });
+  }
+  req.notificationUserId = apiUser.id;
+
+  const packageName = String(req.body?.packageName || '').trim();
+  const title = String(req.body?.title || '').trim();
+  const content = String(req.body?.content || '').trim();
+  if (!packageName || packageName.length > 200 || !title || title.length > 1000 || !content || content.length > 5000) {
+    return res.status(400).json({ error:'packageName, title, content 값을 확인해주세요.' });
+  }
+  const found = await db.execute({ sql:`SELECT package_name packageName, content_pattern contentPattern
+    FROM notification_rules WHERE package_name = ? LIMIT 1`, args:[packageName] });
+  const rule = found.rows[0];
+  if (!rule) {
+    await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, status, error) VALUES (?, ?, ?, 'no_rule', ?)`, args:[packageName,title,content,'패키지 규칙이 없습니다.'] });
+    return res.status(404).json({ error:'이 앱 패키지명에 등록된 규칙이 없습니다.' });
+  }
+  try {
+    const parsed = parseNotification(rule, { title, content });
+    if (!parsed) {
+      await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, status, error) VALUES (?, ?, ?, ?, 'not_matched', ?)`, args:[packageName,title,content,packageName,'정규식 불일치'] });
+      return res.status(422).json({ error:'알림이 등록된 정규식과 일치하지 않습니다.' });
+    }
+    const settings = await getUserSettings(apiUser.id);
+    if (parsed.amount < Number(settings.minimumDonationAmount || 0)) {
+      await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, status, error) VALUES (?, ?, ?, ?, 'ignored', ?)`, args:[packageName,title,content,packageName,'최소 후원 금액 미만'] });
+      return res.status(202).json({ ignored:true, ...parsed, minimumDonationAmount:settings.minimumDonationAmount, recipient:{ loginId:apiUser.loginId, displayName:apiUser.displayName } });
+    }
+    const session = await activeSession();
+    const inserted = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, ?, ?, ?)`, args:[session.id,apiUser.id,parsed.donorName,parsed.amount,packageName] });
+    const donationId = Number(inserted.lastInsertRowid);
+    await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, donation_id, status) VALUES (?, ?, ?, ?, ?, 'created')`, args:[packageName,title,content,packageName,donationId] });
+    res.status(201).json({ ok:true, donation:{ id:donationId, ...parsed }, packageName, recipient:{ loginId:apiUser.loginId, displayName:apiUser.displayName } });
+  } catch (error) {
+    await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, status, error) VALUES (?, ?, ?, ?, 'parse_error', ?)`, args:[packageName,title,content,packageName,String(error.message).slice(0,500)] });
+    res.status(422).json({ error:error.message });
+  }
+});
+
 app.get('/api/widgets', async (_req, res) => {
   const session = await activeSession();
   const [donations, ranking] = await Promise.all([
@@ -380,23 +549,6 @@ app.get('/api/donations', async (req, res) => {
   const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) };
   const result = await db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.id > ? AND d.amount >= ? AND d.status = 'included' ORDER BY d.id ASC LIMIT 50`, args:[session.id,after,settings.alertMinimumAmount] });
   res.json(result.rows);
-});
-
-app.post('/api/donations', requireAuth, async (req, res) => {
-  try {
-    const input = normalizeDonation(req.body);
-    const settings = await getUserSettings(req.user.id);
-    if (input.amount < Number(settings.minimumDonationAmount || 0)) {
-      return res.status(202).json({ ignored:true, minimumDonationAmount:settings.minimumDonationAmount, message:`${settings.minimumDonationAmount.toLocaleString('ko-KR')}원 미만 입금은 후원 리스트에 기록하지 않습니다.` });
-    }
-    const session = await activeSession();
-    const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, ?, ?)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId] });
-    const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
-    res.status(201).json(saved.rows[0]);
-  } catch (error) {
-    const duplicate = String(error.message).includes('UNIQUE constraint');
-    res.status(duplicate ? 409 : 400).json({ error:duplicate ? '이미 처리한 입금입니다.' : error.message });
-  }
 });
 
 app.get('/api/settings', requireAuth, async (req, res) => {

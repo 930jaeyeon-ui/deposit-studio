@@ -3,9 +3,9 @@
 ## 인증 설계 원칙
 
 - 웹 로그인은 서버 세션으로 유지하고 세션 식별자는 `HttpOnly`, `Secure`, `SameSite` 쿠키로 전달한다.
-- 입금 내역 등록 API는 Basic Auth로 회원을 검증한다.
-- API용 인증정보는 웹 로그인 비밀번호와 분리하고 비밀번호 원문은 저장하지 않는다.
-- 모든 입금 기록에는 후원 대상 계정과 API 요청을 전송한 계정을 함께 저장해 누가 전송했는지 추적한다.
+- 푸시 알림은 하나의 통합 API로 받고, 앱 패키지별 정규식 규칙으로 입금자와 금액을 추출한다.
+- 운영 환경에서는 `NOTIFICATION_API_KEY`를 설정해 알림 수신 API를 보호한다.
+- 앱 패키지 정규식은 공용으로 사용하고, 파싱된 입금은 Basic Auth로 인증한 사용자 계정에 저장한다.
 - 슈퍼 계정은 폴조지, 관리자 계정은 차니·오뚝2, 나머지 크루원은 일반 계정으로 시작한다.
 - 내 대시보드와 크루 대시보드는 모든 로그인 계정이 조회할 수 있다.
 - 크루 대시보드는 비제이별 실적 비교가 아니라 크루 전체 후원 금액과 후원자 순위를 제공한다.
@@ -29,9 +29,19 @@ npm.cmd run dev
 - 관리 화면: http://127.0.0.1:5173
 - OBS 알림: http://127.0.0.1:5173/overlay
 - API: http://127.0.0.1:3001/api/health
-- API 수신 테스트: http://127.0.0.1:5173/api-test
+- 알림 파싱 규칙: http://127.0.0.1:5173/admin/notification-rules (최고 관리자 전용)
 
-휴대폰과 PC를 같은 Wi-Fi에 연결한 뒤, 휴대폰에서는 `127.0.0.1` 대신 PC의 Wi-Fi IPv4 주소를 사용합니다. 테스트 페이지에 표시되는 `POST /api/test/messages` 주소로 `Content-Type: application/json` 헤더와 JSON 객체를 보내면 페이지의 수신함에 즉시 표시됩니다. 화면 갱신은 단방향 실시간 전송에 맞는 SSE(Server-Sent Events)를 사용합니다.
+휴대폰과 PC를 같은 Wi-Fi에 연결한 뒤, 휴대폰에서는 `127.0.0.1` 대신 PC의 Wi-Fi IPv4 주소를 사용합니다. 최고 관리자 화면에서 앱 패키지별 파싱 규칙을 등록한 후 `POST /api/notifications`로 아래 JSON을 보냅니다.
+
+```json
+{
+  "packageName": "com.example.bank",
+  "title": "입금 알림",
+  "content": "홍길동님이 50,000원을 입금했습니다."
+}
+```
+
+내용 정규식에는 입금자 `(?<donor>...)`와 금액 `(?<amount>...)` 이름 캡처 그룹이 필요합니다. 요청에는 사용자 로그인 아이디와 비밀번호를 HTTP Basic Auth로 전송합니다. Authorization 헤더는 API 로그에서 마스킹됩니다.
 
 SQLite 파일은 최초 실행 시 `data/deposit-studio.db`에 생성됩니다.
 
