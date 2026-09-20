@@ -5533,7 +5533,7 @@ function RankingCard({ items, settings, onEdit }) {
 function Widget({ token }) {
   const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editor, setEditor] = useState({ donorName: "", amount: "" });
+  const [rankingMemo, setRankingMemo] = useState("");
   const [editorStatus, setEditorStatus] = useState("");
   const [saving, setSaving] = useState(false);
   const loadRef = useRef(null);
@@ -5552,24 +5552,28 @@ function Widget({ token }) {
     const timer = setInterval(load, 1000);
     return () => clearInterval(timer);
   }, [token]);
-  const openEditor = (item) => {
+  const openEditor = () => {
     if (!token) return;
-    setEditor({ donorName: item?.donorName || "", amount: "" });
+    setRankingMemo(data.ranking.map((item) => `${item.donorName}  ${formatWon(item.amount)}`).join("\n"));
     setEditorStatus("");
     setEditorOpen(true);
   };
-  const saveManualDonation = async (event) => {
+  const saveRankingMemo = async (event) => {
     event.preventDefault();
     setSaving(true);
     setEditorStatus("");
     try {
-      await api(`/api/widgets/${encodeURIComponent(token)}/manual-donation`, {
-        method: "POST",
-        body: JSON.stringify({ donorName: editor.donorName, amount: Number(editor.amount) }),
+      const rows = rankingMemo.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, index) => {
+        const match = line.match(/^(.*?)\s+([\d,]+)\s*(?:원)?$/);
+        if (!match) throw new Error(`${index + 1}번째 줄을 '닉네임  금액' 형식으로 입력해주세요.`);
+        return { donorName:match[1].trim(), amount:Number(match[2].replaceAll(",", "")) };
       });
-      await loadRef.current?.();
+      const result = await api(`/api/widgets/${encodeURIComponent(token)}/ranking`, {
+        method: "PUT",
+        body: JSON.stringify({ rows }),
+      });
+      setData((current) => ({ ...current, ranking:result.ranking }));
       setEditorStatus("순위표에 반영했습니다.");
-      setEditor({ donorName: "", amount: "" });
       setTimeout(() => setEditorOpen(false), 650);
     } catch (error) {
       setEditorStatus(error.message);
@@ -5582,18 +5586,17 @@ function Widget({ token }) {
       <RankingOutputCanvas>
         <RankingCard items={data.ranking} settings={data.settings} onEdit={token ? openEditor : undefined} />
       </RankingOutputCanvas>
-      {token && <button type="button" className="ranking-interact-trigger" onClick={() => openEditor(null)}>+ 순위 수정</button>}
+      {token && <button type="button" className="ranking-interact-trigger" onClick={openEditor}>순위 메모 편집</button>}
       {editorOpen && (
         <div className="ranking-interact-backdrop" onMouseDown={(event) => {
           if (event.target === event.currentTarget && !saving) setEditorOpen(false);
         }}>
-          <form className="ranking-interact-editor" onSubmit={saveManualDonation}>
-            <strong>외부 후원 반영</strong>
-            <p>후원자 이름과 이번에 추가할 금액을 입력하세요.</p>
-            <label>닉네임<input autoFocus maxLength="40" value={editor.donorName} onChange={(e) => setEditor({ ...editor, donorName:e.target.value })} required /></label>
-            <label>추가 금액<input type="number" min="1" step="1" value={editor.amount} onChange={(e) => setEditor({ ...editor, amount:e.target.value })} required /></label>
+          <form className="ranking-interact-editor ranking-memo-editor" onSubmit={saveRankingMemo}>
+            <strong>후원 순위 메모</strong>
+            <p>한 줄에 한 명씩 자유롭게 고치세요. 예: 폴조지  50,000</p>
+            <textarea autoFocus spellCheck="false" value={rankingMemo} onChange={(e) => setRankingMemo(e.target.value)} placeholder={"폴조지  50,000\n차니  30,000\n민권  10,000"} />
             {editorStatus && <span className="ranking-interact-status">{editorStatus}</span>}
-            <div><button type="button" onClick={() => setEditorOpen(false)} disabled={saving}>취소</button><button type="submit" disabled={saving}>{saving ? "반영 중..." : "순위표 반영"}</button></div>
+            <div><button type="button" onClick={() => setEditorOpen(false)} disabled={saving}>취소</button><button type="submit" disabled={saving}>{saving ? "저장 중..." : "메모 저장"}</button></div>
           </form>
         </div>
       )}

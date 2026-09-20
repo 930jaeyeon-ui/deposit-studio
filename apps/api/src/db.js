@@ -95,6 +95,15 @@ export async function initializeDatabase() {
       new_status TEXT NOT NULL,
       note TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS ranking_adjustments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES broadcast_sessions(id),
+      recipient_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      donor_name TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(session_id, recipient_user_id, donor_name)
     )`
   ]);
   const donationColumns = new Set((await db.execute(`PRAGMA table_info(donations)`)).rows.map(column => column.name));

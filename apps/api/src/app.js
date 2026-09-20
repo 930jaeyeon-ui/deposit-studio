@@ -464,11 +464,19 @@ app.put('/api/my/deposits/:id/status', requireAuth, async (req, res) => {
 
 async function widgetDataForUser(userId) {
   const session = await activeSession();
-  const [donations, ranking] = await Promise.all([
+  const [donations, ranking, adjustments] = await Promise.all([
     db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.received_at >= ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 20`, args:[session.id,userId,session.display_after] }),
-    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.received_at >= ? AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName LIMIT 60`, args:[session.id,userId,session.display_after] })
+    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.received_at >= ? AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName LIMIT 60`, args:[session.id,userId,session.display_after] }),
+    db.execute({ sql:'SELECT donor_name donorName, amount FROM ranking_adjustments WHERE session_id = ? AND recipient_user_id = ?', args:[session.id,userId] })
   ]);
-  return { donations:donations.rows, ranking:ranking.rows };
+  const merged = new Map(ranking.rows.map(row => [row.donorName, { ...row, amount:Number(row.amount), count:Number(row.count) }]));
+  for (const row of adjustments.rows) {
+    const current = merged.get(row.donorName) || { donorName:row.donorName, amount:0, count:0 };
+    current.amount += Number(row.amount);
+    merged.set(row.donorName, current);
+  }
+  const visibleRanking = [...merged.values()].filter(row => row.amount > 0).sort((a,b) => b.amount - a.amount || a.donorName.localeCompare(b.donorName, 'ko')).slice(0,60);
+  return { donations:donations.rows, ranking:visibleRanking };
 }
 
 app.get('/api/obs/sources', requireAuth, async (req, res) => {
@@ -499,6 +507,35 @@ app.post('/api/widgets/:token/manual-donation', async (req, res) => {
       args:[session.id,user.id,input.donorName,input.amount]
     });
     res.status(201).json({ ok:true, id:Number(result.lastInsertRowid) });
+  } catch (error) {
+    res.status(400).json({ error:error.message });
+  }
+});
+
+app.put('/api/widgets/:token/ranking', async (req, res) => {
+  try {
+    const user = await getObsUser(req.params.token);
+    if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
+    const source = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (source.length > 60) return res.status(400).json({ error:'순위는 최대 60명까지 입력할 수 있습니다.' });
+    const desired = new Map();
+    for (const row of source) {
+      const donorName = String(row?.donorName || '').trim();
+      const amount = Math.floor(Number(row?.amount));
+      if (!donorName || donorName.length > 40) return res.status(400).json({ error:'닉네임은 1~40자로 입력해주세요.' });
+      if (!Number.isSafeInteger(amount) || amount < 1) return res.status(400).json({ error:`${donorName}의 금액을 확인해주세요.` });
+      if (desired.has(donorName)) return res.status(400).json({ error:`${donorName} 닉네임이 중복되었습니다.` });
+      desired.set(donorName, amount);
+    }
+    const session = await activeSession();
+    const base = await db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.received_at >= ? AND d.status = 'included' GROUP BY ${effectiveDonorName}`, args:[session.id,user.id,session.display_after] });
+    const baseMap = new Map(base.rows.map(row => [row.donorName, Number(row.amount)]));
+    await db.execute({ sql:'DELETE FROM ranking_adjustments WHERE session_id = ? AND recipient_user_id = ?', args:[session.id,user.id] });
+    for (const donorName of new Set([...baseMap.keys(), ...desired.keys()])) {
+      const adjustment = (desired.get(donorName) || 0) - (baseMap.get(donorName) || 0);
+      if (adjustment !== 0) await db.execute({ sql:'INSERT INTO ranking_adjustments (session_id, recipient_user_id, donor_name, amount) VALUES (?, ?, ?, ?)', args:[session.id,user.id,donorName,adjustment] });
+    }
+    res.json({ ok:true, ranking:(await widgetDataForUser(user.id)).ranking });
   } catch (error) {
     res.status(400).json({ error:error.message });
   }
