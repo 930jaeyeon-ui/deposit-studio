@@ -2648,6 +2648,30 @@ function resolveTier(settings, amount = 50000) {
   );
 }
 
+function hexToRgba(hex, opacity = 1) {
+  const value = String(hex || "").replace("#", "");
+  const normalized = value.length === 3
+    ? value.split("").map((part) => part + part).join("")
+    : value;
+  if (!/^[0-9a-f]{6}$/i.test(normalized)) return `rgba(21,21,34,${opacity})`;
+  const number = Number.parseInt(normalized, 16);
+  return `rgba(${number >> 16},${(number >> 8) & 255},${number & 255},${Math.max(0, Math.min(1, Number(opacity) || 0))})`;
+}
+
+function useTransparentDocument() {
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const previous = { html:html.style.background, body:body.style.background };
+    html.style.setProperty("background", "transparent", "important");
+    body.style.setProperty("background", "transparent", "important");
+    return () => {
+      html.style.background = previous.html;
+      body.style.background = previous.body;
+    };
+  }, []);
+}
+
 function alertAppearance(settings, amount = 50000) {
   const tier = resolveTier(settings, amount);
   const previewGrade = (settings.crewGrades || []).find(
@@ -2708,7 +2732,7 @@ function alertAppearance(settings, amount = 50000) {
         ? `${settings.backgroundRadius}px`
         : "0",
       background: settings.backgroundEnabled
-        ? `color-mix(in srgb, ${settings.backgroundColor} ${settings.backgroundOpacity * 100}%, transparent)`
+        ? hexToRgba(settings.backgroundColor, settings.backgroundOpacity)
         : "transparent",
     },
   };
@@ -5531,6 +5555,7 @@ function RankingCard({ items, settings, onEdit }) {
 }
 
 function Widget({ token }) {
+  useTransparentDocument();
   const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
   const [editorOpen, setEditorOpen] = useState(false);
   const [rankingMemo, setRankingMemo] = useState("");
@@ -5605,6 +5630,7 @@ function Widget({ token }) {
 }
 
 function Overlay({ token, preview = false }) {
+  useTransparentDocument();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [current, setCurrent] = useState(null);
   const lastId = useRef(0);
