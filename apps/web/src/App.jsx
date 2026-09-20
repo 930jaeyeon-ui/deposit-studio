@@ -2947,6 +2947,9 @@ function Settings({ mode }) {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [savedSettings, setSavedSettings] = useState(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [settingsLoadError, setSettingsLoadError] = useState("");
+  const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [saved, setSaved] = useState("");
   const [previewRun, setPreviewRun] = useState(0);
   const [openTiers, setOpenTiers] = useState({});
@@ -2955,12 +2958,19 @@ function Settings({ mode }) {
   const leaveResolver = useRef(null);
   const savingBeforeLeave = useRef(false);
   useEffect(() => {
+    let active=true;
+    setSettingsLoaded(false);
+    setSettingsLoadError("");
     api("/api/settings").then((value) => {
+      if(!active)return;
       setSettings(value);
       setSavedSettings(value);
       setSettingsLoaded(true);
+    }).catch((error)=>{
+      if(active)setSettingsLoadError(error.message||"설정을 불러오지 못했습니다.");
     });
-  }, []);
+    return()=>{active=false;};
+  }, [settingsLoadAttempt]);
   const isDirty =
     settingsLoaded &&
     JSON.stringify(settings) !== JSON.stringify(savedSettings);
@@ -3029,12 +3039,21 @@ function Settings({ mode }) {
   }
   async function save(event) {
     event.preventDefault();
-    await persistSettings();
-    setSaved(
-      mode === "alert"
-        ? "알림 설정을 저장했습니다. 다음 후원 알림부터 적용됩니다."
-        : "후원 순위표 설정을 저장했습니다. OBS 순위표에 바로 적용됩니다.",
-    );
+    if(settingsSaving||!isDirty)return;
+    setSettingsSaving(true);
+    setSaved("");
+    try {
+      await persistSettings();
+      setSaved(
+        mode === "alert"
+          ? "알림 설정을 저장했습니다. 다음 후원 알림부터 적용됩니다."
+          : "후원 순위표 설정을 저장했습니다. OBS 순위표에 바로 적용됩니다.",
+      );
+    } catch(error) {
+      setSaved(error.message||"설정을 저장하지 못했습니다.");
+    } finally {
+      setSettingsSaving(false);
+    }
   }
   async function openWidgetPreview() {
     const popup = window.open("about:blank", "_blank");
@@ -3071,6 +3090,10 @@ function Settings({ mode }) {
       popup?.close();
       setSaved(error.message || "예시 화면을 열지 못했습니다.");
     }
+  }
+  if(!settingsLoaded){
+    const isAlert=mode==="alert";
+    return <PageLayout><div className="shell settings-loading-shell"><header><div><span className="eyebrow">{isAlert?"DONATION ALERT":"DONATION RANKING"}</span><h1>{isAlert?"후원 알림 설정":"후원 순위표 설정"}</h1><p className="page-description">저장된 설정을 안전하게 불러온 뒤 화면을 표시합니다.</p></div></header><section className="panel settings-loading-card" aria-live="polite">{settingsLoadError?<><span className="settings-loading-error">!</span><h2>설정을 불러오지 못했습니다</h2><p>{settingsLoadError}</p><button type="button" className="primary-button" onClick={()=>setSettingsLoadAttempt(value=>value+1)}>다시 불러오기</button></>:<><span className="settings-loading-spinner"/><h2>저장된 설정을 불러오는 중입니다</h2><p>잠시만 기다려주세요.</p></>}</section></div></PageLayout>;
   }
   const appearance = alertAppearance(settings, 50000);
   const preview = appearance.messageTemplate
@@ -5185,9 +5208,9 @@ function Settings({ mode }) {
                   type="submit"
                   form="broadcast-settings-form"
                   className="settings-save"
-                  disabled={!isDirty}
+                  disabled={!isDirty || settingsSaving}
                 >
-                  {isAlert ? "알림 설정 저장" : "순위표 설정 저장"}
+                  {settingsSaving?"저장 중...":isAlert ? "알림 설정 저장" : "순위표 설정 저장"}
                 </button>
               </div>
               {saved && <p className="settings-save-message">{saved}</p>}
@@ -5402,7 +5425,7 @@ function RankingPreview({ settings }) {
   );
 }
 
-function RankingCard({ items, settings }) {
+function RankingCard({ items, settings, onEdit }) {
   const visible = items.slice(0, settings.rankingLimit || 10);
   const rows = Math.max(1, settings.rankingRowsPerColumn || 10);
   const maxColumns = Math.max(1, settings.rankingColumns || 1);
@@ -5462,6 +5485,12 @@ function RankingCard({ items, settings }) {
                 <div
                   className={`widget-row rank-${index + 1} row-${settings.rankingRowAlign}`}
                   key={`${item.donorName}-${index}`}
+                  onClick={onEdit ? () => onEdit(item) : undefined}
+                  role={onEdit ? "button" : undefined}
+                  tabIndex={onEdit ? 0 : undefined}
+                  onKeyDown={onEdit ? (event) => {
+                    if (event.key === "Enter" || event.key === " ") onEdit(item);
+                  } : undefined}
                   style={{
                     "--rank-color": rankHighlight
                       ? rankStyle.color
@@ -5503,6 +5532,11 @@ function RankingCard({ items, settings }) {
 
 function Widget({ token }) {
   const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editor, setEditor] = useState({ donorName: "", amount: "" });
+  const [editorStatus, setEditorStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+  const loadRef = useRef(null);
   useEffect(() => {
     const load = () =>
       token
@@ -5513,14 +5547,57 @@ function Widget({ token }) {
             ([widgets, settings]) =>
               setData({ ranking: widgets.ranking, settings }),
           );
+    loadRef.current = load;
     load();
     const timer = setInterval(load, 1000);
     return () => clearInterval(timer);
   }, [token]);
+  const openEditor = (item) => {
+    if (!token) return;
+    setEditor({ donorName: item?.donorName || "", amount: "" });
+    setEditorStatus("");
+    setEditorOpen(true);
+  };
+  const saveManualDonation = async (event) => {
+    event.preventDefault();
+    setSaving(true);
+    setEditorStatus("");
+    try {
+      await api(`/api/widgets/${encodeURIComponent(token)}/manual-donation`, {
+        method: "POST",
+        body: JSON.stringify({ donorName: editor.donorName, amount: Number(editor.amount) }),
+      });
+      await loadRef.current?.();
+      setEditorStatus("순위표에 반영했습니다.");
+      setEditor({ donorName: "", amount: "" });
+      setTimeout(() => setEditorOpen(false), 650);
+    } catch (error) {
+      setEditorStatus(error.message);
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
-    <RankingOutputCanvas>
-      <RankingCard items={data.ranking} settings={data.settings} />
-    </RankingOutputCanvas>
+    <div className="interactive-ranking-root">
+      <RankingOutputCanvas>
+        <RankingCard items={data.ranking} settings={data.settings} onEdit={token ? openEditor : undefined} />
+      </RankingOutputCanvas>
+      {token && <button type="button" className="ranking-interact-trigger" onClick={() => openEditor(null)}>+ 순위 수정</button>}
+      {editorOpen && (
+        <div className="ranking-interact-backdrop" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !saving) setEditorOpen(false);
+        }}>
+          <form className="ranking-interact-editor" onSubmit={saveManualDonation}>
+            <strong>외부 후원 반영</strong>
+            <p>후원자 이름과 이번에 추가할 금액을 입력하세요.</p>
+            <label>닉네임<input autoFocus maxLength="40" value={editor.donorName} onChange={(e) => setEditor({ ...editor, donorName:e.target.value })} required /></label>
+            <label>추가 금액<input type="number" min="1" step="1" value={editor.amount} onChange={(e) => setEditor({ ...editor, amount:e.target.value })} required /></label>
+            {editorStatus && <span className="ranking-interact-status">{editorStatus}</span>}
+            <div><button type="button" onClick={() => setEditorOpen(false)} disabled={saving}>취소</button><button type="submit" disabled={saving}>{saving ? "반영 중..." : "순위표 반영"}</button></div>
+          </form>
+        </div>
+      )}
+    </div>
   );
 }
 

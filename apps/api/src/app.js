@@ -488,6 +488,22 @@ app.get('/api/widgets/:token', async (req, res) => {
   res.json({ ...(await widgetDataForUser(user.id)), settings:await getUserSettings(user.id) });
 });
 
+app.post('/api/widgets/:token/manual-donation', async (req, res) => {
+  try {
+    const user = await getObsUser(req.params.token);
+    if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
+    const input = normalizeDonation({ ...req.body, bank:'manual', externalId:null });
+    const session = await activeSession();
+    const result = await db.execute({
+      sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, 'manual', NULL)`,
+      args:[session.id,user.id,input.donorName,input.amount]
+    });
+    res.status(201).json({ ok:true, id:Number(result.lastInsertRowid) });
+  } catch (error) {
+    res.status(400).json({ error:error.message });
+  }
+});
+
 app.get('/api/overlay/:token/bootstrap', async (req, res) => {
   const user = await getObsUser(req.params.token);
   if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
