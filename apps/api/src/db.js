@@ -55,6 +55,7 @@ export async function initializeDatabase() {
       role TEXT NOT NULL CHECK(role IN ('super','admin','member')),
       password_hash TEXT NOT NULL,
       avatar_path TEXT,
+      obs_token TEXT,
       must_change_password INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -100,6 +101,8 @@ export async function initializeDatabase() {
   if (!donationColumns.has('recipient_user_id')) await db.execute(`ALTER TABLE donations ADD COLUMN recipient_user_id INTEGER REFERENCES users(id)`);
   if (!donationColumns.has('donor_override_name')) await db.execute(`ALTER TABLE donations ADD COLUMN donor_override_name TEXT`);
   if (!donationColumns.has('status')) await db.execute(`ALTER TABLE donations ADD COLUMN status TEXT NOT NULL DEFAULT 'included'`);
+  const userColumns = new Set((await db.execute(`PRAGMA table_info(users)`)).rows.map(column => column.name));
+  if (!userColumns.has('obs_token')) await db.execute(`ALTER TABLE users ADD COLUMN obs_token TEXT`);
   if (!await activeSession()) {
     await db.execute({ sql: 'INSERT INTO broadcast_sessions (title) VALUES (?)', args: ['첫 방송'] });
   }
@@ -118,6 +121,8 @@ export async function initializeDatabase() {
   for (const [loginId, displayName, role, avatar] of users) {
     await db.execute({ sql:`INSERT OR IGNORE INTO users (login_id, display_name, role, password_hash, avatar_path) VALUES (?, ?, ?, ?, ?)`, args:[loginId,displayName,role,hashPassword(role === 'super' ? 'Init1357!!' : 'Init1234!!'),avatar] });
   }
+  await db.execute(`UPDATE users SET obs_token = lower(hex(randomblob(24))) WHERE obs_token IS NULL OR obs_token = ''`);
+  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS users_obs_token_unique ON users(obs_token)`);
   await db.execute(`INSERT OR IGNORE INTO user_settings (user_id, value) SELECT id, COALESCE((SELECT value FROM settings WHERE id = 1), '${JSON.stringify(DEFAULT_SETTINGS).replaceAll("'", "''")}') FROM users`);
   const passwordMigration = await db.execute({ sql:`SELECT value FROM app_meta WHERE key = ?`, args:['member_initial_password_v2'] });
   if (!passwordMigration.rows.length) {

@@ -12,11 +12,37 @@ function sendOverlayEvent(res, event, data, id) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-function publishOverlayDonation(donation) {
+function publishOverlayDonation(donation, userId) {
   for (const client of overlayClients) {
+    if (Number(client.userId) !== Number(userId)) continue;
     if (client.ready) sendOverlayEvent(client.res, 'donation', donation, donation.id);
     else client.pending.push(donation);
   }
+}
+
+function publishOverlayTest(donation, userId) {
+  let delivered=0;
+  for (const client of overlayClients) {
+    if (Number(client.userId) !== Number(userId) || !client.ready) continue;
+    sendOverlayEvent(client.res, 'donation', { ...donation, isTest:true });
+    delivered+=1;
+  }
+  return delivered;
+}
+
+async function donationWithCrewGrade(donation, userId, settings) {
+  if (!settings?.crewGradeEnabled) return { ...donation, crewGradeId:null };
+  const total = await db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) total FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${effectiveDonorName} = ? AND d.status = 'included'`, args:[donation.donorName] });
+  const cumulativeAmount=Number(total.rows[0]?.total||0);
+  const grade=[...(settings.crewGrades||[])].filter(item=>cumulativeAmount>=Number(item.minAmount||0)&&(item.maxAmount==null||cumulativeAmount<=Number(item.maxAmount))).sort((a,b)=>Number(b.minAmount)-Number(a.minAmount))[0];
+  return { ...donation, cumulativeAmount, crewGradeId:grade?.id||null };
+}
+
+async function settingsWithCrewPreview(user) {
+  const settings=await getUserSettings(user.id);
+  const previewDonorName='폴조지';
+  const previewDonation=await donationWithCrewGrade({ donorName:previewDonorName, amount:50000 },user.id,settings);
+  return { ...settings, previewCrewGradeId:previewDonation.crewGradeId, previewDonorName, previewCumulativeAmount:previewDonation.cumulativeAmount||0 };
 }
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.WEB_ORIGIN || req.headers.origin || '*');
@@ -26,7 +52,7 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '75mb' }));
 app.use('/api/test', apiTest);
 app.use((error, req, res, next) => {
   if (!req.path.startsWith('/api/test/')) return next(error);
@@ -39,12 +65,27 @@ const effectiveDonorName = `COALESCE(NULLIF(d.donor_override_name, ''), NULLIF(a
 const MEMBER_INITIAL_PASSWORD = 'Init1234!!';
 
 async function getUserSettings(userId) {
-  const result = await db.execute({ sql:'SELECT value FROM user_settings WHERE user_id = ? LIMIT 1', args:[userId] });
+  const result = await db.execute({ sql:'SELECT s.value, u.role FROM users u LEFT JOIN user_settings s ON s.user_id = u.id WHERE u.id = ? LIMIT 1', args:[userId] });
   if (!result.rows.length) {
-    await db.execute({ sql:'INSERT INTO user_settings (user_id, value) VALUES (?, ?)', args:[userId,JSON.stringify(DEFAULT_SETTINGS)] });
     return cleanSettings(DEFAULT_SETTINGS);
   }
-  return cleanSettings(JSON.parse(result.rows[0].value));
+  if (!result.rows[0].value) await db.execute({ sql:'INSERT INTO user_settings (user_id, value) VALUES (?, ?)', args:[userId,JSON.stringify(DEFAULT_SETTINGS)] });
+  const settings=cleanSettings(result.rows[0].value?JSON.parse(result.rows[0].value):DEFAULT_SETTINGS);
+  if(result.rows[0].role!=='super') settings.crewGrades=await getSharedCrewGrades();
+  return settings;
+}
+
+async function getSharedCrewGrades() {
+  const result=await db.execute(`SELECT s.value FROM users u JOIN user_settings s ON s.user_id = u.id WHERE u.role = 'super' AND u.is_active = 1 ORDER BY u.id LIMIT 1`);
+  if(!result.rows.length)return [];
+  try{return cleanSettings(JSON.parse(result.rows[0].value)).crewGrades;}catch{return [];}
+}
+
+async function getObsUser(token) {
+  const value = String(token || '').trim();
+  if (!/^[a-f0-9]{48}$/.test(value)) return null;
+  const result = await db.execute({ sql:'SELECT id, login_id loginId, display_name displayName FROM users WHERE obs_token = ? AND is_active = 1 LIMIT 1', args:[value] });
+  return result.rows[0] || null;
 }
 
 function cleanSettings(input) {
@@ -65,17 +106,38 @@ function cleanSettings(input) {
   settings.fontFamily = String(settings.fontFamily || DEFAULT_SETTINGS.fontFamily).slice(0,120);
   settings.customFontFamily = String(settings.customFontFamily || '').slice(0,100);
   settings.textAlign = ['left','center','right'].includes(settings.textAlign) ? settings.textAlign : 'center';
+  settings.nameColorEnabled=Boolean(settings.nameColorEnabled);
+  settings.amountColorEnabled=Boolean(settings.amountColorEnabled);
+  settings.nameColor=String(settings.nameColor||DEFAULT_SETTINGS.nameColor).slice(0,20);
+  settings.amountColor=String(settings.amountColor||DEFAULT_SETTINGS.amountColor).slice(0,20);
   settings.animation = ['fade','zoom','slide-up','slide-down','slide-left','slide-right','bounce','flip','pulse','shake'].includes(settings.animation) ? settings.animation : 'zoom';
   settings.exitAnimation = ['fade-out','zoom-out','slide-down-out','slide-up-out'].includes(settings.exitAnimation) ? settings.exitAnimation : 'fade-out';
-  settings.soundPreset = ['coin','chime','pop','fanfare','custom','none'].includes(settings.soundPreset) || String(settings.soundPreset).startsWith('library:') ? settings.soundPreset : 'coin';
+  settings.soundPreset = ['coin','chime','pop','fanfare','bell','sparkle','success','drum','laser','magic','custom','none'].includes(settings.soundPreset) || String(settings.soundPreset).startsWith('library:') ? settings.soundPreset : 'coin';
   settings.backgroundEnabled = Boolean(settings.backgroundEnabled);
   settings.outlineEnabled = settings.outlineEnabled !== false;
   settings.textShadow = Boolean(settings.textShadow);
   settings.soundEnabled = Boolean(settings.soundEnabled);
+  settings.ttsEnabled = Boolean(settings.ttsEnabled);
+  settings.ttsVoiceURI = String(settings.ttsVoiceURI || '').slice(0,300);
+  delete settings.ttsProvider;
+  delete settings.ttsAzureVoice;
+  delete settings.previewCrewGradeId;
+  delete settings.previewDonorName;
+  delete settings.previewCumulativeAmount;
+  settings.ttsRate = Math.max(0.5, Math.min(2, Number(settings.ttsRate) || 1));
+  settings.ttsPitch = Math.max(0, Math.min(2, Number(settings.ttsPitch) || 1));
+  settings.ttsVolume = Math.max(0, Math.min(100, Number.isFinite(Number(settings.ttsVolume)) ? Number(settings.ttsVolume) : DEFAULT_SETTINGS.ttsVolume));
   settings.crewGradeEnabled = Boolean(settings.crewGradeEnabled);
-  settings.customSoundData = String(settings.customSoundData || '').slice(0,1400000);
+  settings.crewGradeMinimumAmount = Math.max(0, Math.min(1000000000, Number(settings.crewGradeMinimumAmount) || DEFAULT_SETTINGS.crewGradeMinimumAmount));
+  settings.crewGradeImageData = String(settings.crewGradeImageData || '').slice(0,1400000);
+  if (settings.crewGradeImageData && !settings.crewGradeImageData.startsWith('data:image/')) settings.crewGradeImageData = '';
+  settings.crewGradeImageName = String(settings.crewGradeImageName || '').slice(0,100);
+  const requestedGradeImageSize=Number(settings.crewGradeImageSize)||DEFAULT_SETTINGS.crewGradeImageSize;
+  settings.crewGradeImageSize = Math.max(80, Math.min(400, requestedGradeImageSize <= 180 ? DEFAULT_SETTINGS.crewGradeImageSize : requestedGradeImageSize));
+  settings.crewGrades = Array.isArray(settings.crewGrades) ? settings.crewGrades.slice(0,20).map((grade,index)=>({id:String(grade.id||`grade-${index}`).slice(0,50),name:String(grade.name||`${index+1}등급`).slice(0,30),minAmount:Math.max(0,Math.min(1000000000,Number(grade.minAmount)||0)),maxAmount:grade.maxAmount==null||grade.maxAmount===''?null:Math.max(0,Math.min(1000000000,Number(grade.maxAmount)||0)),imageName:String(grade.imageName||'').slice(0,100),imageData:String(grade.imageData||'').slice(0,7000000)})).filter(grade=>!grade.imageData||grade.imageData.startsWith('data:image/')) : [];
+  settings.customSoundData = String(settings.customSoundData || '').slice(0,7000000);
   settings.customSoundName = String(settings.customSoundName || '').slice(0,100);
-  settings.soundLibrary = Array.isArray(settings.soundLibrary) ? settings.soundLibrary.slice(0,10).map((sound,index)=>({id:String(sound.id || `sound-${index}`).slice(0,50),name:String(sound.name || `내 음원 ${index+1}`).slice(0,100),data:String(sound.data || '').slice(0,1400000)})).filter(sound=>sound.data.startsWith('data:audio/')) : [];
+  settings.soundLibrary = Array.isArray(settings.soundLibrary) ? settings.soundLibrary.slice(0,10).map((sound,index)=>({id:String(sound.id || `sound-${index}`).slice(0,50),name:String(sound.name || `내 음원 ${index+1}`).slice(0,100),data:String(sound.data || '').slice(0,7000000)})).filter(sound=>sound.data.startsWith('data:audio/')) : [];
   settings.amountTiers = Array.isArray(settings.amountTiers) ? settings.amountTiers.slice(0,12).map((tier,index)=>({
     id:String(tier.id || `tier-${index}`).slice(0,40), name:String(tier.name || `${index+1}구간`).slice(0,30),
     minAmount:Math.max(0,Math.min(100000000,Number(tier.minAmount)||0)), maxAmount:tier.maxAmount==null||tier.maxAmount===''?null:Math.max(0,Math.min(100000000,Number(tier.maxAmount)||0)),
@@ -83,9 +145,10 @@ function cleanSettings(input) {
     messageMode:tier.messageMode === 'custom' ? 'custom' : 'inherit', messageTemplate:String(tier.messageTemplate || '').slice(0,300),
     textMode:tier.textMode === 'custom' ? 'custom' : 'inherit', fontFamily:String(tier.fontFamily || settings.fontFamily).slice(0,120), fontSize:Math.max(20,Math.min(160,Number(tier.fontSize)||settings.fontSize)), fontWeight:Math.max(100,Math.min(900,Number(tier.fontWeight)||settings.fontWeight)), textColor:String(tier.textColor || settings.textColor).slice(0,20), outlineColor:String(tier.outlineColor || settings.outlineColor).slice(0,20), outlineWidth:Math.max(0,Math.min(12,Number(tier.outlineWidth)||0)),
     effectMode:tier.effectMode === 'custom' ? 'custom' : 'inherit', animation:String(tier.animation || settings.animation).slice(0,30), exitAnimation:String(tier.exitAnimation || settings.exitAnimation).slice(0,30), durationMs:Math.max(1000,Math.min(30000,Number(tier.durationMs)||settings.durationMs)),
-    soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number(tier.soundVolume) || settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,1400000)
+    soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number(tier.soundVolume) || settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,7000000),
+    ttsMode:tier.ttsMode === 'custom' ? 'custom' : 'inherit', ttsEnabled:tier.ttsEnabled !== false, ttsVoiceURI:String(tier.ttsVoiceURI || settings.ttsVoiceURI || '').slice(0,300), ttsRate:Math.max(.5,Math.min(2,Number(tier.ttsRate)||settings.ttsRate)), ttsPitch:Math.max(0,Math.min(2,Number(tier.ttsPitch)||settings.ttsPitch)), ttsVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.ttsVolume))?Number(tier.ttsVolume):settings.ttsVolume))
   })) : [];
-  settings.rankingLimit = Math.max(1, Math.min(50, Math.floor(Number(settings.rankingLimit) || DEFAULT_SETTINGS.rankingLimit)));
+  settings.rankingLimit = Math.max(1, Math.min(60, Math.floor(Number(settings.rankingLimit) || DEFAULT_SETTINGS.rankingLimit)));
   settings.rankingFontSize = Math.max(16, Math.min(72, Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize)));
   settings.rankingFontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.rankingFontWeight) || 700)));
   settings.rankingUseLineHeight = Boolean(settings.rankingUseLineHeight);
@@ -223,9 +286,9 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
   const [donations, summary, savedSettings] = await Promise.all([
     db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 100`, args:[session.id] }),
     db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) totalAmount, COUNT(*) donationCount, COUNT(DISTINCT ${effectiveDonorName}) donorCount FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included'`, args:[session.id] }),
-    db.execute({ sql:'SELECT value FROM user_settings WHERE user_id = ?', args:[req.user.id] })
+    getUserSettings(req.user.id)
   ]);
-  res.json({ session, donations:donations.rows, summary:summary.rows[0], settings:{ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) } });
+  res.json({ session, donations:donations.rows, summary:summary.rows[0], settings:savedSettings });
 });
 
 app.get('/api/dashboard/donors', requireAuth, async (req, res) => {
@@ -328,6 +391,40 @@ app.get('/api/my/deposits', requireAuth, async (req, res) => {
   res.json({ range, summary:summary.rows[0], deposits:rows.rows, donorNames:donorNames.rows.map(row=>row.donorName) });
 });
 
+app.post('/api/my/deposits', requireAuth, async (req, res) => {
+  try {
+    const input = normalizeDonation({ ...req.body, bank:'manual', externalId:null });
+    const receivedAt = new Date(req.body?.receivedAt);
+    if (!req.body?.receivedAt || Number.isNaN(receivedAt.getTime())) {
+      return res.status(400).json({ error:'입금 일시를 확인해주세요.' });
+    }
+    const now = Date.now();
+    if (receivedAt.getTime() > now + 5 * 60 * 1000 || receivedAt.getTime() < Date.UTC(2000, 0, 1)) {
+      return res.status(400).json({ error:'입금 일시는 2000년 이후, 현재 시각 이전으로 입력해주세요.' });
+    }
+    const session = await activeSession();
+    const storedAt = receivedAt.toISOString().replace('T',' ').slice(0,19);
+    const result = await db.execute({
+      sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id, received_at) VALUES (?, ?, ?, ?, 'manual', NULL, ?)`,
+      args:[session.id,req.user.id,input.donorName,input.amount,storedAt]
+    });
+    const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
+    const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, await getUserSettings(req.user.id));
+    publishOverlayDonation(donation, req.user.id);
+    res.status(201).json(donation);
+  } catch (error) {
+    res.status(400).json({ error:error.message });
+  }
+});
+
+app.post('/api/my/deposits/test-alert', requireAuth, async (req, res) => {
+  const amount=50000;
+  const settings=await getUserSettings(req.user.id);
+  const donation=await donationWithCrewGrade({ id:null, donorName:'폴조지', amount, bank:'test', receivedAt:new Date().toISOString() },req.user.id,settings);
+  const delivered=publishOverlayTest(donation,req.user.id);
+  res.json({ ok:true, delivered });
+});
+
 app.put('/api/my/deposits/:id/donor', requireAuth, async (req, res) => {
   const donationId = Number(req.params.id);
   const canonicalName = String(req.body?.canonicalName || '').trim();
@@ -365,29 +462,48 @@ app.put('/api/my/deposits/:id/status', requireAuth, async (req, res) => {
   res.json({ ok:true, status });
 });
 
-app.get('/api/widgets', async (_req, res) => {
+async function widgetDataForUser(userId) {
   const session = await activeSession();
   const [donations, ranking] = await Promise.all([
-    db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.received_at >= ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 20`, args:[session.id,session.display_after] }),
-    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.received_at >= ? AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName LIMIT 20`, args:[session.id,session.display_after] })
+    db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.received_at >= ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 20`, args:[session.id,userId,session.display_after] }),
+    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.received_at >= ? AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName LIMIT 60`, args:[session.id,userId,session.display_after] })
   ]);
-  res.json({ donations:donations.rows, ranking:ranking.rows });
+  return { donations:donations.rows, ranking:ranking.rows };
+}
+
+app.get('/api/obs/sources', requireAuth, async (req, res) => {
+  const result = await db.execute({ sql:'SELECT obs_token obsToken FROM users WHERE id = ? LIMIT 1', args:[req.user.id] });
+  const obsToken = result.rows[0]?.obsToken;
+  if (!obsToken) return res.status(500).json({ error:'OBS 전용 주소를 준비하지 못했습니다.' });
+  res.json({ alertPath:`/overlay/${obsToken}`, rankingPath:`/ranking/${obsToken}` });
 });
 
-app.get('/api/overlay/bootstrap', async (_req, res) => {
+app.get('/api/widgets', requireAuth, async (req, res) => {
+  res.json(await widgetDataForUser(req.user.id));
+});
+
+app.get('/api/widgets/:token', async (req, res) => {
+  const user = await getObsUser(req.params.token);
+  if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
+  res.json({ ...(await widgetDataForUser(user.id)), settings:await getUserSettings(user.id) });
+});
+
+app.get('/api/overlay/:token/bootstrap', async (req, res) => {
+  const user = await getObsUser(req.params.token);
+  if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
   const session = await activeSession();
-  const [latest, savedSettings] = await Promise.all([
-    db.execute({ sql:'SELECT COALESCE(MAX(id), 0) lastDonationId FROM donations WHERE session_id = ?', args:[session.id] }),
-    db.execute('SELECT value FROM settings WHERE id = 1')
-  ]);
-  res.json({ lastDonationId:Number(latest.rows[0].lastDonationId)||0, settings:{ ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) } });
+  const latest = await db.execute({ sql:'SELECT COALESCE(MAX(id), 0) lastDonationId FROM donations WHERE session_id = ? AND recipient_user_id = ?', args:[session.id,user.id] });
+  res.json({ lastDonationId:Number(latest.rows[0].lastDonationId)||0, settings:await getUserSettings(user.id) });
 });
 
 app.get('/api/overlay/preview', requireAuth, async (req, res) => {
-  res.json({ lastDonationId:0, settings:await getUserSettings(req.user.id) });
+  const settings=await settingsWithCrewPreview(req.user);
+  res.json({ lastDonationId:0, settings, previewDonation:{ id:null, isTest:true, donorName:settings.previewDonorName, amount:50000, cumulativeAmount:settings.previewCumulativeAmount, crewGradeId:settings.previewCrewGradeId } });
 });
 
-app.get('/api/overlay/events', async (req, res) => {
+app.get('/api/overlay/:token/events', async (req, res) => {
+  const user = await getObsUser(req.params.token);
+  if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
   res.set({
     'Content-Type':'text/event-stream',
     'Cache-Control':'no-cache, no-transform',
@@ -398,7 +514,7 @@ app.get('/api/overlay/events', async (req, res) => {
 
   const requestedAfter = Math.max(0, Number(req.get('Last-Event-ID')) || Number(req.query.after) || 0);
   const resuming = Boolean(req.get('Last-Event-ID') || req.query.after);
-  const client = { res, ready:false, pending:[] };
+  const client = { res, userId:user.id, ready:false, pending:[] };
   overlayClients.add(client);
   const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000);
   res.on('close', () => {
@@ -408,15 +524,14 @@ app.get('/api/overlay/events', async (req, res) => {
 
   try {
     const session = await activeSession();
-    const [latest, savedSettings, missed] = await Promise.all([
-      db.execute({ sql:'SELECT COALESCE(MAX(id), 0) lastDonationId FROM donations WHERE session_id = ?', args:[session.id] }),
-      db.execute('SELECT value FROM settings WHERE id = 1'),
+    const [latest, settings, missed] = await Promise.all([
+      db.execute({ sql:'SELECT COALESCE(MAX(id), 0) lastDonationId FROM donations WHERE session_id = ? AND recipient_user_id = ?', args:[session.id,user.id] }),
+      getUserSettings(user.id),
       resuming
-        ? db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.id > ? AND d.status = 'included' ORDER BY d.id ASC`, args:[session.id,requestedAfter] })
+        ? db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.id > ? AND d.status = 'included' ORDER BY d.id ASC`, args:[session.id,user.id,requestedAfter] })
         : Promise.resolve({ rows:[] })
     ]);
     const latestId = Number(latest.rows[0].lastDonationId) || 0;
-    const settings = { ...DEFAULT_SETTINGS, ...JSON.parse(savedSettings.rows[0].value) };
     sendOverlayEvent(res, 'bootstrap', { lastDonationId:resuming ? requestedAfter : latestId, settings }, resuming ? requestedAfter : latestId);
 
     const queued = [...missed.rows, ...client.pending]
@@ -450,8 +565,9 @@ app.post('/api/donations', requireAuth, async (req, res) => {
     const session = await activeSession();
     const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, ?, ?)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
-    publishOverlayDonation(saved.rows[0]);
-    res.status(201).json(saved.rows[0]);
+    const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, settings);
+    publishOverlayDonation(donation, req.user.id);
+    res.status(201).json(donation);
   } catch (error) {
     const duplicate = String(error.message).includes('UNIQUE constraint');
     res.status(duplicate ? 409 : 400).json({ error:duplicate ? '이미 처리한 입금입니다.' : error.message });
@@ -459,13 +575,20 @@ app.post('/api/donations', requireAuth, async (req, res) => {
 });
 
 app.get('/api/settings', requireAuth, async (req, res) => {
-  res.json(await getUserSettings(req.user.id));
+  res.json(await settingsWithCrewPreview(req.user));
 });
 
 app.put('/api/settings', requireAuth, async (req, res) => {
+  if(req.user.role==='super'&&Array.isArray(req.body?.crewGrades)){
+    const ranges=req.body.crewGrades.map(grade=>({min:Number(grade.minAmount)||0,max:grade.maxAmount==null||grade.maxAmount===''?null:Number(grade.maxAmount)})).sort((a,b)=>a.min-b.min);
+    if(ranges.some(range=>range.max!=null&&range.max<range.min))return res.status(400).json({error:'크루 등급의 최대 누적 금액은 최소 누적 금액보다 크거나 같아야 합니다.'});
+    if(ranges.some((range,index)=>index>0&&(ranges[index-1].max==null||range.min<=ranges[index-1].max)))return res.status(400).json({error:'크루 등급의 누적 금액 구간이 서로 겹치지 않게 입력해주세요.'});
+  }
   const settings = cleanSettings(req.body);
+  if(req.user.role!=='super')settings.crewGrades=[];
   await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
-  res.json(settings);
+  if(req.user.role!=='super')settings.crewGrades=await getSharedCrewGrades();
+  res.json(await settingsWithCrewPreview(req.user));
 });
 
 app.post('/api/sessions', requireAuth, async (req, res) => {
