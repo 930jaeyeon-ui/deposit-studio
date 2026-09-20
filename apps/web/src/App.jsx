@@ -5683,6 +5683,11 @@ function Overlay({ token, preview = false }) {
         setSettings(snapshot.settings);
         settingsRef.current = snapshot.settings;
       });
+      events.addEventListener("settings", (event) => {
+        const nextSettings = JSON.parse(event.data);
+        setSettings(nextSettings);
+        settingsRef.current = nextSettings;
+      });
       events.addEventListener("donation", (event) => {
         const donation = JSON.parse(event.data);
         if (!donation.isTest) {

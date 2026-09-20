@@ -30,6 +30,16 @@ function publishOverlayTest(donation, userId) {
   return delivered;
 }
 
+function publishOverlaySettings(settings, userId) {
+  let delivered = 0;
+  for (const client of overlayClients) {
+    if (Number(client.userId) !== Number(userId) || !client.ready) continue;
+    sendOverlayEvent(client.res, 'settings', settings);
+    delivered += 1;
+  }
+  return delivered;
+}
+
 async function donationWithCrewGrade(donation, userId, settings) {
   if (!settings?.crewGradeEnabled) return { ...donation, crewGradeId:null };
   const total = await db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) total FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${effectiveDonorName} = ? AND d.status = 'included'`, args:[donation.donorName] });
@@ -641,7 +651,9 @@ app.put('/api/settings', requireAuth, async (req, res) => {
   if(req.user.role!=='super')settings.crewGrades=[];
   await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
   if(req.user.role!=='super')settings.crewGrades=await getSharedCrewGrades();
-  res.json(await settingsWithCrewPreview(req.user));
+  const savedSettings = await settingsWithCrewPreview(req.user);
+  publishOverlaySettings(savedSettings, req.user.id);
+  res.json(savedSettings);
 });
 
 app.post('/api/sessions', requireAuth, async (req, res) => {
