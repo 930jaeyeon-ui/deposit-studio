@@ -590,14 +590,14 @@ app.delete('/api/api-logs', requireAuth, requireManager, async (_req, res) => {
 });
 
 app.get('/api/notification-rules', requireAuth, requireSuper, async (_req, res) => {
-  const result = await db.execute(`SELECT package_name packageName, content_pattern contentPattern, created_at createdAt, updated_at updatedAt FROM notification_rules ORDER BY package_name`);
+  const result = await db.execute(`SELECT package_name packageName, title_pattern titlePattern, content_pattern contentPattern, created_at createdAt, updated_at updatedAt FROM notification_rules ORDER BY package_name`);
   res.json(result.rows);
 });
 
 app.post('/api/notification-rules', requireAuth, requireSuper, async (req, res) => {
   try {
     const rule = validateRuleInput(req.body);
-    await db.execute({ sql:`INSERT INTO notification_rules (package_name, content_pattern) VALUES (?, ?)`, args:[rule.packageName,rule.contentPattern] });
+    await db.execute({ sql:`INSERT INTO notification_rules (package_name, title_pattern, content_pattern) VALUES (?, ?, ?)`, args:[rule.packageName,rule.titlePattern,rule.contentPattern] });
     res.status(201).json(rule);
   } catch (error) {
     const duplicate = String(error.message).includes('UNIQUE');
@@ -608,7 +608,7 @@ app.post('/api/notification-rules', requireAuth, requireSuper, async (req, res) 
 app.put('/api/notification-rules/:packageName', requireAuth, requireSuper, async (req, res) => {
   try {
     const rule = validateRuleInput(req.body);
-    const result = await db.execute({ sql:`UPDATE notification_rules SET package_name = ?, content_pattern = ?, updated_at = CURRENT_TIMESTAMP WHERE package_name = ?`, args:[rule.packageName,rule.contentPattern,req.params.packageName] });
+    const result = await db.execute({ sql:`UPDATE notification_rules SET package_name = ?, title_pattern = ?, content_pattern = ?, updated_at = CURRENT_TIMESTAMP WHERE package_name = ?`, args:[rule.packageName,rule.titlePattern,rule.contentPattern,req.params.packageName] });
     if (!result.rowsAffected) return res.status(404).json({ error:'정규식 규칙을 찾을 수 없습니다.' });
     res.json(rule);
   } catch (error) {
@@ -646,7 +646,7 @@ app.post('/api/notifications', async (req, res) => {
   const title = String(req.body?.title || '').trim();
   const content = String(req.body?.content || '').trim();
   if (!packageName || packageName.length > 200 || !title || title.length > 1000 || !content || content.length > 5000) return res.status(400).json({ error:'packageName, title, content 값을 확인해주세요.' });
-  const found = await db.execute({ sql:`SELECT package_name packageName, content_pattern contentPattern FROM notification_rules WHERE package_name = ? LIMIT 1`, args:[packageName] });
+  const found = await db.execute({ sql:`SELECT package_name packageName, title_pattern titlePattern, content_pattern contentPattern FROM notification_rules WHERE package_name = ? LIMIT 1`, args:[packageName] });
   const rule = found.rows[0];
   if (!rule) {
     await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, status, error) VALUES (?, ?, ?, 'no_rule', ?)`, args:[packageName,title,content,'패키지 규칙이 없습니다.'] });

@@ -12,12 +12,16 @@ export function compilePattern(pattern, label) {
 }
 
 export function parseNotification(rule, notification) {
+  const title = String(notification?.title ?? '').slice(0, 1000);
   const content = String(notification?.content ?? '').slice(0, 5000);
+  const titleRegex = compilePattern(rule.titlePattern, '제목');
   const contentRegex = compilePattern(rule.contentPattern, '내용');
   if (!contentRegex) throw new Error('내용 정규식을 입력해주세요.');
+  const titleMatch = titleRegex ? titleRegex.exec(title) : null;
+  if (titleRegex && !titleMatch) return null;
   const contentMatch = contentRegex.exec(content);
   if (!contentMatch) return null;
-  const groups = contentMatch.groups || {};
+  const groups = { ...(titleMatch?.groups || {}), ...(contentMatch.groups || {}) };
   const donorName = String(groups.donor || '').trim();
   const amountText = String(groups.amount || '').trim();
   const amountDigits = amountText.replace(/[^0-9]/g, '');
@@ -32,9 +36,11 @@ export function parseNotification(rule, notification) {
 
 export function validateRuleInput(input) {
   const packageName = String(input?.packageName || '').trim();
+  const titlePattern = String(input?.titlePattern || '').trim();
   const contentPattern = String(input?.contentPattern || '').trim();
   if (!/^[A-Za-z0-9._-]{3,200}$/.test(packageName)) throw new Error('앱 패키지명을 확인해주세요.');
   if (!contentPattern) throw new Error('내용 정규식을 입력해주세요.');
+  compilePattern(titlePattern, '제목');
   compilePattern(contentPattern, '내용');
-  return { packageName, contentPattern };
+  return { packageName, titlePattern, contentPattern };
 }

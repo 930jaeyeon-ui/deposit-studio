@@ -98,6 +98,7 @@ export async function initializeDatabase() {
     )`,
     `CREATE TABLE IF NOT EXISTS notification_rules (
       package_name TEXT PRIMARY KEY,
+      title_pattern TEXT NOT NULL DEFAULT '',
       content_pattern TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -145,7 +146,7 @@ export async function initializeDatabase() {
     await db.batch([
       `ALTER TABLE notification_events RENAME TO notification_events_legacy`,
       `ALTER TABLE notification_rules RENAME TO notification_rules_legacy`,
-      `CREATE TABLE notification_rules (package_name TEXT PRIMARY KEY, content_pattern TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+      `CREATE TABLE notification_rules (package_name TEXT PRIMARY KEY, title_pattern TEXT NOT NULL DEFAULT '', content_pattern TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
       `INSERT OR IGNORE INTO notification_rules (package_name, content_pattern, created_at, updated_at) SELECT package_name, content_pattern, created_at, updated_at FROM notification_rules_legacy`,
       `CREATE TABLE notification_events (id INTEGER PRIMARY KEY AUTOINCREMENT, package_name TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, rule_package_name TEXT REFERENCES notification_rules(package_name) ON UPDATE CASCADE ON DELETE SET NULL, donation_id INTEGER REFERENCES donations(id) ON DELETE SET NULL, status TEXT NOT NULL, error TEXT, received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
       `INSERT INTO notification_events (id, package_name, title, content, rule_package_name, donation_id, status, error, received_at) SELECT e.id, e.package_name, e.title, e.content, r.package_name, e.donation_id, e.status, e.error, e.received_at FROM notification_events_legacy e LEFT JOIN notification_rules_legacy r ON r.id = e.rule_id`,
@@ -153,6 +154,8 @@ export async function initializeDatabase() {
       `DROP TABLE notification_rules_legacy`
     ]);
   }
+  const currentNotificationRuleColumns = new Set((await db.execute(`PRAGMA table_info(notification_rules)`)).rows.map(column => column.name));
+  if (!currentNotificationRuleColumns.has('title_pattern')) await db.execute(`ALTER TABLE notification_rules ADD COLUMN title_pattern TEXT NOT NULL DEFAULT ''`);
   const apiLogColumns = new Set((await db.execute(`PRAGMA table_info(api_request_logs)`)).rows.map(column => column.name));
   if (!apiLogColumns.has('recipient_user_id')) await db.execute(`ALTER TABLE api_request_logs ADD COLUMN recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
   const userColumns = new Set((await db.execute(`PRAGMA table_info(users)`)).rows.map(column => column.name));

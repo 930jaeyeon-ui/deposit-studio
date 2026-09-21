@@ -41,7 +41,7 @@ npm.cmd run dev
 }
 ```
 
-내용 정규식에는 입금자 `(?<donor>...)`와 금액 `(?<amount>...)` 이름 캡처 그룹이 필요합니다. 요청에는 사용자 로그인 아이디와 비밀번호를 HTTP Basic Auth로 전송합니다. Authorization 헤더는 API 로그에서 마스킹됩니다.
+규칙의 제목(선택) 및 내용 정규식을 합쳐 입금자 `(?<donor>...)`와 금액 `(?<amount>...)` 이름 캡처 그룹이 필요합니다. 예를 들어 제목에서 `amount`를, 내용에서 `donor`를 각각 추출할 수 있습니다. 제목 정규식이 비어 있으면 기존처럼 내용만 파싱합니다. 요청에는 사용자 로그인 아이디와 비밀번호를 HTTP Basic Auth로 전송합니다. Authorization 헤더는 API 로그에서 마스킹됩니다.
 
 SQLite 파일은 최초 실행 시 `data/deposit-studio.db`에 생성됩니다.
 
