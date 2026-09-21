@@ -47,16 +47,21 @@ jobs:
           printf '%s\n' "$OCI_SSH_PRIVATE_KEY" > ~/.ssh/oci_deploy
           printf '%s\n' "$OCI_KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/oci_deploy ~/.ssh/known_hosts
+      - name: Deploy frontend to web server
+        run: |
+          user="${OCI_USER:-opc}"
+          for attempt in {1..60}; do
+            if ssh -o ConnectTimeout=5 -i ~/.ssh/oci_deploy "${user}@${OCI_WEB_HOST}" true; then break; fi
+            if [ "$attempt" -eq 60 ]; then exit 1; fi
+            sleep 5
+          done
+          scp -i ~/.ssh/oci_deploy /tmp/deposit-studio-web-${GITHUB_SHA}.tar.gz deploy/oci/deploy-web.sh "${user}@${OCI_WEB_HOST}:/tmp/"
+          ssh -i ~/.ssh/oci_deploy "${user}@${OCI_WEB_HOST}" "sudo RELEASE_ID='${GITHUB_SHA}' bash /tmp/deploy-web.sh"
       - name: Deploy API to WAS
         run: |
           user="${OCI_USER:-opc}"
           scp -i ~/.ssh/oci_deploy /tmp/deposit-studio-api-${GITHUB_SHA}.tar.gz deploy/oci/deploy-was.sh "${user}@${OCI_WAS_HOST}:/tmp/"
           ssh -i ~/.ssh/oci_deploy "${user}@${OCI_WAS_HOST}" "sudo RELEASE_ID='${GITHUB_SHA}' WEB_ORIGIN='http://${OCI_WEB_HOST}' bash /tmp/deploy-was.sh"
-      - name: Deploy frontend to web server
-        run: |
-          user="${OCI_USER:-opc}"
-          scp -i ~/.ssh/oci_deploy /tmp/deposit-studio-web-${GITHUB_SHA}.tar.gz deploy/oci/deploy-web.sh "${user}@${OCI_WEB_HOST}:/tmp/"
-          ssh -i ~/.ssh/oci_deploy "${user}@${OCI_WEB_HOST}" "sudo RELEASE_ID='${GITHUB_SHA}' bash /tmp/deploy-web.sh"
       - name: Verify public endpoints
         run: |
           curl -fsS --retry 5 --retry-delay 3 "http://${OCI_WAS_HOST}/api/health"
