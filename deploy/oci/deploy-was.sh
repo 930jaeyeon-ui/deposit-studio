@@ -56,6 +56,11 @@ systemctl daemon-reload
 systemctl enable deposit-studio-api nginx
 systemctl restart deposit-studio-api
 systemctl reload nginx
+if command -v firewall-cmd >/dev/null; then
+  firewall-cmd --permanent --remove-service=http 2>/dev/null || true
+  firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="10.0.0.0/24" service name="http" accept'
+  firewall-cmd --reload
+fi
 for attempt in {1..20}; do
   if curl -fsS http://127.0.0.1/api/health >/dev/null; then
     rm -f "$archive" /tmp/deploy-was.sh

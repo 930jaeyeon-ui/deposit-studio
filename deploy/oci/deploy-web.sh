@@ -9,52 +9,57 @@ install -d /var/www/deposit-studio/releases "$release_dir"
 tar -xzf "$archive" -C "$release_dir"
 ln -sfn "$release_dir/dist" /var/www/deposit-studio/current-next
 mv -Tf /var/www/deposit-studio/current-next /var/www/deposit-studio/current
-cat >/usr/local/bin/deposit-studio-web.py <<'PY'
-from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from pathlib import Path
+test -x /usr/local/bin/caddy
+install -d /etc/caddy
+cat >/etc/caddy/Caddyfile <<'EOF'
+n9signal.duckdns.org {
+  encode zstd gzip
 
-ROOT = Path('/var/www/deposit-studio/current')
+  handle /api/* {
+    reverse_proxy 10.0.0.235:80
+  }
 
-class SpaHandler(SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=str(ROOT), **kwargs)
-    def send_head(self):
-        path = ROOT / self.translate_path(self.path).removeprefix(str(ROOT)).lstrip('/')
-        if self.path.split('?', 1)[0] != '/' and not path.exists():
-            self.path = '/index.html'
-        return super().send_head()
-
-ThreadingHTTPServer(('0.0.0.0', 80), SpaHandler).serve_forever()
-PY
-cat >/etc/systemd/system/deposit-studio-web.service <<'EOF'
+  handle {
+    root * /var/www/deposit-studio/current
+    try_files {path} /index.html
+    file_server
+  }
+}
+EOF
+cat >/etc/systemd/system/caddy.service <<'EOF'
 [Unit]
-Description=Deposit Studio Web
+Description=Caddy Web Server
 After=network.target
 [Service]
 Type=simple
 User=opc
-WorkingDirectory=/var/www/deposit-studio/current
-ExecStart=/usr/bin/python3 /usr/local/bin/deposit-studio-web.py
+Group=opc
+ExecStart=/usr/local/bin/caddy run --environ --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile --force
 AmbientCapabilities=CAP_NET_BIND_SERVICE
+LimitNOFILE=1048576
 Restart=always
 RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
 chown -R opc:opc /var/www/deposit-studio
+/usr/local/bin/caddy validate --config /etc/caddy/Caddyfile
 systemctl daemon-reload
-systemctl enable deposit-studio-web
-systemctl restart deposit-studio-web
+systemctl disable --now deposit-studio-web 2>/dev/null || true
+systemctl enable caddy
+systemctl restart caddy
 if command -v firewall-cmd >/dev/null; then
   firewall-cmd --permanent --add-service=http
+  firewall-cmd --permanent --add-service=https
   firewall-cmd --reload
 fi
 for attempt in {1..20}; do
-  if curl -fsS http://127.0.0.1/ >/dev/null; then
+  if curl -kfsS --resolve n9signal.duckdns.org:443:127.0.0.1 https://n9signal.duckdns.org/ >/dev/null; then
     rm -f "$archive" /tmp/deploy-web.sh
     exit 0
   fi
   sleep 1
 done
-journalctl -u deposit-studio-web --no-pager -n 80
+journalctl -u caddy --no-pager -n 80
 exit 1

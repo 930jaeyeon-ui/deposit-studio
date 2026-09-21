@@ -30,7 +30,7 @@ jobs:
       - run: npm test
       - name: Build frontend
         env:
-          VITE_API_URL: http://${{ secrets.OCI_WAS_HOST }}
+          VITE_API_URL: https://n9signal.duckdns.org
         run: npm run build
       - name: Package releases
         run: |
@@ -61,8 +61,8 @@ jobs:
         run: |
           user="${OCI_USER:-opc}"
           scp -i ~/.ssh/oci_deploy /tmp/deposit-studio-api-${GITHUB_SHA}.tar.gz deploy/oci/deploy-was.sh "${user}@${OCI_WAS_HOST}:/tmp/"
-          ssh -i ~/.ssh/oci_deploy "${user}@${OCI_WAS_HOST}" "sudo RELEASE_ID='${GITHUB_SHA}' WEB_ORIGIN='http://${OCI_WEB_HOST}' bash /tmp/deploy-was.sh"
+          ssh -i ~/.ssh/oci_deploy "${user}@${OCI_WAS_HOST}" "sudo RELEASE_ID='${GITHUB_SHA}' WEB_ORIGIN='https://n9signal.duckdns.org' bash /tmp/deploy-was.sh"
       - name: Verify public endpoints
         run: |
-          curl -fsS --retry 5 --retry-delay 3 "http://${OCI_WAS_HOST}/api/health"
-          curl -fsS --retry 5 --retry-delay 3 "http://${OCI_WEB_HOST}/" >/dev/null
+          curl -fsS --retry 10 --retry-delay 3 "https://n9signal.duckdns.org/api/health"
+          curl -fsS --retry 10 --retry-delay 3 "https://n9signal.duckdns.org/" >/dev/null
