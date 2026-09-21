@@ -65,6 +65,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   toonationUseOwnAlert: false,
   rankingTitle: '오늘의 후원',
   rankingLimit: 3,
+  rankingFontFamily: '"Noto Sans KR", sans-serif',
   rankingFontSize: 30,
   rankingFontWeight: 700,
   rankingUseLineHeight: false,

@@ -81,7 +81,7 @@ GitHub 저장소의 **Settings > Secrets and variables > Actions**에 다음 Rep
 - `OCI_USER`: SSH 사용자(생략하려면 secret 대신 `opc`가 기본값으로 사용됨)
 - `OCI_SSH_PRIVATE_KEY`: 배포용 SSH 개인 키 전체 내용
 - `OCI_KNOWN_HOSTS`: 두 서버에 대한 `ssh-keyscan -H <OCI_WEB_HOST> <OCI_WAS_HOST>` 결과
-- `ELEVENLABS_API_KEY`: 후원 알림 TTS와 AI 효과음에 사용할 ElevenLabs API 키
+- `ELEVENLABS_API_KEY`: 후원 알림 TTS에 사용할 ElevenLabs API 키
 
 워크플로 파일은 `.github/workflows/deploy-oci.yml`, 서버 배포 스크립트는
 `deploy/oci/deploy-web.sh`와 `deploy/oci/deploy-was.sh`입니다. 배포마다 새 릴리스를 만들고,

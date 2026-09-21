@@ -85,27 +85,3 @@ export async function createElevenSpeech({ text, voiceId, model = DEFAULT_MODEL,
   );
   return Buffer.from(await response.arrayBuffer());
 }
-
-export async function createElevenSoundEffect({ text, durationSeconds = 2 }) {
-  const safeText = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 450);
-  if (safeText.length < 3) {
-    const error = new Error('만들고 싶은 효과음을 3자 이상 설명해주세요.');
-    error.status = 400;
-    throw error;
-  }
-  const safeDuration = Math.max(0.5, Math.min(10, Number(durationSeconds) || 2));
-  const response = await elevenFetch(
-    '/v1/sound-generation?output_format=mp3_44100_128',
-    {
-      method:'POST',
-      body:JSON.stringify({
-        text:safeText,
-        duration_seconds:safeDuration,
-        prompt_influence:0.45,
-        loop:false,
-        model_id:'eleven_text_to_sound_v2',
-      }),
-    },
-  );
-  return Buffer.from(await response.arrayBuffer());
-}

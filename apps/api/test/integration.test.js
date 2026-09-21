@@ -46,8 +46,75 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.displayName,'E2E 멤버');
     result = await request('/api/settings',{cookie:memberCookie});
     assert.equal(result.response.status,200);
-    result = await request('/api/settings',{method:'PUT',cookie:memberCookie,body:{...result.data,minimumDonationAmount:1000,alertMinimumAmount:1000}});
+    assert.equal((await request('/api/settings')).response.status,401);
+    assert.equal((await request('/api/tts/voices',{cookie:memberCookie})).data.configured,false);
+    assert.equal((await request('/api/tts/preview',{method:'POST',cookie:memberCookie,body:{text:'테스트',voiceId:'voice-test'}})).response.status,503);
+    assert.equal((await request('/api/settings',{method:'PUT',cookie:memberCookie,body:{...result.data,toonationEnabled:true,toonationWidgetUrl:'https://example.com/widget/alertbox/abcdefgh'}})).response.status,400);
+
+    const detailedSettings = {
+      ...result.data,
+      minimumDonationAmount:1000,
+      alertMinimumAmount:1000,
+      durationMs:999999,
+      fontSize:1,
+      fontWeight:9999,
+      textAlign:'invalid',
+      animation:'invalid',
+      exitAnimation:'invalid',
+      soundVolume:-20,
+      ttsProvider:'invalid',
+      ttsRate:99,
+      ttsPitch:-1,
+      ttsVolume:101,
+      toonationEnabled:false,
+      toonationWidgetUrl:'  https://toon.at/widget/alertbox/abcdefgh  ',
+      toonationAlertMode:'custom-original-audio',
+      backgroundImageData:'data:text/plain;base64,Zm9v',
+      soundLibrary:[
+        { id:'valid',name:'효과음',data:'data:audio/mp3;base64,Zm9v' },
+        { id:'invalid',name:'잘못된 파일',data:'data:text/plain;base64,Zm9v' },
+      ],
+      amountTiers:[{
+        id:'vip',name:'VIP',minAmount:-10,maxAmount:999999999,enabled:true,
+        textMode:'custom',fontSize:999,fontWeight:1,
+        effectMode:'custom',durationMs:1,
+        soundMode:'custom',soundVolume:500,
+        ttsMode:'custom',ttsProvider:'invalid',ttsRate:0.1,ttsPitch:9,ttsVolume:-1,
+      }],
+      crewGrades:[{ id:'forbidden',name:'멤버가 바꿀 수 없음',minAmount:0,maxAmount:null }],
+    };
+    result = await request('/api/settings',{method:'PUT',cookie:memberCookie,body:detailedSettings});
     assert.equal(result.data.minimumDonationAmount,1000);
+    assert.equal(result.data.durationMs,30000);
+    assert.equal(result.data.fontSize,20);
+    assert.equal(result.data.fontWeight,900);
+    assert.equal(result.data.textAlign,'center');
+    assert.equal(result.data.animation,'zoom');
+    assert.equal(result.data.exitAnimation,'fade-out');
+    assert.equal(result.data.soundVolume,0);
+    assert.equal(result.data.ttsProvider,'browser');
+    assert.equal(result.data.ttsRate,2);
+    assert.equal(result.data.ttsPitch,0);
+    assert.equal(result.data.ttsVolume,100);
+    assert.equal(result.data.toonationWidgetUrl,'https://toon.at/widget/alertbox/abcdefgh');
+    assert.equal(result.data.toonationAlertMode,'custom-original-audio');
+    assert.equal(result.data.toonationUseOwnAlert,true);
+    assert.equal(result.data.backgroundImageData,'');
+    assert.equal(result.data.soundLibrary.length,1);
+    assert.equal(result.data.amountTiers[0].minAmount,0);
+    assert.equal(result.data.amountTiers[0].maxAmount,100000000);
+    assert.equal(result.data.amountTiers[0].fontSize,160);
+    assert.equal(result.data.amountTiers[0].fontWeight,100);
+    assert.equal(result.data.amountTiers[0].durationMs,1000);
+    assert.equal(result.data.amountTiers[0].soundVolume,100);
+    assert.equal(result.data.amountTiers[0].ttsProvider,'browser');
+    assert.equal(result.data.amountTiers[0].ttsRate,.5);
+    assert.equal(result.data.amountTiers[0].ttsPitch,2);
+    assert.equal(result.data.amountTiers[0].ttsVolume,0);
+    assert.equal(result.data.crewGrades.some(grade=>grade.id==='forbidden'),false);
+    assert.equal((await request('/api/toonation/status',{cookie:memberCookie})).data.state,'disabled');
+    assert.equal((await request('/api/toonation/reconnect',{method:'POST',cookie:memberCookie,body:{}})).response.status,200);
+    assert.equal((await request('/api/my/deposits/test-alert',{method:'POST',cookie:memberCookie,body:{}})).data.ok,true);
 
     result = await request('/api/users',{method:'POST',cookie:superCookie,body:{loginId:'e2e-user',displayName:'E2E 사용자',role:'member'}});
     assert.equal(result.response.status,201);
@@ -97,10 +164,17 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     const sources = await request('/api/obs/sources',{cookie:memberCookie});
     result = await request(`/api${sources.data.alertPath}/bootstrap`);
     assert.equal(result.response.status,200);
+    assert.equal('toonationWidgetUrl' in result.data.settings,false);
     const lastId = Number(result.data.lastDonationId)-2;
     result = await request(`/api/donations?after=${Math.max(0,lastId)}`);
     assert.equal(result.data.filter(item=>['홍길동','길동이'].includes(item.donorName)).length,2);
     assert.equal((await request('/api/overlay/preview',{cookie:memberCookie})).response.status,200);
+    result = await request('/api/overlay/preview-session',{method:'POST',cookie:memberCookie,body:{}});
+    assert.equal(result.response.status,200);
+    const previewSession = await request(`/api/overlay/preview-session/${result.data.token}`);
+    assert.equal(previewSession.response.status,200);
+    assert.equal('toonationWidgetUrl' in previewSession.data.settings,false);
+    assert.equal((await request('/api/overlay/preview-session/not-a-token')).response.status,404);
 
     const controller = new AbortController();
     const sseResponse = await fetch(`${base}/api/my/phone-test/events`,{headers:{Cookie:memberCookie},signal:controller.signal});
@@ -129,7 +203,13 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal((await request('/api/auth/logout',{method:'POST',cookie:superCookie})).response.status,200);
   } finally {
     await new Promise(resolve=>server.close(resolve));
-    db.close();
-    rmSync(directory,{recursive:true,force:true});
+    await db.close();
+    try {
+      rmSync(directory,{recursive:true,force:true,maxRetries:10,retryDelay:100});
+    } catch (error) {
+      // Windows may briefly retain libSQL file handles after close(); do not turn
+      // an otherwise successful E2E run into a product failure during cleanup.
+      if (error.code !== 'EPERM') throw error;
+    }
   }
 });

@@ -2752,18 +2752,64 @@ function Empty() {
 }
 
 const FONT_OPTIONS = [
-  ['Pretendard, "Noto Sans KR", sans-serif', "Pretendard"],
+  // Web fonts: OBS에서 별도 설치 없이 사용할 수 있습니다.
   ['"Noto Sans KR", sans-serif', "Noto Sans KR"],
   ['"Noto Serif KR", serif', "Noto Serif KR"],
+  ['"Gothic A1", sans-serif', "Gothic A1"],
+  ['"IBM Plex Sans KR", sans-serif', "IBM Plex Sans KR"],
   ['"Nanum Gothic", sans-serif', "나눔고딕"],
   ['"Nanum Myeongjo", serif', "나눔명조"],
-  ['"NanumSquare", sans-serif', "나눔스퀘어"],
-  ['"NanumSquareRound", sans-serif', "나눔스퀘어라운드"],
-  ['"Gmarket Sans", sans-serif', "G마켓 산스"],
-  ['"S-Core Dream", sans-serif', "에스코어 드림"],
-  ['"Spoqa Han Sans Neo", sans-serif', "스포카 한 산스"],
-  ['"Apple SD Gothic Neo", sans-serif', "Apple SD Gothic Neo"],
-  ['"Malgun Gothic", sans-serif', "맑은 고딕"],
+  ['"Nanum Gothic Coding", monospace', "나눔고딕 코딩"],
+  ['"Gowun Dodum", sans-serif', "고운돋움"],
+  ['"Gowun Batang", serif', "고운바탕"],
+  ['"Hahmlet", serif', "함렛"],
+  ['"Sunflower", sans-serif', "해바라기"],
+  ['"Do Hyeon", sans-serif', "도현"],
+  ['"Black Han Sans", sans-serif', "검은고딕"],
+  ['"Jua", sans-serif', "주아"],
+  ['"Gugi", sans-serif', "구기"],
+  ['"Gasoek One", sans-serif', "가석원"],
+  ['"Bagel Fat One", sans-serif', "베이글팻원"],
+  ['"Orbit", sans-serif', "오르빗"],
+  ['"Moirai One", sans-serif', "모이라이원"],
+  ['"Grandiflora One", serif', "그란디플로라원"],
+  ['"Diphylleia", serif', "디필레이아"],
+  ['"Stylish", sans-serif', "스타일리시"],
+  ['"Song Myung", serif', "송명"],
+  ['"Dongle", sans-serif', "동글"],
+  ['"Cute Font", cursive', "귀여운 글씨"],
+  ['"Gamja Flower", cursive', "감자꽃"],
+  ['"Gaegu", cursive', "개구쟁이"],
+  ['"Hi Melody", cursive', "하이멜로디"],
+  ['"Poor Story", cursive', "푸어스토리"],
+  ['"Single Day", cursive', "싱글데이"],
+  ['"Yeon Sung", cursive', "연성"],
+  ['"Nanum Pen Script", cursive', "나눔펜"],
+  ['"Nanum Brush Script", cursive', "나눔붓글씨"],
+  ['"Kirang Haerang", cursive', "기랑해랑"],
+  ['"Dokdo", cursive', "독도"],
+  ['"East Sea Dokdo", cursive', "동해독도"],
+  // Latin display fonts: 한글 문자는 Noto Sans KR로 자동 대체됩니다.
+  ['"Montserrat", "Noto Sans KR", sans-serif', "Montserrat (영문)"],
+  ['"Roboto Condensed", "Noto Sans KR", sans-serif', "Roboto Condensed (영문)"],
+  ['"Oswald", "Noto Sans KR", sans-serif', "Oswald (영문)"],
+  ['"Anton", "Noto Sans KR", sans-serif', "Anton (영문)"],
+  ['"Bebas Neue", "Noto Sans KR", sans-serif', "Bebas Neue (영문)"],
+  ['"Bungee", "Noto Sans KR", sans-serif', "Bungee (영문)"],
+  ['"Cinzel", "Noto Serif KR", serif', "Cinzel (영문)"],
+  ['"Playfair Display", "Noto Serif KR", serif', "Playfair Display (영문)"],
+  ['"Lobster", "Noto Sans KR", cursive', "Lobster (영문)"],
+  ['"Pacifico", "Noto Sans KR", cursive', "Pacifico (영문)"],
+  ['"Permanent Marker", "Noto Sans KR", cursive', "Permanent Marker (영문)"],
+  // Local fonts: OBS가 실행되는 PC에 설치되어 있어야 합니다.
+  ['Pretendard, "Noto Sans KR", sans-serif', "Pretendard (로컬)"],
+  ['"NanumSquare", "Noto Sans KR", sans-serif', "나눔스퀘어 (로컬)"],
+  ['"NanumSquareRound", "Noto Sans KR", sans-serif', "나눔스퀘어라운드 (로컬)"],
+  ['"Gmarket Sans", "Noto Sans KR", sans-serif', "G마켓 산스 (로컬)"],
+  ['"S-Core Dream", "Noto Sans KR", sans-serif', "에스코어 드림 (로컬)"],
+  ['"Spoqa Han Sans Neo", "Noto Sans KR", sans-serif', "스포카 한 산스 (로컬)"],
+  ['"Apple SD Gothic Neo", "Noto Sans KR", sans-serif', "Apple SD Gothic Neo (로컬)"],
+  ['"Malgun Gothic", "Noto Sans KR", sans-serif', "맑은 고딕 (로컬)"],
   ['"Arial", sans-serif', "Arial"],
   ['"Arial Black", sans-serif', "Arial Black"],
   ["Impact, sans-serif", "Impact"],
@@ -2816,6 +2862,114 @@ const RANKING_THEMES = [
   ["transparent", "투명 미니멀", "1."],
   ["custom", "직접 설정", "내 스타일"],
 ];
+const rankingStyles = (first, second, third, rest) => [
+  first,
+  second,
+  third,
+  rest,
+];
+const RANKING_THEME_PRESETS = {
+  midnight: {
+    rankingFontFamily: '"Noto Sans KR", sans-serif', rankingFontSize: 30, rankingFontWeight: 700,
+    rankingUseLineHeight: true, rankingLineHeight: 1.2, rankingLetterSpacing: -1, rankingRowGap: 10, rankingColumnGap: 24,
+    rankingTitleSize: 24, rankingTitleAlign: "left", rankingTitleColor: "#ffffff", rankingNameColor: "#ffffff", rankingAmountColor: "#b9dcff",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "fade", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#ffe58a", badge: "#8a6414", size: 118, weight: 900 }, { color: "#e2edfa", badge: "#60758b", size: 109, weight: 800 },
+      { color: "#ffc092", badge: "#855137", size: 104, weight: 800 }, { color: "#ffffff", badge: "#315b88", size: 100, weight: 700 },
+    ),
+  },
+  clean: {
+    rankingFontFamily: '"Gothic A1", sans-serif', rankingFontSize: 27, rankingFontWeight: 600,
+    rankingUseLineHeight: true, rankingLineHeight: 1.3, rankingLetterSpacing: -0.5, rankingRowGap: 7, rankingColumnGap: 28,
+    rankingTitleSize: 21, rankingTitleAlign: "left", rankingTitleColor: "#27425e", rankingNameColor: "#315574", rankingAmountColor: "#376e9f",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "slide-up", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#173b5f", badge: "#b9d7ef", size: 112, weight: 900 }, { color: "#315574", badge: "#d8e5ef", size: 106, weight: 800 },
+      { color: "#426882", badge: "#e5edf3", size: 102, weight: 700 }, { color: "#315574", badge: "#e4edf6", size: 100, weight: 600 },
+    ),
+  },
+  neon: {
+    rankingFontFamily: '"Gasoek One", sans-serif', rankingFontSize: 29, rankingFontWeight: 400,
+    rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: 0, rankingRowGap: 13, rankingColumnGap: 30,
+    rankingTitleSize: 27, rankingTitleAlign: "center", rankingTitleColor: "#ff72ef", rankingNameColor: "#70ffe7", rankingAmountColor: "#ff8ff2",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "zoom", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#fff36d", badge: "#ff34dc", size: 125, weight: 900 }, { color: "#7ffff0", badge: "#793fff", size: 114, weight: 800 },
+      { color: "#ff9cf1", badge: "#254fff", size: 108, weight: 800 }, { color: "#70ffe7", badge: "#2b0b35", size: 100, weight: 700 },
+    ),
+  },
+  gold: {
+    rankingFontFamily: '"Noto Serif KR", serif', rankingFontSize: 31, rankingFontWeight: 700,
+    rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: -0.5, rankingRowGap: 12, rankingColumnGap: 26,
+    rankingTitleSize: 29, rankingTitleAlign: "center", rankingTitleColor: "#ffd76a", rankingNameColor: "#fff1bf", rankingAmountColor: "#ffd76a",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "stagger", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#fff3a8", badge: "#c99628", size: 130, weight: 900 }, { color: "#f0f2f5", badge: "#9ca6af", size: 117, weight: 800 },
+      { color: "#f2b384", badge: "#a75d31", size: 110, weight: 800 }, { color: "#fff1bf", badge: "#6d511b", size: 100, weight: 700 },
+    ),
+  },
+  rose: {
+    rankingFontFamily: '"Hahmlet", serif', rankingFontSize: 29, rankingFontWeight: 700,
+    rankingUseLineHeight: true, rankingLineHeight: 1.3, rankingLetterSpacing: -0.5, rankingRowGap: 9, rankingColumnGap: 24,
+    rankingTitleSize: 26, rankingTitleAlign: "left", rankingTitleColor: "#ff9cbd", rankingNameColor: "#ffe8f0", rankingAmountColor: "#ff9cbd",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "slide-left", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#fff0c9", badge: "#c13f70", size: 120, weight: 900 }, { color: "#ffe3ee", badge: "#963457", size: 111, weight: 800 },
+      { color: "#ffc1d7", badge: "#7b2948", size: 105, weight: 800 }, { color: "#ffe8f0", badge: "#a5315c", size: 100, weight: 700 },
+    ),
+  },
+  ocean: {
+    rankingFontFamily: '"Gowun Dodum", sans-serif', rankingFontSize: 29, rankingFontWeight: 700,
+    rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: 0, rankingRowGap: 11, rankingColumnGap: 30,
+    rankingTitleSize: 25, rankingTitleAlign: "left", rankingTitleColor: "#6bd9ff", rankingNameColor: "#d9f6ff", rankingAmountColor: "#6bd9ff",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "slide-up", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#ffffff", badge: "#00a7d8", size: 122, weight: 900 }, { color: "#b8efff", badge: "#167da4", size: 112, weight: 800 },
+      { color: "#89def8", badge: "#11607f", size: 106, weight: 800 }, { color: "#d9f6ff", badge: "#0d4a64", size: 100, weight: 700 },
+    ),
+  },
+  forest: {
+    rankingFontFamily: '"Gowun Batang", serif', rankingFontSize: 29, rankingFontWeight: 700,
+    rankingUseLineHeight: true, rankingLineHeight: 1.32, rankingLetterSpacing: 0, rankingRowGap: 10, rankingColumnGap: 28,
+    rankingTitleSize: 25, rankingTitleAlign: "left", rankingTitleColor: "#87e7b0", rankingNameColor: "#dcf7e7", rankingAmountColor: "#87e7b0",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "fade", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#efffb0", badge: "#3b875e", size: 119, weight: 900 }, { color: "#d7f5e3", badge: "#317655", size: 110, weight: 800 },
+      { color: "#aee8c6", badge: "#286046", size: 105, weight: 800 }, { color: "#dcf7e7", badge: "#246645", size: 100, weight: 700 },
+    ),
+  },
+  lavender: {
+    rankingFontFamily: '"Jua", sans-serif', rankingFontSize: 30, rankingFontWeight: 400,
+    rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: 0, rankingRowGap: 11, rankingColumnGap: 26,
+    rankingTitleSize: 27, rankingTitleAlign: "center", rankingTitleColor: "#dccbff", rankingNameColor: "#eee7ff", rankingAmountColor: "#cbb2ff",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "zoom", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#fff4ad", badge: "#9877d8", size: 123, weight: 900 }, { color: "#eee7ff", badge: "#8061bd", size: 113, weight: 800 },
+      { color: "#d7c5ff", badge: "#6f50a7", size: 106, weight: 700 }, { color: "#eee7ff", badge: "#5c438a", size: 100, weight: 700 },
+    ),
+  },
+  mono: {
+    rankingFontFamily: '"Nanum Gothic Coding", monospace', rankingFontSize: 27, rankingFontWeight: 700,
+    rankingUseLineHeight: true, rankingLineHeight: 1.2, rankingLetterSpacing: 1, rankingRowGap: 6, rankingColumnGap: 20,
+    rankingTitleSize: 20, rankingTitleAlign: "left", rankingTitleColor: "#ffffff", rankingNameColor: "#f1f1f1", rankingAmountColor: "#c8c8c8",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "none", rankingBackgroundEnabled: true,
+    rankingRankStyles: rankingStyles(
+      { color: "#ffffff", badge: "#777777", size: 114, weight: 900 }, { color: "#e0e0e0", badge: "#5e5e5e", size: 108, weight: 800 },
+      { color: "#c5c5c5", badge: "#494949", size: 104, weight: 800 }, { color: "#f1f1f1", badge: "#333333", size: 100, weight: 700 },
+    ),
+  },
+  transparent: {
+    rankingFontFamily: '"Noto Sans KR", sans-serif', rankingFontSize: 28, rankingFontWeight: 700,
+    rankingUseLineHeight: true, rankingLineHeight: 1.2, rankingLetterSpacing: -0.5, rankingRowGap: 5, rankingColumnGap: 20,
+    rankingTitleSize: 22, rankingTitleAlign: "right", rankingTitleColor: "#ffffff", rankingNameColor: "#ffffff", rankingAmountColor: "#dbeaff",
+    rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "fade", rankingBackgroundEnabled: false,
+    rankingRankStyles: rankingStyles(
+      { color: "#ffe080", badge: "#ffffff", size: 116, weight: 900 }, { color: "#e8eef5", badge: "#ffffff", size: 108, weight: 800 },
+      { color: "#e8b48b", badge: "#ffffff", size: 103, weight: 800 }, { color: "#ffffff", badge: "#ffffff", size: 100, weight: 700 },
+    ),
+  },
+};
 function rankMarker(theme, index) {
   const rank = index + 1;
   if (theme === "gold" && rank <= 3) return ["🥇", "🥈", "🥉"][index];
@@ -3247,9 +3401,6 @@ function Settings({ mode }) {
   const [elevenVoices, setElevenVoices] = useState([]);
   const [elevenConfigured, setElevenConfigured] = useState(null);
   const [elevenVoiceError, setElevenVoiceError] = useState("");
-  const [soundEffectPrompt, setSoundEffectPrompt] = useState("");
-  const [soundEffectDuration, setSoundEffectDuration] = useState(2);
-  const [soundEffectGenerating, setSoundEffectGenerating] = useState(false);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [savedSettings, setSavedSettings] = useState(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -3560,49 +3711,6 @@ function Settings({ mode }) {
       setSaved(error.message);
     }
   }
-  async function generateSoundEffect() {
-    const prompt = soundEffectPrompt.trim();
-    if (prompt.length < 3) {
-      setSaved("만들고 싶은 효과음을 3자 이상 설명해주세요.");
-      return;
-    }
-    if ((settings.soundLibrary || []).length >= 10) {
-      setSaved("내 음원은 계정마다 최대 10개까지 보관할 수 있습니다.");
-      return;
-    }
-    setSoundEffectGenerating(true);
-    setSaved("");
-    try {
-      const response = await fetch(apiUrl("/api/tts/sound-effect"), {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: prompt,
-          durationSeconds: soundEffectDuration,
-        }),
-        signal: AbortSignal.timeout(45000),
-      });
-      if (!response.ok) {
-        const data = await response.json().catch(() => null);
-        throw new Error(data?.error || "AI 효과음을 만들지 못했습니다.");
-      }
-      const safeName = prompt.replace(/[\\/:*?"<>|]/g, " ").slice(0, 36);
-      const file = new File([await response.blob()], `AI ${safeName}.mp3`, {
-        type: "audio/mpeg",
-      });
-      await addLibrarySound(file, (current, preset) => ({
-        ...current,
-        soundPreset: preset,
-        soundEnabled: true,
-      }));
-      setSoundEffectPrompt("");
-    } catch (error) {
-      setSaved(error.message || "AI 효과음을 만들지 못했습니다.");
-    } finally {
-      setSoundEffectGenerating(false);
-    }
-  }
   const loadSound = (event) =>
     addLibrarySound(event.target.files?.[0], (current, preset) => ({
       ...current,
@@ -3799,8 +3907,9 @@ function Settings({ mode }) {
                   onToggle={() => toggleAlertSection("text")}
                 >
                   <p className="alert-setting-help">
-                    OBS가 실행되는 PC에 설치된 글꼴이 사용됩니다. 목록에 없는
-                    글꼴은 직접 입력할 수 있습니다.
+                    웹폰트는 OBS PC에 설치하지 않아도 사용할 수 있습니다. 이름에
+                    ‘로컬’이 붙은 글꼴과 직접 입력한 글꼴은 OBS PC에 설치되어야
+                    합니다.
                   </p>
                   <label>
                     글꼴
@@ -4194,62 +4303,6 @@ function Settings({ mode }) {
                         />
                         <span>{settings.soundVolume}%</span>
                       </label>
-                      <div className="ai-sound-generator">
-                        <div>
-                          <b>ElevenLabs AI 효과음 만들기</b>
-                          <small>
-                            문장으로 효과음을 만들면 내 음원에 저장되고 바로 선택됩니다.
-                          </small>
-                        </div>
-                        {!elevenConfigured && (
-                          <p className="form-message">
-                            서버에 ElevenLabs API 키를 연결하면 사용할 수 있습니다.
-                          </p>
-                        )}
-                        <label>
-                          효과음 설명
-                          <input
-                            value={soundEffectPrompt}
-                            maxLength="450"
-                            disabled={!elevenConfigured || soundEffectGenerating}
-                            placeholder="예: 밝은 동전 소리 뒤에 짧은 반짝임"
-                            onChange={(e) => setSoundEffectPrompt(e.target.value)}
-                          />
-                        </label>
-                        <label>
-                          길이
-                          <input
-                            type="range"
-                            min="0.5"
-                            max="5"
-                            step="0.5"
-                            value={soundEffectDuration}
-                            disabled={!elevenConfigured || soundEffectGenerating}
-                            onChange={(e) =>
-                              setSoundEffectDuration(Number(e.target.value))
-                            }
-                          />
-                          <span>{soundEffectDuration}초</span>
-                        </label>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          disabled={
-                            !elevenConfigured ||
-                            soundEffectGenerating ||
-                            soundEffectPrompt.trim().length < 3
-                          }
-                          onClick={generateSoundEffect}
-                        >
-                          {soundEffectGenerating
-                            ? "AI 효과음 만드는 중..."
-                            : "AI 효과음 생성하고 추가"}
-                        </button>
-                        <small>
-                          API에서는 길이를 직접 지정하면 현재 초당 약 20크레딧이
-                          사용됩니다.
-                        </small>
-                      </div>
                       <label className="sound-upload">
                         내 음원 보관함에 추가
                         <input
@@ -5220,7 +5273,7 @@ function Settings({ mode }) {
                 <AlertSettingSection
                   id="ranking-display"
                   title="표시할 후원"
-                  description="최소 기록 금액·표시 인원"
+                  description="순위표에 집계할 최소 금액"
                   open={Boolean(openAlertSections["ranking-display"])}
                   onToggle={() => toggleAlertSection("ranking-display")}
                 >
@@ -5239,16 +5292,6 @@ function Settings({ mode }) {
                       }
                     />
                   </label>
-                  <label>
-                    표시 순위
-                    <select
-                      value={Number(settings.rankingLimit) === 1 ? 1 : 3}
-                      onChange={(e) => update("rankingLimit", Number(e.target.value))}
-                    >
-                      <option value="1">1등만 표시</option>
-                      <option value="3">1~3등 표시</option>
-                    </select>
-                  </label>
                 </AlertSettingSection>
                 <AlertSettingSection
                   id="ranking-theme"
@@ -5258,8 +5301,8 @@ function Settings({ mode }) {
                   onToggle={() => toggleAlertSection("ranking-theme")}
                 >
                   <p className="alert-setting-help">
-                    방송 화면에 어울리는 디자인을 고르면 오른쪽 미리보기에 바로
-                    반영됩니다.
+                    테마를 고르면 글꼴·간격·색상·상위 순위 강조까지 함께
+                    적용됩니다. 적용 후 각 항목을 자유롭게 수정할 수 있습니다.
                   </p>
                   <div className="ranking-theme-picker">
                     {RANKING_THEMES.map(([value, label, marker]) => (
@@ -5268,10 +5311,13 @@ function Settings({ mode }) {
                         key={value}
                         className={`theme-swatch swatch-${value} ${settings.rankingTheme === value ? "active" : ""}`}
                         onClick={() => {
+                          const preset = RANKING_THEME_PRESETS[value] || {};
                           setSettings((current) => ({
                             ...current,
+                            ...preset,
                             rankingTheme: value,
                             rankingShowRank: true,
+                            rankingRankHighlightEnabled: true,
                           }));
                           setPreviewRun((current) => current + 1);
                         }}
@@ -5437,6 +5483,19 @@ function Settings({ mode }) {
                   onToggle={() => toggleAlertSection("ranking-text")}
                 >
                   <label>
+                    글꼴
+                    <select
+                      value={settings.rankingFontFamily}
+                      onChange={(e) =>
+                        update("rankingFontFamily", e.target.value)
+                      }
+                    >
+                      {FONT_OPTIONS.map(([value, label]) => (
+                        <option value={value} key={label}>{label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
                     글자 크기
                     <input
                       type="range"
@@ -5495,6 +5554,7 @@ function Settings({ mode }) {
                       type="range"
                       min="-5"
                       max="20"
+                      step=".5"
                       value={settings.rankingLetterSpacing}
                       onChange={(e) =>
                         update("rankingLetterSpacing", Number(e.target.value))
@@ -5669,6 +5729,20 @@ function Settings({ mode }) {
                     />
                     <i />
                   </label>
+                  {settings.rankingShowRank && (
+                    <label>
+                      순위 번호 표시 범위
+                      <select
+                        value={Number(settings.rankingLimit) === 1 ? 1 : 3}
+                        onChange={(e) =>
+                          update("rankingLimit", Number(e.target.value))
+                        }
+                      >
+                        <option value="1">1위까지만</option>
+                        <option value="3">3위까지</option>
+                      </select>
+                    </label>
+                  )}
                   <label className="toggle-label">
                     후원 횟수 표시
                     <input
@@ -6054,27 +6128,25 @@ function RankingPreview({ settings }) {
     amount: Math.max(10000, 180000 - index * 2800),
     count: (index % 4) + 1,
   }));
-  const previewSettings = {
-    ...settings,
-    rankingLimit: Math.min(10, settings.rankingLimit || 10),
-  };
   return (
     <RankingOutputCanvas preview>
-      <RankingCard items={sample} settings={previewSettings} />
+      <RankingCard items={sample} settings={settings} />
     </RankingOutputCanvas>
   );
 }
 
 function RankingCard({ items, settings, onEdit }) {
-  const visible = items.slice(0, settings.rankingLimit || 10);
   const rows = Math.max(1, settings.rankingRowsPerColumn || 10);
   const maxColumns = Math.max(1, settings.rankingColumns || 1);
+  const visible = items.slice(0, rows * maxColumns);
+  const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   const columns = Array.from(
     { length: Math.min(maxColumns, Math.ceil(visible.length / rows) || 1) },
     (_, column) => visible.slice(column * rows, (column + 1) * rows),
   );
   const firstGridColumn = maxColumns - columns.length + 1;
   const cardStyle = {
+    fontFamily: settings.rankingFontFamily,
     "--ranking-size": `${settings.rankingFontSize}px`,
     "--ranking-gap": `${settings.rankingRowGap}px`,
     "--column-gap": `${settings.rankingColumnGap}px`,
@@ -6097,12 +6169,21 @@ function RankingCard({ items, settings, onEdit }) {
       {settings.rankingShowTitle && (
         <h2
           style={{
+            display: "grid",
+            gridTemplateColumns: `repeat(${maxColumns},minmax(0,1fr))`,
+            columnGap: `var(--column-gap)`,
             fontSize: settings.rankingTitleSize,
-            textAlign: settings.rankingTitleAlign,
             color: settings.rankingTitleColor,
           }}
         >
-          {settings.rankingTitle || "오늘의 후원"}
+          <span
+            style={{
+              gridColumn: `${firstGridColumn} / span ${columns.length}`,
+              textAlign: settings.rankingTitleAlign,
+            }}
+          >
+            {settings.rankingTitle || "오늘의 후원"}
+          </span>
         </h2>
       )}
       <div
@@ -6144,7 +6225,7 @@ function RankingCard({ items, settings, onEdit }) {
                   }}
                 >
                   <b style={{ textAlign: settings.rankingNameAlign }}>
-                    {settings.rankingShowRank && (
+                    {settings.rankingShowRank && index < rankNumberLimit && (
                       <em>{rankMarker(settings.rankingTheme, index)}</em>
                     )}
                     <span className="donor-name">

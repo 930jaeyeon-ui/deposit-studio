@@ -4,7 +4,7 @@ import { DEFAULT_SETTINGS, normalizeDonation } from '@deposit-studio/shared';
 import { activeSession, db } from './db.js';
 import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, requireSuper, verifyPassword } from './auth.js';
 import { parseNotification, validateRuleInput } from './notification-parser.js';
-import { createElevenSoundEffect, createElevenSpeech, elevenLabsConfigured, listElevenVoices } from './elevenlabs.js';
+import { createElevenSpeech, elevenLabsConfigured, listElevenVoices } from './elevenlabs.js';
 import { ToonationManager, toonationWidgetKey } from './toonation.js';
 
 export const app = express();
@@ -172,22 +172,6 @@ app.post('/api/tts/preview', requireAuth, async (req, res) => {
   }
 });
 
-app.post('/api/tts/sound-effect', requireAuth, async (req, res) => {
-  try {
-    if (!allowTtsRequest(`sound-effect:${req.user.id}`, 5)) {
-      return res.status(429).json({ error:'효과음 생성 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' });
-    }
-    const audio = await createElevenSoundEffect({
-      text:req.body?.text,
-      durationSeconds:req.body?.durationSeconds,
-    });
-    res.set({ 'Content-Type':'audio/mpeg', 'Cache-Control':'no-store' });
-    res.send(audio);
-  } catch (error) {
-    res.status(error.status || 502).json({ error:error.message });
-  }
-});
-
 app.post('/api/overlay/:token/tts', async (req, res) => {
   try {
     const user = await getObsUser(req.params.token);
@@ -298,7 +282,7 @@ function cleanSettings(input) {
   delete settings.previewDonorName;
   delete settings.previewCumulativeAmount;
   settings.ttsRate = Math.max(0.5, Math.min(2, Number(settings.ttsRate) || 1));
-  settings.ttsPitch = Math.max(0, Math.min(2, Number(settings.ttsPitch) || 1));
+  settings.ttsPitch = Math.max(0, Math.min(2, Number.isFinite(Number(settings.ttsPitch)) ? Number(settings.ttsPitch) : 1));
   settings.ttsVolume = Math.max(0, Math.min(100, Number.isFinite(Number(settings.ttsVolume)) ? Number(settings.ttsVolume) : DEFAULT_SETTINGS.ttsVolume));
   settings.crewGradeEnabled = Boolean(settings.crewGradeEnabled);
   settings.crewGradeDisplayMode=settings.crewGradeDisplayMode==='text'?'text':'image';
@@ -322,10 +306,11 @@ function cleanSettings(input) {
     messageMode:tier.messageMode === 'custom' ? 'custom' : 'inherit', messageTemplate:String(tier.messageTemplate || '').slice(0,300),
     textMode:tier.textMode === 'custom' ? 'custom' : 'inherit', fontFamily:String(tier.fontFamily || settings.fontFamily).slice(0,120), fontSize:Math.max(20,Math.min(160,Number(tier.fontSize)||settings.fontSize)), fontWeight:Math.max(100,Math.min(900,Number(tier.fontWeight)||settings.fontWeight)), textColor:String(tier.textColor || settings.textColor).slice(0,20), outlineColor:String(tier.outlineColor || settings.outlineColor).slice(0,20), outlineWidth:Math.max(0,Math.min(12,Number(tier.outlineWidth)||0)),
     effectMode:tier.effectMode === 'custom' ? 'custom' : 'inherit', animation:String(tier.animation || settings.animation).slice(0,30), exitAnimation:String(tier.exitAnimation || settings.exitAnimation).slice(0,30), durationMs:Math.max(1000,Math.min(30000,Number(tier.durationMs)||settings.durationMs)),
-    soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number(tier.soundVolume) || settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,7000000),
-    ttsMode:tier.ttsMode === 'custom' ? 'custom' : 'inherit', ttsEnabled:tier.ttsEnabled !== false, ttsProvider:tier.ttsProvider === 'elevenlabs' ? 'elevenlabs' : 'browser', ttsVoiceURI:String(tier.ttsVoiceURI || settings.ttsVoiceURI || '').slice(0,300), ttsElevenVoiceId:String(tier.ttsElevenVoiceId || settings.ttsElevenVoiceId || '').slice(0,80), ttsElevenVoiceName:String(tier.ttsElevenVoiceName || settings.ttsElevenVoiceName || '').slice(0,120), ttsModel:tier.ttsModel === 'eleven_multilingual_v2' ? 'eleven_multilingual_v2' : 'eleven_flash_v2_5', ttsRate:Math.max(.5,Math.min(2,Number(tier.ttsRate)||settings.ttsRate)), ttsPitch:Math.max(0,Math.min(2,Number(tier.ttsPitch)||settings.ttsPitch)), ttsVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.ttsVolume))?Number(tier.ttsVolume):settings.ttsVolume))
+    soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.soundVolume)) ? Number(tier.soundVolume) : settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,7000000),
+    ttsMode:tier.ttsMode === 'custom' ? 'custom' : 'inherit', ttsEnabled:tier.ttsEnabled !== false, ttsProvider:tier.ttsProvider === 'elevenlabs' ? 'elevenlabs' : 'browser', ttsVoiceURI:String(tier.ttsVoiceURI || settings.ttsVoiceURI || '').slice(0,300), ttsElevenVoiceId:String(tier.ttsElevenVoiceId || settings.ttsElevenVoiceId || '').slice(0,80), ttsElevenVoiceName:String(tier.ttsElevenVoiceName || settings.ttsElevenVoiceName || '').slice(0,120), ttsModel:tier.ttsModel === 'eleven_multilingual_v2' ? 'eleven_multilingual_v2' : 'eleven_flash_v2_5', ttsRate:Math.max(.5,Math.min(2,Number(tier.ttsRate)||settings.ttsRate)), ttsPitch:Math.max(0,Math.min(2,Number.isFinite(Number(tier.ttsPitch)) ? Number(tier.ttsPitch) : settings.ttsPitch)), ttsVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.ttsVolume))?Number(tier.ttsVolume):settings.ttsVolume))
   })) : [];
   settings.rankingLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
+  settings.rankingFontFamily = String(settings.rankingFontFamily || DEFAULT_SETTINGS.rankingFontFamily).slice(0,120);
   settings.rankingFontSize = Math.max(16, Math.min(72, Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize)));
   settings.rankingFontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.rankingFontWeight) || 700)));
   settings.rankingUseLineHeight = Boolean(settings.rankingUseLineHeight);
