@@ -58,9 +58,14 @@ jobs:
           scp -i ~/.ssh/oci_deploy /tmp/deposit-studio-web-${GITHUB_SHA}.tar.gz deploy/oci/deploy-web.sh "${user}@${OCI_WEB_HOST}:/tmp/"
           ssh -i ~/.ssh/oci_deploy "${user}@${OCI_WEB_HOST}" "sudo RELEASE_ID='${GITHUB_SHA}' bash /tmp/deploy-web.sh"
       - name: Deploy API to WAS
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
           user="${OCI_USER:-opc}"
-          scp -i ~/.ssh/oci_deploy /tmp/deposit-studio-api-${GITHUB_SHA}.tar.gz deploy/oci/deploy-was.sh "${user}@${OCI_WAS_HOST}:/tmp/"
+          test -n "$ELEVENLABS_API_KEY"
+          umask 077
+          printf 'ELEVENLABS_API_KEY=%s\n' "$ELEVENLABS_API_KEY" > /tmp/deposit-studio-api.env
+          scp -i ~/.ssh/oci_deploy /tmp/deposit-studio-api-${GITHUB_SHA}.tar.gz deploy/oci/deploy-was.sh /tmp/deposit-studio-api.env "${user}@${OCI_WAS_HOST}:/tmp/"
           ssh -i ~/.ssh/oci_deploy "${user}@${OCI_WAS_HOST}" "sudo RELEASE_ID='${GITHUB_SHA}' WEB_ORIGIN='https://n9signal.duckdns.org' bash /tmp/deploy-was.sh"
       - name: Verify public endpoints
         run: |

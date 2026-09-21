@@ -45,6 +45,13 @@ npm.cmd run dev
 
 SQLite 파일은 최초 실행 시 `data/deposit-studio.db`에 생성됩니다.
 
+## ElevenLabs TTS
+
+API 서버의 `ELEVENLABS_API_KEY` 환경변수에 ElevenLabs API 키를 설정하면 후원
+알림 설정에서 ElevenLabs 계정에 저장된 음성을 선택하고 미리 들을 수 있습니다.
+API 키는 웹 브라우저로 전달되지 않으며 서버에서만 사용됩니다. 키가 없거나 외부
+음성 생성에 실패하면 OBS 알림은 방송 PC의 기본 TTS로 자동 대체됩니다.
+
 ## Render 배포
 
 루트의 `render.yaml` Blueprint는 두 서비스를 생성합니다.
@@ -68,6 +75,7 @@ GitHub 저장소의 **Settings > Secrets and variables > Actions**에 다음 Rep
 - `OCI_USER`: SSH 사용자(생략하려면 secret 대신 `opc`가 기본값으로 사용됨)
 - `OCI_SSH_PRIVATE_KEY`: 배포용 SSH 개인 키 전체 내용
 - `OCI_KNOWN_HOSTS`: 두 서버에 대한 `ssh-keyscan -H <OCI_WEB_HOST> <OCI_WAS_HOST>` 결과
+- `ELEVENLABS_API_KEY`: 후원 알림 TTS와 AI 효과음에 사용할 ElevenLabs API 키
 
 워크플로 파일은 `.github/workflows/deploy-oci.yml`, 서버 배포 스크립트는
 `deploy/oci/deploy-web.sh`와 `deploy/oci/deploy-was.sh`입니다. 배포마다 새 릴리스를 만들고,

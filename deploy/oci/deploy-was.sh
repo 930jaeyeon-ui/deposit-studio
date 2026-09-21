@@ -6,6 +6,8 @@ set -Eeuo pipefail
 archive="/tmp/deposit-studio-api-${RELEASE_ID}.tar.gz"
 release_dir="/opt/deposit-studio/releases/${RELEASE_ID}"
 test -f "$archive"
+test -f /tmp/deposit-studio-api.env
+install -m 600 -o root -g root /tmp/deposit-studio-api.env /etc/deposit-studio-api.env
 install -d -o opc -g opc /opt/deposit-studio/releases /srv/deposit-studio-data
 rm -rf "$release_dir"
 install -d -o opc -g opc "$release_dir"
@@ -28,6 +30,7 @@ Environment=PORT=3001
 Environment=NODE_ENV=production
 Environment=WEB_ORIGIN=${WEB_ORIGIN}
 Environment=TURSO_DATABASE_URL=file:/srv/deposit-studio-data/deposit-studio.db
+EnvironmentFile=/etc/deposit-studio-api.env
 ExecStart=/usr/bin/node src/index.js
 Restart=always
 RestartSec=3
@@ -63,7 +66,7 @@ if command -v firewall-cmd >/dev/null; then
 fi
 for attempt in {1..20}; do
   if curl -fsS http://127.0.0.1/api/health >/dev/null; then
-    rm -f "$archive" /tmp/deploy-was.sh
+    rm -f "$archive" /tmp/deploy-was.sh /tmp/deposit-studio-api.env
     exit 0
   fi
   sleep 1

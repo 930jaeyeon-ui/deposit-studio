@@ -611,6 +611,14 @@ function PageLayout({ children }) {
         ? "/settings/alert"
         : path;
   const canManage = ["super", "admin"].includes(user.role);
+  const openLiveManager = () => {
+    const popup = window.open(
+      "/deposits/live",
+      "n9-live-deposits",
+      "popup=yes,width=900,height=600",
+    );
+    popup?.focus();
+  };
   async function logout() {
     await api("/api/auth/logout", { method: "POST" }).catch(() => {});
     setUser(null);
@@ -701,6 +709,10 @@ function PageLayout({ children }) {
             <strong>{pageTitle}</strong>
           </div>
           <div className="top-profile">
+            <button className="live-manager-launch" onClick={openLiveManager}>
+              <i aria-hidden="true" />
+              <span>방송 실시간 관리</span>
+            </button>
             <button
               className="profile-trigger"
               onClick={() => setProfileMenu((value) => !value)}
@@ -1365,22 +1377,33 @@ function LiveDepositPopup() {
         {deposits.map((item) => (
           <article key={item.id} className={`${item.status !== "included" ? "excluded" : ""} ${selectedId===item.id?"selected":""}`} onClick={()=>setSelectedId(item.id)} onDoubleClick={()=>{setSelectedId(item.id);setEditing(item);setEditForm({donorName:item.donorName,amount:String(item.amount)});}}>
             <time>{String(item.receivedAt).slice(11, 16)}</time>
-            <strong>{item.donorName}</strong>
+            <strong className="live-donor-name">
+              <span>{item.donorName}</span>
+              {Boolean(item.nameAdjusted) && item.rawDonorName && item.rawDonorName !== item.donorName && (
+                <small>(변경 전: {item.rawDonorName})</small>
+              )}
+            </strong>
             <b>{formatWon(item.amount)}원</b>
             <em>{item.status === "included" ? "후원 반영" : "삭제됨"}</em>
           </article>
         ))}
         {!deposits.length && <p className="empty">오늘 들어온 입금이 없습니다.</p>}
       </div><aside className="live-manager-actions"><span className="live-indicator"><i /> 실시간</span>
+        <section className="live-action-group alert-actions"><h2>후원 알림</h2>
+          <button className="run" onClick={async()=>{if(!selected)return;await setSelectedStatus("included");await replay();}} disabled={!selected||selected.status==="included"||savingId}>반영 후 실행</button>
+          <button className="rerun" onClick={replay} disabled={!selected||selected.status!=="included"||savingId}>알림만 재실행</button>
+        </section>
+        <section className="live-action-group"><h2>후원 내역</h2>
+          <button onClick={()=>{if(!selected)return setMessage("먼저 입금 내역을 선택해주세요.");setEditing(selected);setEditForm({donorName:selected.donorName,amount:String(selected.amount)});}} disabled={!selected}>수정</button>
+          <button onClick={()=>{setAdding(true);setEditForm({donorName:"",amount:""});}}>추가</button>
+          <button className="delete" onClick={()=>setSelectedStatus("excluded")} disabled={!selected||selected.status!=="included"}>삭제</button>
+          <button onClick={()=>setSelectedStatus("included")} disabled={!selected||selected.status==="included"}>되돌리기</button>
+          <button onClick={load}>목록 새로고침</button>
+        </section>
+        <section className="live-action-group preview-actions"><h2>미리보기</h2>
+          <button className="ranking" onClick={()=>window.open("/ranking","n9-ranking-preview","popup=yes,width=900,height=700")}>합계 순위</button>
+        </section>
         <button className="start" onClick={async()=>{if(!confirm("지금부터 새 방송 입금을 집계할까요? 현재 목록과 순위표가 초기화됩니다."))return;try{await api("/api/my/broadcast/start",{method:"POST"});setSelectedId(null);setMessage("새 방송 집계를 시작했습니다.");await load();}catch(error){setMessage(error.message);}}}>방송 시작</button>
-        <button className="run" onClick={async()=>{if(!selected)return setMessage("먼저 입금 내역을 선택해주세요.");if(selected.status!=="included")await setSelectedStatus("included");await replay();}} disabled={!selected||savingId}>실행</button>
-        <button className="rerun" onClick={replay} disabled={!selected||savingId}>재실행</button>
-        <button onClick={()=>{if(!selected)return setMessage("먼저 입금 내역을 선택해주세요.");setEditing(selected);setEditForm({donorName:selected.donorName,amount:String(selected.amount)});}} disabled={!selected}>수정</button>
-        <button onClick={()=>{setAdding(true);setEditForm({donorName:"",amount:""});}}>추가</button>
-        <button className="delete" onClick={()=>setSelectedStatus("excluded")} disabled={!selected||selected.status!=="included"}>삭제</button>
-        <button onClick={()=>setSelectedStatus("included")} disabled={!selected||selected.status==="included"}>되돌리기</button>
-        <button className="ranking" onClick={()=>window.open("/ranking","n9-ranking-preview","popup=yes,width=900,height=700")}>합계 순위</button>
-        <button onClick={load}>새로고침</button>
         <button className="close" onClick={()=>window.close()}>닫기</button>
       </aside></div>
       {editing && <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEditing(null)}>
@@ -1605,12 +1628,6 @@ function DepositHistory() {
             </p>
           </div>
           <div className="deposit-header-actions">
-            <button
-              className="header-button live-deposit-button"
-              onClick={() => window.open("/deposits/live", "n9-live-deposits", "popup=yes,width=900,height=600")}
-            >
-              방송용 실시간 화면
-            </button>
             <button
               className="header-button alert-test-button"
               disabled={alertTesting}
@@ -2913,7 +2930,15 @@ function alertAppearance(settings, amount = 50000) {
       customSound ? tier.customSoundData : settings.customSoundData,
     ),
     ttsEnabled: customTts ? tier.ttsEnabled !== false : settings.ttsEnabled,
+    ttsProvider: customTts ? tier.ttsProvider : settings.ttsProvider,
     ttsVoiceURI: customTts ? tier.ttsVoiceURI : settings.ttsVoiceURI,
+    ttsElevenVoiceId: customTts
+      ? tier.ttsElevenVoiceId
+      : settings.ttsElevenVoiceId,
+    ttsElevenVoiceName: customTts
+      ? tier.ttsElevenVoiceName
+      : settings.ttsElevenVoiceName,
+    ttsModel: customTts ? tier.ttsModel : settings.ttsModel,
     ttsRate: customTts ? tier.ttsRate : settings.ttsRate,
     ttsPitch: customTts ? tier.ttsPitch : settings.ttsPitch,
     ttsVolume: customTts ? tier.ttsVolume : settings.ttsVolume,
@@ -3026,8 +3051,49 @@ async function playBrowserSpeech(appearance, text) {
   window.speechSynthesis.speak(utterance);
 }
 
-function playAlertSpeech(appearance, text) {
-  return playBrowserSpeech(appearance, text);
+async function playElevenSpeech(appearance, text, token = null) {
+  const endpoint = token
+    ? `/api/overlay/${encodeURIComponent(token)}/tts`
+    : "/api/tts/preview";
+  const response = await fetch(apiUrl(endpoint), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text,
+      voiceId: appearance.ttsElevenVoiceId,
+      model: appearance.ttsModel,
+      rate: appearance.ttsRate,
+    }),
+    signal: AbortSignal.timeout(25000),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "ElevenLabs 음성을 만들지 못했습니다.");
+  }
+  const url = URL.createObjectURL(await response.blob());
+  const audio = new Audio(url);
+  audio.volume = Math.max(0, Math.min(1, Number(appearance.ttsVolume) / 100));
+  audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
+  audio.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
+  await audio.play();
+  return "elevenlabs";
+}
+
+async function playAlertSpeech(appearance, text, options = {}) {
+  if (
+    appearance.ttsProvider === "elevenlabs" &&
+    appearance.ttsElevenVoiceId
+  ) {
+    try {
+      return await playElevenSpeech(appearance, text, options.token);
+    } catch (error) {
+      if (options.allowFallback === false) throw error;
+      console.warn("ElevenLabs TTS 재생 실패, 브라우저 음성으로 전환:", error);
+    }
+  }
+  await playBrowserSpeech(appearance, text);
+  return "browser";
 }
 
 async function playAlertSound(
@@ -3177,6 +3243,12 @@ function AlertSettingSection({
 
 function Settings({ mode }) {
   const voices = useSpeechVoices();
+  const [elevenVoices, setElevenVoices] = useState([]);
+  const [elevenConfigured, setElevenConfigured] = useState(null);
+  const [elevenVoiceError, setElevenVoiceError] = useState("");
+  const [soundEffectPrompt, setSoundEffectPrompt] = useState("");
+  const [soundEffectDuration, setSoundEffectDuration] = useState(2);
+  const [soundEffectGenerating, setSoundEffectGenerating] = useState(false);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [savedSettings, setSavedSettings] = useState(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -3190,6 +3262,23 @@ function Settings({ mode }) {
   const [leaveRequest, setLeaveRequest] = useState(null);
   const leaveResolver = useRef(null);
   const savingBeforeLeave = useRef(false);
+  useEffect(() => {
+    let active = true;
+    api("/api/tts/voices", { cache: "no-store" })
+      .then((value) => {
+        if (!active) return;
+        setElevenConfigured(Boolean(value.configured));
+        setElevenVoices(value.voices || []);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setElevenConfigured(false);
+        setElevenVoiceError(error.message || "ElevenLabs 음성을 불러오지 못했습니다.");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   useEffect(() => {
     let active=true;
     setSettingsLoaded(false);
@@ -3384,7 +3473,11 @@ function Settings({ mode }) {
         customSoundData: "",
         ttsMode: "inherit",
         ttsEnabled: settings.ttsEnabled,
+        ttsProvider: settings.ttsProvider,
         ttsVoiceURI: settings.ttsVoiceURI,
+        ttsElevenVoiceId: settings.ttsElevenVoiceId,
+        ttsElevenVoiceName: settings.ttsElevenVoiceName,
+        ttsModel: settings.ttsModel,
         ttsRate: settings.ttsRate,
         ttsPitch: settings.ttsPitch,
         ttsVolume: settings.ttsVolume,
@@ -3454,6 +3547,49 @@ function Settings({ mode }) {
       setSaved(`‘${file.name}’을 내 음원 보관함에 추가했습니다.`);
     } catch (error) {
       setSaved(error.message);
+    }
+  }
+  async function generateSoundEffect() {
+    const prompt = soundEffectPrompt.trim();
+    if (prompt.length < 3) {
+      setSaved("만들고 싶은 효과음을 3자 이상 설명해주세요.");
+      return;
+    }
+    if ((settings.soundLibrary || []).length >= 10) {
+      setSaved("내 음원은 계정마다 최대 10개까지 보관할 수 있습니다.");
+      return;
+    }
+    setSoundEffectGenerating(true);
+    setSaved("");
+    try {
+      const response = await fetch(apiUrl("/api/tts/sound-effect"), {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: prompt,
+          durationSeconds: soundEffectDuration,
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => null);
+        throw new Error(data?.error || "AI 효과음을 만들지 못했습니다.");
+      }
+      const safeName = prompt.replace(/[\\/:*?"<>|]/g, " ").slice(0, 36);
+      const file = new File([await response.blob()], `AI ${safeName}.mp3`, {
+        type: "audio/mpeg",
+      });
+      await addLibrarySound(file, (current, preset) => ({
+        ...current,
+        soundPreset: preset,
+        soundEnabled: true,
+      }));
+      setSoundEffectPrompt("");
+    } catch (error) {
+      setSaved(error.message || "AI 효과음을 만들지 못했습니다.");
+    } finally {
+      setSoundEffectGenerating(false);
     }
   }
   const loadSound = (event) =>
@@ -3990,6 +4126,62 @@ function Settings({ mode }) {
                         />
                         <span>{settings.soundVolume}%</span>
                       </label>
+                      <div className="ai-sound-generator">
+                        <div>
+                          <b>ElevenLabs AI 효과음 만들기</b>
+                          <small>
+                            문장으로 효과음을 만들면 내 음원에 저장되고 바로 선택됩니다.
+                          </small>
+                        </div>
+                        {!elevenConfigured && (
+                          <p className="form-message">
+                            서버에 ElevenLabs API 키를 연결하면 사용할 수 있습니다.
+                          </p>
+                        )}
+                        <label>
+                          효과음 설명
+                          <input
+                            value={soundEffectPrompt}
+                            maxLength="450"
+                            disabled={!elevenConfigured || soundEffectGenerating}
+                            placeholder="예: 밝은 동전 소리 뒤에 짧은 반짝임"
+                            onChange={(e) => setSoundEffectPrompt(e.target.value)}
+                          />
+                        </label>
+                        <label>
+                          길이
+                          <input
+                            type="range"
+                            min="0.5"
+                            max="5"
+                            step="0.5"
+                            value={soundEffectDuration}
+                            disabled={!elevenConfigured || soundEffectGenerating}
+                            onChange={(e) =>
+                              setSoundEffectDuration(Number(e.target.value))
+                            }
+                          />
+                          <span>{soundEffectDuration}초</span>
+                        </label>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          disabled={
+                            !elevenConfigured ||
+                            soundEffectGenerating ||
+                            soundEffectPrompt.trim().length < 3
+                          }
+                          onClick={generateSoundEffect}
+                        >
+                          {soundEffectGenerating
+                            ? "AI 효과음 만드는 중..."
+                            : "AI 효과음 생성하고 추가"}
+                        </button>
+                        <small>
+                          API에서는 길이를 직접 지정하면 현재 초당 약 20크레딧이
+                          사용됩니다.
+                        </small>
+                      </div>
                       <label className="sound-upload">
                         내 음원 보관함에 추가
                         <input
@@ -4063,8 +4255,8 @@ function Settings({ mode }) {
                   onToggle={() => toggleAlertSection("tts")}
                 >
                   <p className="alert-setting-help">
-                    OBS가 실행되는 방송 PC에 설치된 음성 중에서 선택할 수
-                    있습니다.
+                    방송 PC의 기본 음성 또는 ElevenLabs 계정에 저장된 AI
+                    음성을 선택할 수 있습니다.
                   </p>
                   <label className="toggle-label">
                     TTS 사용
@@ -4077,6 +4269,72 @@ function Settings({ mode }) {
                   </label>
                   {settings.ttsEnabled && (
                     <>
+                      <label>
+                        음성 제공자
+                        <select
+                          value={settings.ttsProvider || "browser"}
+                          onChange={(e) => update("ttsProvider", e.target.value)}
+                        >
+                          <option value="browser">방송 PC 기본 음성 · 무료</option>
+                          <option value="elevenlabs">ElevenLabs AI 음성</option>
+                        </select>
+                      </label>
+                      {settings.ttsProvider === "elevenlabs" ? (
+                        <>
+                          {!elevenConfigured && (
+                            <p className="form-message">
+                              {elevenVoiceError ||
+                                "서버에 ELEVENLABS_API_KEY를 설정하면 음성 목록이 표시됩니다."}
+                            </p>
+                          )}
+                          <label>
+                            ElevenLabs 목소리
+                            <select
+                              value={settings.ttsElevenVoiceId || ""}
+                              disabled={!elevenConfigured}
+                              onChange={(e) => {
+                                const selected = elevenVoices.find(
+                                  (voice) => voice.id === e.target.value,
+                                );
+                                setSettings((current) => ({
+                                  ...current,
+                                  ttsElevenVoiceId: e.target.value,
+                                  ttsElevenVoiceName: selected?.name || "",
+                                }));
+                                setPreviewRun((current) => current + 1);
+                              }}
+                            >
+                              <option value="">목소리를 선택해주세요</option>
+                              {elevenVoices.map((voice) => (
+                                <option value={voice.id} key={voice.id}>
+                                  {voice.name}
+                                  {voice.labels?.gender
+                                    ? ` · ${voice.labels.gender}`
+                                    : ""}
+                                  {voice.category ? ` · ${voice.category}` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <small className="tts-voice-count">
+                              ElevenLabs 계정에서 사용 가능한 음성 {elevenVoices.length}개
+                            </small>
+                          </label>
+                          <label>
+                            음성 모델
+                            <select
+                              value={settings.ttsModel || "eleven_flash_v2_5"}
+                              onChange={(e) => update("ttsModel", e.target.value)}
+                            >
+                              <option value="eleven_flash_v2_5">
+                                Flash v2.5 · 빠름·저렴함
+                              </option>
+                              <option value="eleven_multilingual_v2">
+                                Multilingual v2 · 자연스러움
+                              </option>
+                            </select>
+                          </label>
+                        </>
+                      ) : (
                       <label>
                         목소리
                         <select
@@ -4098,12 +4356,13 @@ function Settings({ mode }) {
                           {voices.length}개
                         </small>
                       </label>
+                      )}
                       <label>
                         읽기 속도
                         <input
                           type="range"
-                          min="0.5"
-                          max="2"
+                          min={settings.ttsProvider === "elevenlabs" ? "0.7" : "0.5"}
+                          max={settings.ttsProvider === "elevenlabs" ? "1.2" : "2"}
                           step="0.1"
                           value={settings.ttsRate}
                           onChange={(e) =>
@@ -4112,7 +4371,7 @@ function Settings({ mode }) {
                         />
                         <span>{settings.ttsRate}×</span>
                       </label>
-                      <label>
+                      {settings.ttsProvider !== "elevenlabs" && <label>
                         목소리 높낮이
                         <input
                           type="range"
@@ -4125,7 +4384,7 @@ function Settings({ mode }) {
                           }
                         />
                         <span>{settings.ttsPitch}</span>
-                      </label>
+                      </label>}
                       <label>
                         TTS 볼륨
                         <input
@@ -4142,7 +4401,26 @@ function Settings({ mode }) {
                       <button
                         type="button"
                         className="secondary-button"
-                        onClick={() => playAlertSpeech(appearance, preview)}
+                        disabled={
+                          settings.ttsProvider === "elevenlabs" &&
+                          (!elevenConfigured || !settings.ttsElevenVoiceId)
+                        }
+                        onClick={async () => {
+                          try {
+                            const provider = await playAlertSpeech(
+                              appearance,
+                              preview,
+                              { allowFallback: false },
+                            );
+                            setSaved(
+                              provider === "elevenlabs"
+                                ? "선택한 ElevenLabs 음성을 재생했습니다."
+                                : "방송 PC 기본 음성을 재생했습니다.",
+                            );
+                          } catch (error) {
+                            setSaved(error.message || "TTS 미리듣기에 실패했습니다.");
+                          }
+                        }}
                       >
                         TTS 미리 듣기
                       </button>
@@ -4692,6 +4970,45 @@ function Settings({ mode }) {
                                     {tier.ttsEnabled !== false && (
                                       <>
                                         <label>
+                                          음성 제공자
+                                          <select
+                                            value={tier.ttsProvider || "browser"}
+                                            onChange={(e) =>
+                                              changeTier(
+                                                tier.id,
+                                                "ttsProvider",
+                                                e.target.value,
+                                              )
+                                            }
+                                          >
+                                            <option value="browser">방송 PC 기본 음성</option>
+                                            <option value="elevenlabs">ElevenLabs AI 음성</option>
+                                          </select>
+                                        </label>
+                                        {tier.ttsProvider === "elevenlabs" ? (
+                                          <label>
+                                            ElevenLabs 목소리
+                                            <select
+                                              value={tier.ttsElevenVoiceId || ""}
+                                              disabled={!elevenConfigured}
+                                              onChange={(e) => {
+                                                changeTier(
+                                                  tier.id,
+                                                  "ttsElevenVoiceId",
+                                                  e.target.value,
+                                                );
+                                              }}
+                                            >
+                                              <option value="">목소리를 선택해주세요</option>
+                                              {elevenVoices.map((voice) => (
+                                                <option value={voice.id} key={voice.id}>
+                                                  {voice.name}
+                                                </option>
+                                              ))}
+                                            </select>
+                                          </label>
+                                        ) : (
+                                        <label>
                                           목소리
                                           <select
                                             value={tier.ttsVoiceURI || ""}
@@ -4714,6 +5031,7 @@ function Settings({ mode }) {
                                             ))}
                                           </select>
                                         </label>
+                                        )}
                                         <label>
                                           속도
                                           <input
