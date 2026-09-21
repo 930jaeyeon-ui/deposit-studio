@@ -2282,7 +2282,9 @@ function NotificationRules() {
   const empty={packageName:'',contentPattern:''};
   const [items,setItems]=useState([]),[editing,setEditing]=useState(null),[form,setForm]=useState(empty),[message,setMessage]=useState('');
   const load=()=>api('/api/notification-rules').then(setItems).catch(error=>setMessage(error.message));
-  useEffect(load,[]);
+  useEffect(()=>{
+    load();
+  },[]);
   const open=item=>{setEditing(item||{});setForm(item||empty);setMessage('');};
   async function save(event){event.preventDefault();try{await api(editing?.packageName?`/api/notification-rules/${encodeURIComponent(editing.packageName)}`:'/api/notification-rules',{method:editing?.packageName?'PUT':'POST',body:JSON.stringify(form)});setEditing(null);load();}catch(error){setMessage(error.message);}}
   async function remove(packageName){if(!confirm(`${packageName} 규칙을 삭제할까요?`))return;await api(`/api/notification-rules/${encodeURIComponent(packageName)}`,{method:'DELETE'});load();}
