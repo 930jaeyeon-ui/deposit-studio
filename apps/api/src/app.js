@@ -4,6 +4,7 @@ import { activeSession, db } from './db.js';
 import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, requireSuper, verifyPassword } from './auth.js';
 import { parseNotification, validateRuleInput } from './notification-parser.js';
 import { createElevenSoundEffect, createElevenSpeech, elevenLabsConfigured, listElevenVoices } from './elevenlabs.js';
+import { ToonationManager, toonationWidgetKey } from './toonation.js';
 
 export const app = express();
 const phoneTestClients = new Map();
@@ -14,6 +15,7 @@ function publishPhoneTest(userId, data) {
 const overlayClients = new Set();
 const dataChangeClients = new Set();
 const ttsRateWindows = new Map();
+const toonationManager = new ToonationManager(handleToonationDonation);
 
 function allowTtsRequest(key, limit = 60) {
   const now = Date.now();
@@ -77,10 +79,15 @@ function publishOverlaySettings(settings, userId) {
   let delivered = 0;
   for (const client of overlayClients) {
     if (Number(client.userId) !== Number(userId) || !client.ready) continue;
-    sendOverlayEvent(client.res, 'settings', settings);
+    sendOverlayEvent(client.res, 'settings', overlaySettings(settings));
     delivered += 1;
   }
   return delivered;
+}
+
+function overlaySettings(settings) {
+  const { toonationWidgetUrl: _privateToonationWidgetUrl, ...safe } = settings || {};
+  return safe;
 }
 
 async function donationWithCrewGrade(donation, userId, settings) {
@@ -242,6 +249,11 @@ function cleanSettings(input) {
   const settings = { ...DEFAULT_SETTINGS, ...input };
   settings.minimumDonationAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.minimumDonationAmount) || 0)));
   settings.alertMinimumAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.alertMinimumAmount) || 0)));
+  settings.toonationEnabled = Boolean(settings.toonationEnabled);
+  settings.toonationWidgetUrl = String(settings.toonationWidgetUrl || '').trim().slice(0,1000);
+  const legacyToonationMode = settings.toonationUseOwnAlert ? 'custom' : 'official';
+  settings.toonationAlertMode = ['official','custom','custom-original-audio'].includes(settings.toonationAlertMode) ? settings.toonationAlertMode : legacyToonationMode;
+  settings.toonationUseOwnAlert = settings.toonationAlertMode !== 'official';
   settings.durationMs = Math.max(1000, Math.min(30000, Math.floor(Number(settings.durationMs) || 5000)));
   settings.fontSize = Math.max(20, Math.min(160, Math.floor(Number(settings.fontSize) || 54)));
   settings.fontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.fontWeight) || 800)));
@@ -342,6 +354,25 @@ function cleanSettings(input) {
   settings.rankingShowCount = Boolean(settings.rankingShowCount);
   settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);
   return settings;
+}
+
+async function handleToonationDonation(userId, input) {
+  const settings = await getUserSettings(userId);
+  if (!settings.toonationEnabled || input.amount < Number(settings.minimumDonationAmount || 0)) return;
+  const session = await activeSession();
+  const inserted = await db.execute({
+    sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, ?, ?, 'toonation')`,
+    args:[session.id,userId,input.donorName,input.amount]
+  });
+  const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[inserted.lastInsertRowid] });
+  const donation = await donationWithCrewGrade({ ...saved.rows[0], message:input.message, toonationGrade:input.grade }, userId, settings);
+  if (settings.toonationUseOwnAlert) publishOverlayDonation(donation, userId);
+  publishDataChange(userId, 'toonation-created');
+}
+
+export async function startToonationConnections() {
+  const users = await db.execute(`SELECT id FROM users WHERE is_active = 1`);
+  for (const user of users.rows) toonationManager.configure(user.id, await getUserSettings(user.id));
 }
 
 app.post('/api/auth/login', async (req, res) => {
@@ -828,7 +859,7 @@ app.get('/api/widgets', requireAuth, async (req, res) => {
 app.get('/api/widgets/:token', async (req, res) => {
   const user = await getObsUser(req.params.token);
   if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
-  res.json({ ...(await widgetDataForUser(user.id)), settings:await getUserSettings(user.id) });
+  res.json({ ...(await widgetDataForUser(user.id)), settings:overlaySettings(await getUserSettings(user.id)) });
 });
 
 app.get('/api/widgets/:token/events', async (req, res) => {
@@ -889,7 +920,7 @@ app.get('/api/overlay/:token/bootstrap', async (req, res) => {
   if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
   const session = await activeSession();
   const latest = await db.execute({ sql:'SELECT COALESCE(MAX(id), 0) lastDonationId FROM donations WHERE session_id = ? AND recipient_user_id = ?', args:[session.id,user.id] });
-  res.json({ lastDonationId:Number(latest.rows[0].lastDonationId)||0, settings:await getUserSettings(user.id) });
+  res.json({ lastDonationId:Number(latest.rows[0].lastDonationId)||0, settings:overlaySettings(await getUserSettings(user.id)) });
 });
 
 app.get('/api/overlay/preview', requireAuth, async (req, res) => {
@@ -928,9 +959,10 @@ app.get('/api/overlay/:token/events', async (req, res) => {
         : Promise.resolve({ rows:[] })
     ]);
     const latestId = Number(latest.rows[0].lastDonationId) || 0;
-    sendOverlayEvent(res, 'bootstrap', { lastDonationId:resuming ? requestedAfter : latestId, settings }, resuming ? requestedAfter : latestId);
+    sendOverlayEvent(res, 'bootstrap', { lastDonationId:resuming ? requestedAfter : latestId, settings:overlaySettings(settings) }, resuming ? requestedAfter : latestId);
 
     const queued = [...missed.rows, ...client.pending]
+      .filter(donation => settings.toonationUseOwnAlert || donation.bank !== 'toonation')
       .filter((donation, index, rows) => donation.id > requestedAfter && rows.findIndex(row => row.id === donation.id) === index)
       .sort((a,b) => a.id - b.id);
     client.ready = true;
@@ -975,6 +1007,16 @@ app.get('/api/settings', requireAuth, async (req, res) => {
   res.json(await settingsWithCrewPreview(req.user));
 });
 
+app.get('/api/toonation/status', requireAuth, async (req, res) => {
+  res.json(toonationManager.status(req.user.id));
+});
+
+app.post('/api/toonation/reconnect', requireAuth, async (req, res) => {
+  const settings = await getUserSettings(req.user.id);
+  toonationManager.reconnect(req.user.id, settings);
+  res.json({ ok:true, status:toonationManager.status(req.user.id) });
+});
+
 app.put('/api/settings', requireAuth, async (req, res) => {
   if(req.user.role==='super'&&Array.isArray(req.body?.crewGrades)){
     const ranges=req.body.crewGrades.map(grade=>({min:Number(grade.minAmount)||0,max:grade.maxAmount==null||grade.maxAmount===''?null:Number(grade.maxAmount)})).sort((a,b)=>a.min-b.min);
@@ -982,8 +1024,12 @@ app.put('/api/settings', requireAuth, async (req, res) => {
     if(ranges.some((range,index)=>index>0&&(ranges[index-1].max==null||range.min<=ranges[index-1].max)))return res.status(400).json({error:'크루 등급의 누적 금액 구간이 서로 겹치지 않게 입력해주세요.'});
   }
   const settings = cleanSettings(req.body);
+  if (settings.toonationEnabled && !toonationWidgetKey(settings.toonationWidgetUrl)) {
+    return res.status(400).json({ error:'투네이션 공식 알림 위젯 URL을 확인해주세요.' });
+  }
   if(req.user.role!=='super')settings.crewGrades=[];
   await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
+  toonationManager.configure(req.user.id, settings);
   if(req.user.role!=='super')settings.crewGrades=await getSharedCrewGrades();
   const savedSettings = await settingsWithCrewPreview(req.user);
   publishOverlaySettings(savedSettings, req.user.id);

@@ -1476,6 +1476,7 @@ function DepositHistory() {
   const bankNames = {
     tossbank: "토스뱅크",
     kbank: "케이뱅크",
+    toonation: "투네이션",
     kakao: "카카오뱅크",
     ibk: "기업은행",
     manual: "수동 입력",
@@ -3255,6 +3256,7 @@ function Settings({ mode }) {
   const [settingsLoadError, setSettingsLoadError] = useState("");
   const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [toonationStatus, setToonationStatus] = useState({ state:"disabled", text:"투네이션 수신 꺼짐" });
   const [saved, setSaved] = useState("");
   const [previewRun, setPreviewRun] = useState(0);
   const [openTiers, setOpenTiers] = useState({});
@@ -3293,6 +3295,14 @@ function Settings({ mode }) {
     });
     return()=>{active=false;};
   }, [settingsLoadAttempt]);
+  useEffect(() => {
+    if (mode !== "alert" || !settingsLoaded) return;
+    let active = true;
+    const loadStatus = () => api("/api/toonation/status", { cache:"no-store" }).then((value) => active && setToonationStatus(value)).catch(() => {});
+    loadStatus();
+    const timer = setInterval(loadStatus, 10000);
+    return () => { active = false; clearInterval(timer); };
+  }, [mode, settingsLoaded]);
   const isDirty =
     settingsLoaded &&
     JSON.stringify(settings) !== JSON.stringify(savedSettings);
@@ -3644,6 +3654,63 @@ function Settings({ mode }) {
           >
             {isAlert ? (
               <>
+                <AlertSettingSection
+                  id="toonation"
+                  title="투네이션 연동"
+                  description="투네이션 후원을 순위와 알림에 연결"
+                  open={Boolean(openAlertSections.toonation)}
+                  onToggle={() => toggleAlertSection("toonation")}
+                >
+                  <label className="toggle-label">
+                    투네이션 후원 수신
+                    <input type="checkbox" checked={settings.toonationEnabled} onChange={(e) => update("toonationEnabled", e.target.checked)} />
+                    <i />
+                  </label>
+                  <label className="toonation-url-label">
+                    투네이션 공식 알림 위젯 URL <small>최초 1회 설정</small>
+                    <input type="password" value={settings.toonationWidgetUrl} placeholder="https://toon.at/widget/alertbox/..." autoComplete="off" onChange={(e) => update("toonationWidgetUrl", e.target.value)} />
+                  </label>
+                  <p className="alert-setting-help">한 번 저장하면 이 계정에 계속 유지되며 자동으로 재연결됩니다. 투네이션에서 주소를 재발급한 경우에만 다시 입력하세요.</p>
+                  <div className="toonation-display-setting">
+                    <b>투네이션 알림 화면</b>
+                    <div className="toonation-display-options" role="radiogroup" aria-label="투네이션 알림 화면">
+                      <button type="button" role="radio" aria-checked={settings.toonationAlertMode === "official"} className={settings.toonationAlertMode === "official" ? "selected" : ""} onClick={()=>setSettings(current=>({...current,toonationAlertMode:"official",toonationUseOwnAlert:false}))}>
+                        <span className="toonation-option-icon">T</span>
+                        <strong>투네이션 공식 화면</strong>
+                        <small>금액만 순위에 합산하고<br/>OBS 공식 위젯으로 표시</small>
+                        <i />
+                      </button>
+                      <button type="button" role="radio" aria-checked={settings.toonationAlertMode === "custom"} className={settings.toonationAlertMode === "custom" ? "selected" : ""} onClick={()=>setSettings(current=>({...current,toonationAlertMode:"custom",toonationUseOwnAlert:true}))}>
+                        <span className="toonation-option-icon own">N9</span>
+                        <strong>자체 알림 화면</strong>
+                        <small>투네이션 후원도<br/>자체 알림 대기열에서 표시</small>
+                        <i />
+                      </button>
+                      <button type="button" role="radio" aria-checked={settings.toonationAlertMode === "custom-original-audio"} className={settings.toonationAlertMode === "custom-original-audio" ? "selected" : ""} onClick={()=>setSettings(current=>({...current,toonationAlertMode:"custom-original-audio",toonationUseOwnAlert:true}))}>
+                        <span className="toonation-option-icon audio">♪</span>
+                        <strong>자체 화면 + 원본 소리</strong>
+                        <small>화면은 자체 알림<br/>TTS·음원은 투네이션 원본</small>
+                        <i />
+                      </button>
+                    </div>
+                  </div>
+                  <p className="alert-setting-help">
+                    {settings.toonationAlertMode === "custom-original-audio"
+                      ? "화면은 자체 알림으로 표시하고, 투네이션 공식 위젯에서는 원본 소리만 재생합니다."
+                      : settings.toonationUseOwnAlert
+                        ? "투네이션 후원도 자체 알림 대기열에서 표시합니다. 화면 중복을 막으려면 OBS의 투네이션 공식 위젯 소스를 숨겨주세요."
+                        : "자체 알림에는 투네이션 후원을 표시하지 않고 금액만 순위에 합산합니다. OBS에는 투네이션 공식 위젯 소스를 추가하세요."}
+                  </p>
+                  {settings.toonationAlertMode === "custom-original-audio" && <div className="toonation-audio-guide"><b>원본 소리용 OBS 설정</b><ol><li>같은 투네이션 URL을 브라우저 소스로 추가</li><li>소스 너비와 높이를 <strong>1 × 1</strong>로 설정</li><li>눈 아이콘은 켜둔 상태로 화면 구석이나 캔버스 밖에 배치</li></ol><small>투네이션 후원에는 자체 효과음과 자체 TTS를 재생하지 않습니다. 계좌 입금 알림의 소리와 TTS는 그대로 유지됩니다.</small></div>}
+                  <div className={`toonation-connection-status ${toonationStatus.state}`}>
+                    <span />
+                    <b>{toonationStatus.text}</b>
+                    <button type="button" className="secondary-button" onClick={async()=>{
+                      const result=await api("/api/toonation/reconnect",{method:"POST",body:"{}"});
+                      setToonationStatus(result.status);
+                    }}>다시 연결</button>
+                  </div>
+                </AlertSettingSection>
                 <AlertSettingSection
                   id="minimum"
                   title="알림 표시 기준"
@@ -6232,7 +6299,8 @@ function Overlay({ token, preview = false }) {
     const spokenText = appearance.messageTemplate
       .replaceAll("{name}", donation.donorName)
       .replaceAll("{amount}", formatWon(donation.amount));
-    if (!previewSoundMuted) {
+    const usesToonationOriginalAudio = donation.bank === "toonation" && settingsRef.current.toonationAlertMode === "custom-original-audio";
+    if (!previewSoundMuted && !usesToonationOriginalAudio) {
       playAlertSound(
         settingsRef.current,
         appearance.soundPreset,
