@@ -3,5 +3,6 @@ dist/
 data/
 .env
 *.log
+*.tar.gz
 .DS_Store
 .tools/

@@ -54,3 +54,21 @@ SQLite 파일은 최초 실행 시 `data/deposit-studio.db`에 생성됩니다.
 
 Render에서 **New > Blueprint**를 선택하고 이 저장소를 연결하면 됩니다. 배포 시
 Turso에서 발급한 `TURSO_DATABASE_URL`과 `TURSO_AUTH_TOKEN`을 입력합니다.
+
+## OCI 자동 배포
+
+`main` 브랜치에 푸시하면 GitHub Actions가 테스트와 웹 빌드를 통과한 뒤 OCI의 웹/WAS 인스턴스에 각각 배포합니다.
+웹 인스턴스는 React 정적 파일을 제공하고, WAS 인스턴스는 Node.js API와 SQLite를 실행합니다.
+SQLite 파일은 릴리스와 분리된 `/srv/deposit-studio-data/deposit-studio.db`를 계속 사용합니다.
+
+GitHub 저장소의 **Settings > Secrets and variables > Actions**에 다음 Repository secret을 등록합니다.
+
+- `OCI_WEB_HOST`: 웹 인스턴스의 고정 공인 IP 또는 도메인
+- `OCI_WAS_HOST`: WAS 인스턴스의 고정 공인 IP 또는 도메인
+- `OCI_USER`: SSH 사용자(생략하려면 secret 대신 `opc`가 기본값으로 사용됨)
+- `OCI_SSH_PRIVATE_KEY`: 배포용 SSH 개인 키 전체 내용
+- `OCI_KNOWN_HOSTS`: 두 서버에 대한 `ssh-keyscan -H <OCI_WEB_HOST> <OCI_WAS_HOST>` 결과
+
+워크플로 파일은 `.github/workflows/deploy-oci.yml`, 서버 배포 스크립트는
+`deploy/oci/deploy-web.sh`와 `deploy/oci/deploy-was.sh`입니다. 배포마다 새 릴리스를 만들고,
+데이터베이스를 건드리지 않은 채 `current` 심볼릭 링크를 전환합니다.
