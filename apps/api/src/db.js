@@ -55,6 +55,7 @@ export async function initializeDatabase() {
       role TEXT NOT NULL CHECK(role IN ('super','admin','member')),
       password_hash TEXT NOT NULL,
       avatar_path TEXT,
+      obs_token TEXT,
       must_change_password INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -124,6 +125,15 @@ export async function initializeDatabase() {
       recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       duration_ms INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`,
+    `CREATE TABLE IF NOT EXISTS ranking_adjustments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER NOT NULL REFERENCES broadcast_sessions(id),
+      recipient_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      donor_name TEXT NOT NULL,
+      amount INTEGER NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(session_id, recipient_user_id, donor_name)
     )`
   ]);
   const donationColumns = new Set((await db.execute(`PRAGMA table_info(donations)`)).rows.map(column => column.name));
@@ -135,34 +145,21 @@ export async function initializeDatabase() {
     await db.batch([
       `ALTER TABLE notification_events RENAME TO notification_events_legacy`,
       `ALTER TABLE notification_rules RENAME TO notification_rules_legacy`,
-      `CREATE TABLE notification_rules (
-        package_name TEXT PRIMARY KEY,
-        content_pattern TEXT NOT NULL,
-        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `INSERT OR IGNORE INTO notification_rules (package_name, content_pattern, created_at, updated_at)
-        SELECT package_name, content_pattern, created_at, updated_at FROM notification_rules_legacy`,
-      `CREATE TABLE notification_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        package_name TEXT NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        rule_package_name TEXT REFERENCES notification_rules(package_name) ON UPDATE CASCADE ON DELETE SET NULL,
-        donation_id INTEGER REFERENCES donations(id) ON DELETE SET NULL,
-        status TEXT NOT NULL,
-        error TEXT,
-        received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `INSERT INTO notification_events (id, package_name, title, content, rule_package_name, donation_id, status, error, received_at)
-        SELECT e.id, e.package_name, e.title, e.content, r.package_name, e.donation_id, e.status, e.error, e.received_at
-        FROM notification_events_legacy e LEFT JOIN notification_rules_legacy r ON r.id = e.rule_id`,
+      `CREATE TABLE notification_rules (package_name TEXT PRIMARY KEY, content_pattern TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+      `INSERT OR IGNORE INTO notification_rules (package_name, content_pattern, created_at, updated_at) SELECT package_name, content_pattern, created_at, updated_at FROM notification_rules_legacy`,
+      `CREATE TABLE notification_events (id INTEGER PRIMARY KEY AUTOINCREMENT, package_name TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL, rule_package_name TEXT REFERENCES notification_rules(package_name) ON UPDATE CASCADE ON DELETE SET NULL, donation_id INTEGER REFERENCES donations(id) ON DELETE SET NULL, status TEXT NOT NULL, error TEXT, received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)`,
+      `INSERT INTO notification_events (id, package_name, title, content, rule_package_name, donation_id, status, error, received_at) SELECT e.id, e.package_name, e.title, e.content, r.package_name, e.donation_id, e.status, e.error, e.received_at FROM notification_events_legacy e LEFT JOIN notification_rules_legacy r ON r.id = e.rule_id`,
       `DROP TABLE notification_events_legacy`,
       `DROP TABLE notification_rules_legacy`
     ]);
   }
   const apiLogColumns = new Set((await db.execute(`PRAGMA table_info(api_request_logs)`)).rows.map(column => column.name));
   if (!apiLogColumns.has('recipient_user_id')) await db.execute(`ALTER TABLE api_request_logs ADD COLUMN recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL`);
+  const userColumns = new Set((await db.execute(`PRAGMA table_info(users)`)).rows.map(column => column.name));
+  if (!userColumns.has('obs_token')) await db.execute(`ALTER TABLE users ADD COLUMN obs_token TEXT`);
+  if (!userColumns.has('broadcast_started_at')) await db.execute(`ALTER TABLE users ADD COLUMN broadcast_started_at TEXT`);
+  if (!userColumns.has('broadcast_start_donation_id')) await db.execute(`ALTER TABLE users ADD COLUMN broadcast_start_donation_id INTEGER`);
+  await db.execute(`UPDATE users SET broadcast_start_donation_id = COALESCE((SELECT MAX(d.id) FROM donations d WHERE d.recipient_user_id = users.id AND d.received_at <= users.broadcast_started_at), 0) WHERE broadcast_started_at IS NOT NULL AND broadcast_start_donation_id IS NULL`);
   if (!await activeSession()) {
     await db.execute({ sql: 'INSERT INTO broadcast_sessions (title) VALUES (?)', args: ['첫 방송'] });
   }
@@ -181,6 +178,8 @@ export async function initializeDatabase() {
   for (const [loginId, displayName, role, avatar] of users) {
     await db.execute({ sql:`INSERT OR IGNORE INTO users (login_id, display_name, role, password_hash, avatar_path) VALUES (?, ?, ?, ?, ?)`, args:[loginId,displayName,role,hashPassword(role === 'super' ? 'Init1357!!' : 'Init1234!!'),avatar] });
   }
+  await db.execute(`UPDATE users SET obs_token = lower(hex(randomblob(24))) WHERE obs_token IS NULL OR obs_token = ''`);
+  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS users_obs_token_unique ON users(obs_token)`);
   await db.execute(`INSERT OR IGNORE INTO user_settings (user_id, value) SELECT id, COALESCE((SELECT value FROM settings WHERE id = 1), '${JSON.stringify(DEFAULT_SETTINGS).replaceAll("'", "''")}') FROM users`);
   const passwordMigration = await db.execute({ sql:`SELECT value FROM app_meta WHERE key = ?`, args:['member_initial_password_v2'] });
   if (!passwordMigration.rows.length) {
@@ -193,6 +192,7 @@ export async function initializeDatabase() {
     }
     await db.execute({ sql:`INSERT INTO app_meta (key, value) VALUES (?, ?)`, args:['member_initial_password_v2','Init1234'] });
   }
+  await db.execute(`UPDATE donations SET recipient_user_id = (SELECT id FROM users WHERE login_id = 'm1562') WHERE recipient_user_id IS NULL`);
   await db.execute(`DELETE FROM web_sessions WHERE expires_at <= CURRENT_TIMESTAMP`);
 }
 

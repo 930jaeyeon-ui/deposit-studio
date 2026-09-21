@@ -93,8 +93,9 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(Number(result.data.summary.totalAmount),Number(latest.amount));
     assert.equal((await request(`/api/my/deposits/${older.id}/status`,{method:'PUT',cookie:memberCookie,body:{status:'included',note:''}})).response.status,200);
 
-    assert.equal((await request('/api/widgets')).response.status,200);
-    result = await request('/api/overlay/bootstrap');
+    assert.equal((await request('/api/widgets',{cookie:memberCookie})).response.status,200);
+    const sources = await request('/api/obs/sources',{cookie:memberCookie});
+    result = await request(`/api${sources.data.alertPath}/bootstrap`);
     assert.equal(result.response.status,200);
     const lastId = Number(result.data.lastDonationId)-2;
     result = await request(`/api/donations?after=${Math.max(0,lastId)}`);
