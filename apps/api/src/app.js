@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomBytes } from 'node:crypto';
 import { DEFAULT_SETTINGS, normalizeDonation } from '@deposit-studio/shared';
 import { activeSession, db } from './db.js';
 import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, requireSuper, verifyPassword } from './auth.js';
@@ -15,6 +16,7 @@ function publishPhoneTest(userId, data) {
 const overlayClients = new Set();
 const dataChangeClients = new Set();
 const ttsRateWindows = new Map();
+const overlayPreviewSessions = new Map();
 const toonationManager = new ToonationManager(handleToonationDonation);
 
 function allowTtsRequest(key, limit = 60) {
@@ -926,6 +928,26 @@ app.get('/api/overlay/:token/bootstrap', async (req, res) => {
 app.get('/api/overlay/preview', requireAuth, async (req, res) => {
   const settings=await settingsWithCrewPreview(req.user);
   res.json({ lastDonationId:0, settings, previewDonation:{ id:null, isTest:true, donorName:settings.previewDonorName, amount:50000, cumulativeAmount:settings.previewCumulativeAmount, crewGradeId:settings.previewCrewGradeId } });
+});
+
+app.post('/api/overlay/preview-session', requireAuth, async (req, res) => {
+  const settings = await settingsWithCrewPreview(req.user);
+  const token = randomBytes(24).toString('hex');
+  overlayPreviewSessions.set(token, {
+    expiresAt:Date.now()+60000,
+    payload:{ lastDonationId:0, settings:overlaySettings(settings), previewDonation:{ id:null, isTest:true, donorName:settings.previewDonorName, amount:50000, cumulativeAmount:settings.previewCumulativeAmount, crewGradeId:settings.previewCrewGradeId } }
+  });
+  for (const [key, value] of overlayPreviewSessions) if (value.expiresAt < Date.now()) overlayPreviewSessions.delete(key);
+  res.json({ token });
+});
+
+app.get('/api/overlay/preview-session/:token', async (req, res) => {
+  const preview = overlayPreviewSessions.get(req.params.token);
+  if (!preview || preview.expiresAt < Date.now()) {
+    overlayPreviewSessions.delete(req.params.token);
+    return res.status(404).json({ error:'미리보기 시간이 만료되었습니다. 다시 열어주세요.' });
+  }
+  res.json(preview.payload);
 });
 
 app.get('/api/overlay/:token/events', async (req, res) => {

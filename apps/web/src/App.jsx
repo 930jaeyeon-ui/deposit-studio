@@ -3392,6 +3392,7 @@ function Settings({ mode }) {
     try {
       await persistSettings();
       if (popup && isAlert) {
+        const previewSession = await api("/api/overlay/preview-session", { method:"POST", body:"{}" });
         let played = false;
         const playSyncedAudio = () => {
           if (played) return;
@@ -3415,7 +3416,7 @@ function Settings({ mode }) {
         };
         addEventListener("message", handlePreviewReady);
         setTimeout(playSyncedAudio, 1800);
-        popup.location.href = "/overlay?preview=1&sound=off";
+        popup.location.href = `/overlay?preview=1&sound=off&previewToken=${encodeURIComponent(previewSession.token)}`;
       } else if (popup) popup.location.href = "/ranking";
       setSaved("현재 설정을 저장하고 예시 화면을 열었습니다.");
     } catch (error) {
@@ -6221,6 +6222,8 @@ function Overlay({ token, preview = false }) {
   const [exiting, setExiting] = useState(false);
   const previewSoundMuted =
     new URLSearchParams(location.search).get("sound") === "off";
+  const previewMode =
+    preview || new URLSearchParams(location.search).get("preview") === "1";
 
   useEffect(() => {
     if (!current || !previewSoundMuted) return;
@@ -6234,12 +6237,12 @@ function Overlay({ token, preview = false }) {
   }, [current, previewSoundMuted]);
 
   useEffect(() => {
-    const previewMode =
-      preview || new URLSearchParams(location.search).get("preview") === "1";
     let events;
     let stopped = false;
     const bootstrapPath = previewMode
-      ? "/api/overlay/preview"
+      ? new URLSearchParams(location.search).get("previewToken")
+        ? `/api/overlay/preview-session/${encodeURIComponent(new URLSearchParams(location.search).get("previewToken"))}`
+        : "/api/overlay/preview"
       : `/api/overlay/${encodeURIComponent(token)}/bootstrap`;
     api(bootstrapPath).then(async ({ settings: value, lastDonationId, previewDonation }) => {
       if (stopped) return;
@@ -6309,6 +6312,7 @@ function Overlay({ token, preview = false }) {
       );
       playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
     }
+    if (previewMode) return;
     const duration = Math.max(1000, appearance.durationMs);
     setTimeout(() => setExiting(true), Math.max(200, duration - 500));
     setTimeout(() => {
