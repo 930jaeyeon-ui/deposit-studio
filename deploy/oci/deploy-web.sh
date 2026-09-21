@@ -5,6 +5,10 @@ set -Eeuo pipefail
 archive="/tmp/deposit-studio-web-${RELEASE_ID}.tar.gz"
 release_dir="/var/www/deposit-studio/releases/${RELEASE_ID}"
 test -f "$archive"
+if ! command -v nginx >/dev/null; then
+  dnf --disablerepo=ol9_oci_included,ol9_ksplice install -y nginx curl
+fi
+install -d /etc/nginx/conf.d
 install -d /var/www/deposit-studio/releases "$release_dir"
 tar -xzf "$archive" -C "$release_dir"
 ln -sfn "$release_dir/dist" /var/www/deposit-studio/current-next
@@ -22,5 +26,9 @@ command -v restorecon >/dev/null && restorecon -RF /var/www/deposit-studio/curre
 nginx -t
 systemctl enable --now nginx
 systemctl reload nginx
+if command -v firewall-cmd >/dev/null; then
+  firewall-cmd --permanent --add-service=http
+  firewall-cmd --reload
+fi
 curl -fsS http://127.0.0.1/ >/dev/null
 rm -f "$archive" /tmp/deploy-web.sh
