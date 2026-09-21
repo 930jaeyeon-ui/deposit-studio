@@ -498,8 +498,8 @@ app.post('/api/users/:id/reset-password', requireAuth, requireManager, async (re
 app.get('/api/dashboard', requireAuth, async (req, res) => {
   const session = await activeSession();
   const [donations, summary, savedSettings] = await Promise.all([
-    db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 100`, args:[session.id] }),
-    db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) totalAmount, COUNT(*) donationCount, COUNT(DISTINCT ${effectiveDonorName}) donorCount FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included'`, args:[session.id] }),
+    db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d JOIN users u ON u.id = d.recipient_user_id LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' AND u.role <> 'super' ORDER BY d.id DESC LIMIT 100`, args:[session.id] }),
+    db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) totalAmount, COUNT(*) donationCount, COUNT(DISTINCT ${effectiveDonorName}) donorCount FROM donations d JOIN users u ON u.id = d.recipient_user_id LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' AND u.role <> 'super'`, args:[session.id] }),
     getUserSettings(req.user.id)
   ]);
   res.json({ session, donations:donations.rows, summary:summary.rows[0], settings:savedSettings });
@@ -510,7 +510,7 @@ app.get('/api/dashboard/donors', requireAuth, async (req, res) => {
   const offset = Math.max(0, Number.parseInt(req.query.offset, 10) || 0);
   const limit = Math.min(100, Math.max(1, Number.parseInt(req.query.limit, 10) || 50));
   const query = String(req.query.query || '').trim().slice(0, 40);
-  const donorSource = `FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' GROUP BY ${effectiveDonorName}`;
+  const donorSource = `FROM donations d JOIN users u ON u.id = d.recipient_user_id LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' AND u.role <> 'super' GROUP BY ${effectiveDonorName}`;
   const [items, total, match] = await Promise.all([
     db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count ${donorSource} ORDER BY amount DESC, donorName LIMIT ? OFFSET ?`, args:[session.id,limit,offset] }),
     db.execute({ sql:`SELECT COUNT(*) total FROM (SELECT 1 ${donorSource})`, args:[session.id] }),

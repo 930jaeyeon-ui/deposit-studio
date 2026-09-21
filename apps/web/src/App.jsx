@@ -1384,7 +1384,7 @@ function LiveDepositPopup() {
               )}
             </strong>
             <b>{formatWon(item.amount)}원</b>
-            <em>{item.status === "included" ? "후원 반영" : "삭제됨"}</em>
+            <em>{item.status === "included" ? "후원 반영" : "제외됨"}</em>
           </article>
         ))}
         {!deposits.length && <p className="empty">오늘 들어온 입금이 없습니다.</p>}
@@ -1396,14 +1396,14 @@ function LiveDepositPopup() {
         <section className="live-action-group"><h2>후원 내역</h2>
           <button onClick={()=>{if(!selected)return setMessage("먼저 입금 내역을 선택해주세요.");setEditing(selected);setEditForm({donorName:selected.donorName,amount:String(selected.amount)});}} disabled={!selected}>수정</button>
           <button onClick={()=>{setAdding(true);setEditForm({donorName:"",amount:""});}}>추가</button>
-          <button className="delete" onClick={()=>setSelectedStatus("excluded")} disabled={!selected||selected.status!=="included"}>삭제</button>
+          <button className="delete" onClick={()=>setSelectedStatus("excluded")} disabled={!selected||selected.status!=="included"}>제외</button>
           <button onClick={()=>setSelectedStatus("included")} disabled={!selected||selected.status==="included"}>되돌리기</button>
           <button onClick={load}>목록 새로고침</button>
         </section>
         <section className="live-action-group preview-actions"><h2>미리보기</h2>
           <button className="ranking" onClick={()=>window.open("/ranking","n9-ranking-preview","popup=yes,width=900,height=700")}>합계 순위</button>
         </section>
-        <button className="start" onClick={async()=>{if(!confirm("지금부터 새 방송 입금을 집계할까요? 현재 목록과 순위표가 초기화됩니다."))return;try{await api("/api/my/broadcast/start",{method:"POST"});setSelectedId(null);setMessage("새 방송 집계를 시작했습니다.");await load();}catch(error){setMessage(error.message);}}}>방송 시작</button>
+        <button className="start" onClick={async()=>{if(!confirm("현재 방송 입금 목록과 순위표를 초기화할까요?"))return;try{await api("/api/my/broadcast/start",{method:"POST"});setSelectedId(null);setMessage("방송 집계 기준을 초기화했습니다.");await load();}catch(error){setMessage(error.message);}}}>초기화</button>
         <button className="close" onClick={()=>window.close()}>닫기</button>
       </aside></div>
       {editing && <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEditing(null)}>
