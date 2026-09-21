@@ -229,6 +229,7 @@ function AuthenticatedRoutes() {
     return <MyDashboard />;
   if (location.pathname === "/crew-dashboard") return <Dashboard />;
   if (location.pathname === "/deposits") return <DepositHistory />;
+  if (location.pathname === "/deposits/live") return <LiveDepositPopup />;
   if (location.pathname === "/api-test")
     return canManage ? (
       <PageLayout>
@@ -1272,6 +1273,133 @@ function AnalyticsChart({
   );
 }
 
+function LiveDepositPopup() {
+  const [deposits, setDeposits] = useState([]);
+  const [message, setMessage] = useState("");
+  const [savingId, setSavingId] = useState(null);
+  const [editing, setEditing] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [adding, setAdding] = useState(false);
+  const [editForm, setEditForm] = useState({ donorName: "", amount: "" });
+  const selected = deposits.find((item) => item.id === selectedId) || null;
+  const load = async () => {
+    try {
+      const result = await api("/api/my/deposits?range=session");
+      setDeposits(result.deposits);
+      setMessage("");
+    } catch (error) {
+      setMessage(error.message);
+    }
+  };
+  useEffect(() => {
+    load();
+    let fallbackTimer = null;
+    const stream = new EventSource(apiUrl("/api/my/deposits/events"), { withCredentials:true });
+    stream.addEventListener("change", load);
+    stream.onopen = () => {
+      if (fallbackTimer) clearInterval(fallbackTimer);
+      fallbackTimer = null;
+    };
+    stream.onerror = () => {
+      if (!fallbackTimer) fallbackTimer = setInterval(load, 15000);
+    };
+    return () => {
+      stream.close();
+      if (fallbackTimer) clearInterval(fallbackTimer);
+    };
+  }, []);
+  const toggleStatus = async (item) => {
+    setSavingId(item.id);
+    try {
+      await api(`/api/my/deposits/${item.id}/status`, {
+        method: "PUT",
+        body: JSON.stringify({ status: item.status === "included" ? "excluded" : "included" }),
+      });
+      await load();
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+  const saveEdit = async (event) => {
+    event.preventDefault();
+    setSavingId(editing.id);
+    try {
+      await Promise.all([
+        api(`/api/my/deposits/${editing.id}/donor`, {
+          method: "PUT",
+          body: JSON.stringify({ canonicalName: editForm.donorName, scope: "single" }),
+        }),
+        api(`/api/my/deposits/${editing.id}/amount`, {
+          method: "PUT",
+          body: JSON.stringify({ amount: Number(editForm.amount) }),
+        }),
+      ]);
+      setEditing(null);
+      await load();
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setSavingId(null);
+    }
+  };
+  const replay = async () => {
+    if (!selected) return setMessage("먼저 입금 내역을 선택해주세요.");
+    setSavingId(selected.id);
+    try { const result=await api(`/api/my/deposits/${selected.id}/replay`,{method:"POST"}); setMessage(result.delivered?"선택한 후원 알림을 실행했습니다.":"연결된 OBS 알림 화면이 없습니다."); }
+    catch(error){setMessage(error.message);} finally{setSavingId(null);}
+  };
+  const setSelectedStatus = async (status) => {
+    if (!selected) return setMessage("먼저 입금 내역을 선택해주세요.");
+    if (selected.status === status) return;
+    await toggleStatus(selected);
+  };
+  const addDeposit = async (event) => {
+    event.preventDefault(); setSavingId("new");
+    try { await api("/api/my/deposits",{method:"POST",body:JSON.stringify({donorName:editForm.donorName,amount:Number(editForm.amount),receivedAt:new Date().toISOString()})}); setAdding(false); setMessage("입금을 추가했습니다."); await load(); }
+    catch(error){setMessage(error.message);} finally{setSavingId(null);}
+  };
+  return (
+    <main className="live-deposit-popup">
+      {message && <p className="notice">{message}</p>}
+      <div className="live-manager-layout"><div className="live-deposit-table">
+        <div className="live-deposit-head"><span>시간</span><span>입금자</span><span>금액</span><span>상태</span></div>
+        {deposits.map((item) => (
+          <article key={item.id} className={`${item.status !== "included" ? "excluded" : ""} ${selectedId===item.id?"selected":""}`} onClick={()=>setSelectedId(item.id)} onDoubleClick={()=>{setSelectedId(item.id);setEditing(item);setEditForm({donorName:item.donorName,amount:String(item.amount)});}}>
+            <time>{String(item.receivedAt).slice(11, 16)}</time>
+            <strong>{item.donorName}</strong>
+            <b>{formatWon(item.amount)}원</b>
+            <em>{item.status === "included" ? "후원 반영" : "삭제됨"}</em>
+          </article>
+        ))}
+        {!deposits.length && <p className="empty">오늘 들어온 입금이 없습니다.</p>}
+      </div><aside className="live-manager-actions"><span className="live-indicator"><i /> 실시간</span>
+        <button className="start" onClick={async()=>{if(!confirm("지금부터 새 방송 입금을 집계할까요? 현재 목록과 순위표가 초기화됩니다."))return;try{await api("/api/my/broadcast/start",{method:"POST"});setSelectedId(null);setMessage("새 방송 집계를 시작했습니다.");await load();}catch(error){setMessage(error.message);}}}>방송 시작</button>
+        <button className="run" onClick={async()=>{if(!selected)return setMessage("먼저 입금 내역을 선택해주세요.");if(selected.status!=="included")await setSelectedStatus("included");await replay();}} disabled={!selected||savingId}>실행</button>
+        <button className="rerun" onClick={replay} disabled={!selected||savingId}>재실행</button>
+        <button onClick={()=>{if(!selected)return setMessage("먼저 입금 내역을 선택해주세요.");setEditing(selected);setEditForm({donorName:selected.donorName,amount:String(selected.amount)});}} disabled={!selected}>수정</button>
+        <button onClick={()=>{setAdding(true);setEditForm({donorName:"",amount:""});}}>추가</button>
+        <button className="delete" onClick={()=>setSelectedStatus("excluded")} disabled={!selected||selected.status!=="included"}>삭제</button>
+        <button onClick={()=>setSelectedStatus("included")} disabled={!selected||selected.status==="included"}>되돌리기</button>
+        <button className="ranking" onClick={()=>window.open("/ranking","n9-ranking-preview","popup=yes,width=900,height=700")}>합계 순위</button>
+        <button onClick={load}>새로고침</button>
+        <button className="close" onClick={()=>window.close()}>닫기</button>
+      </aside></div>
+      {editing && <div className="dialog-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setEditing(null)}>
+        <form className="live-edit-dialog" onSubmit={saveEdit}>
+          <h2>입금 내역 수정</h2>
+          <label>입금자명<input autoFocus required maxLength="40" value={editForm.donorName} onChange={(event) => setEditForm({...editForm, donorName:event.target.value})}/></label>
+          <label>후원 금액<input required type="number" min="1" max="100000000" value={editForm.amount} onChange={(event) => setEditForm({...editForm, amount:event.target.value})}/></label>
+          <p>저장하면 후원 합계와 순위표가 자동으로 다시 계산됩니다.</p>
+          <div><button type="button" onClick={() => setEditing(null)}>취소</button><button className="primary-button" disabled={savingId === editing.id}>저장</button></div>
+        </form>
+      </div>}
+      {adding && <div className="dialog-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAdding(false)}><form className="live-edit-dialog" onSubmit={addDeposit}><h2>입금 내역 추가</h2><label>입금자명<input autoFocus required maxLength="40" value={editForm.donorName} onChange={(event)=>setEditForm({...editForm,donorName:event.target.value})}/></label><label>후원 금액<input required type="number" min="1" max="100000000" value={editForm.amount} onChange={(event)=>setEditForm({...editForm,amount:event.target.value})}/></label><p>추가 즉시 후원 합계와 순위표에 반영됩니다.</p><div><button type="button" onClick={()=>setAdding(false)}>취소</button><button className="primary-button" disabled={savingId==="new"}>추가</button></div></form></div>}
+    </main>
+  );
+}
+
 function DepositHistory() {
   const today = new Date();
   const dateValue = (date) =>
@@ -1350,6 +1478,25 @@ function DepositHistory() {
   useEffect(() => {
     const timer = setTimeout(load, filters.query ? 250 : 0);
     return () => clearTimeout(timer);
+  }, [filters.range, filters.query, filters.status, filters.from, filters.to]);
+  useEffect(() => {
+    let fallbackTimer = null;
+    const stream = new EventSource(apiUrl("/api/my/deposits/events"), { withCredentials:true });
+    stream.addEventListener("change", load);
+    stream.onopen = () => {
+      if (fallbackTimer) clearInterval(fallbackTimer);
+      fallbackTimer = null;
+    };
+    stream.onerror = () => {
+      if (!fallbackTimer) fallbackTimer = setInterval(load, 15000);
+    };
+    const onVisible = () => !document.hidden && load();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stream.close();
+      if (fallbackTimer) clearInterval(fallbackTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [filters.range, filters.query, filters.status, filters.from, filters.to]);
   const groups = data.deposits.reduce((result, item) => {
     const day = String(item.receivedAt).slice(0, 10);
@@ -1461,6 +1608,12 @@ function DepositHistory() {
             </p>
           </div>
           <div className="deposit-header-actions">
+            <button
+              className="header-button live-deposit-button"
+              onClick={() => window.open("/deposits/live", "n9-live-deposits", "popup=yes,width=900,height=600")}
+            >
+              방송용 실시간 화면
+            </button>
             <button
               className="header-button alert-test-button"
               disabled={alertTesting}
@@ -2658,6 +2811,14 @@ function hexToRgba(hex, opacity = 1) {
   return `rgba(${number >> 16},${(number >> 8) & 255},${number & 255},${Math.max(0, Math.min(1, Number(opacity) || 0))})`;
 }
 
+function colorPickerValue(value) {
+  const text = String(value || "").trim();
+  if (/^#[0-9a-f]{6}$/i.test(text)) return text;
+  const match = text.match(/^rgb\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*\)$/i);
+  if (!match) return "#000000";
+  return `#${match.slice(1).map((part) => Math.min(255, Number(part)).toString(16).padStart(2, "0")).join("")}`;
+}
+
 function useTransparentDocument() {
   useEffect(() => {
     const html = document.documentElement;
@@ -2687,12 +2848,16 @@ function alertAppearance(settings, amount = 50000) {
   return {
     tier,
     gradeImage: previewGrade?.imageData || "",
+    gradeName: previewGrade?.name || "",
     gradeSize: settings.crewGradeImageSize,
+    gradeDisplayMode: settings.crewGradeDisplayMode,
+    gradeTextStyle: { color:settings.crewGradeTextColor, fontFamily:settings.crewGradeTextFontFamily, fontSize:settings.crewGradeTextSize },
     showGrade: settings.crewGradeEnabled,
     nameColorEnabled: settings.nameColorEnabled,
     nameColor: settings.nameColor,
     amountColorEnabled: settings.amountColorEnabled,
     amountColor: settings.amountColor,
+    suffixStyle: settings.suffixStyleEnabled ? { color:settings.suffixColor, fontFamily:settings.suffixFontFamily } : undefined,
     messageTemplate:
       tier?.messageMode === "custom" && tier.messageTemplate
         ? tier.messageTemplate
@@ -2731,9 +2896,13 @@ function alertAppearance(settings, amount = 50000) {
       borderRadius: settings.backgroundEnabled
         ? `${settings.backgroundRadius}px`
         : "0",
-      background: settings.backgroundEnabled
+      backgroundColor: settings.backgroundEnabled
         ? hexToRgba(settings.backgroundColor, settings.backgroundOpacity)
         : "transparent",
+      backgroundImage: settings.backgroundEnabled && settings.backgroundImageData
+        ? `url(${settings.backgroundImageData})` : "none",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
     },
   };
 }
@@ -3347,7 +3516,13 @@ function Settings({ mode }) {
                     해당 이미지를 자동 표시합니다.
                   </p>
                   {settings.crewGradeEnabled && (
-                    <label>
+                    <><label>
+                      등급 표시 방식
+                      <select value={settings.crewGradeDisplayMode} onChange={(e)=>update("crewGradeDisplayMode",e.target.value)}>
+                        <option value="image">이미지 사용</option>
+                        <option value="text">글씨 사용</option>
+                      </select>
+                    </label><label>
                       등급 이미지 크기
                       <input
                         type="range"
@@ -3360,7 +3535,7 @@ function Settings({ mode }) {
                         }
                       />
                       <span>{settings.crewGradeImageSize}px</span>
-                    </label>
+                    </label>{settings.crewGradeDisplayMode === "text" && <><label>등급 글꼴<select value={settings.crewGradeTextFontFamily} onChange={(e)=>update("crewGradeTextFontFamily",e.target.value)}>{FONT_OPTIONS.map(([value,label])=><option value={value} key={label}>{label}</option>)}</select></label><label>등급 글자색<input type="color" value={settings.crewGradeTextColor} onChange={(e)=>update("crewGradeTextColor",e.target.value)}/><input className="color-code-input" value={settings.crewGradeTextColor} onChange={(e)=>update("crewGradeTextColor",e.target.value)}/></label><label>등급 글자 크기<input type="range" min="16" max="160" value={settings.crewGradeTextSize} onChange={(e)=>update("crewGradeTextSize",Number(e.target.value))}/><span>{settings.crewGradeTextSize}px</span></label></>}</>
                   )}
                   <label>
                     알림 문구
@@ -3477,9 +3652,10 @@ function Settings({ mode }) {
                       글자색
                       <input
                         type="color"
-                        value={settings.textColor}
+                        value={colorPickerValue(settings.textColor)}
                         onChange={(e) => update("textColor", e.target.value)}
                       />
+                      <input className="color-code-input" value={settings.textColor} onChange={(e)=>update("textColor",e.target.value)} placeholder="#FFFFFF 또는 rgb(255,255,255)" />
                     </label>
                     <div
                       className={`outline-control ${settings.outlineEnabled === false ? "disabled" : ""}`}
@@ -3504,9 +3680,10 @@ function Settings({ mode }) {
                         aria-label="테두리색"
                         type="color"
                         disabled={settings.outlineEnabled === false}
-                        value={settings.outlineColor}
+                        value={colorPickerValue(settings.outlineColor)}
                         onChange={(e) => update("outlineColor", e.target.value)}
                       />
+                      <input aria-label="테두리 색상 코드" className="color-code-input" disabled={settings.outlineEnabled === false} value={settings.outlineColor} onChange={(e)=>update("outlineColor",e.target.value)} />
                     </div>
                   </div>
                   {settings.outlineEnabled !== false && (
@@ -3543,9 +3720,10 @@ function Settings({ mode }) {
                           <span>{"{name}"} 색상</span>
                           <input
                             type="color"
-                            value={settings.nameColor}
+                            value={colorPickerValue(settings.nameColor)}
                             onChange={(e) => update("nameColor", e.target.value)}
                           />
+                          <input className="color-code-input" value={settings.nameColor} onChange={(e)=>update("nameColor",e.target.value)} />
                         </label>
                       )}
                     </div>
@@ -3566,11 +3744,12 @@ function Settings({ mode }) {
                           <span>{"{amount}"} 색상</span>
                           <input
                             type="color"
-                            value={settings.amountColor}
+                            value={colorPickerValue(settings.amountColor)}
                             onChange={(e) =>
                               update("amountColor", e.target.value)
                             }
                           />
+                          <input className="color-code-input" value={settings.amountColor} onChange={(e)=>update("amountColor",e.target.value)} />
                         </label>
                       )}
                     </div>
@@ -3584,6 +3763,8 @@ function Settings({ mode }) {
                     />
                     <i />
                   </label>
+                  <label className="toggle-label">‘님’·‘원’ 개별 스타일<input type="checkbox" checked={Boolean(settings.suffixStyleEnabled)} onChange={(e)=>update("suffixStyleEnabled",e.target.checked)}/><i /></label>
+                  {settings.suffixStyleEnabled && <><label>‘님’·‘원’ 글꼴<select value={settings.suffixFontFamily} onChange={(e)=>update("suffixFontFamily",e.target.value)}>{FONT_OPTIONS.map(([value,label])=><option value={value} key={label}>{label}</option>)}</select></label><label>‘님’·‘원’ 색상<input type="color" value={settings.suffixColor} onChange={(e)=>update("suffixColor",e.target.value)}/><input className="color-code-input" value={settings.suffixColor} onChange={(e)=>update("suffixColor",e.target.value)} placeholder="#FFFFFF 또는 rgb(255,255,255)"/></label></>}
                 </AlertSettingSection>
                 <AlertSettingSection
                   id="background"
@@ -3614,16 +3795,18 @@ function Settings({ mode }) {
                         <input
                           aria-label="알림 배경색"
                           type="color"
-                          value={settings.backgroundColor}
+                          value={colorPickerValue(settings.backgroundColor)}
                           onChange={(e) =>
                             update("backgroundColor", e.target.value)
                           }
                         />
+                        <input className="color-code-input" value={settings.backgroundColor} onChange={(e)=>update("backgroundColor",e.target.value)} />
                       </label>
                     )}
                   </div>
                   {settings.backgroundEnabled && (
                     <>
+                      <label>배경 이미지<input type="file" accept="image/*" onChange={(event)=>{const file=event.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){setSaved("배경 이미지는 5MB 이하만 사용할 수 있습니다.");return;}const reader=new FileReader();reader.onload=()=>setSettings(current=>({...current,backgroundImageData:String(reader.result),backgroundImageName:file.name}));reader.readAsDataURL(file);}} />{settings.backgroundImageName&&<small>{settings.backgroundImageName} <button type="button" onClick={()=>setSettings(current=>({...current,backgroundImageData:"",backgroundImageName:""}))}>제거</button></small>}</label>
                       <label>
                         배경 투명도
                         <input
@@ -4631,19 +4814,14 @@ function Settings({ mode }) {
                     />
                   </label>
                   <label>
-                    표시 인원
-                    <input
-                      type="number"
-                      min="1"
-                      max="60"
-                      value={settings.rankingLimit}
-                      onChange={(e) =>
-                        update(
-                          "rankingLimit",
-                          Math.min(60, Math.max(1, Number(e.target.value))),
-                        )
-                      }
-                    />
+                    표시 순위
+                    <select
+                      value={Number(settings.rankingLimit) === 1 ? 1 : 3}
+                      onChange={(e) => update("rankingLimit", Number(e.target.value))}
+                    >
+                      <option value="1">1등만 표시</option>
+                      <option value="3">1~3등 표시</option>
+                    </select>
                   </label>
                 </AlertSettingSection>
                 <AlertSettingSection
@@ -4696,21 +4874,23 @@ function Settings({ mode }) {
                         전체 배경색
                         <input
                           type="color"
-                          value={settings.rankingCustomBackground}
+                          value={colorPickerValue(settings.rankingCustomBackground)}
                           onChange={(e) =>
                             update("rankingCustomBackground", e.target.value)
                           }
                         />
+                        <input className="color-code-input" value={settings.rankingCustomBackground} onChange={(e)=>update("rankingCustomBackground",e.target.value)}/>
                       </label>
                       <label>
                         테두리색
                         <input
                           type="color"
-                          value={settings.rankingCustomBorder}
+                          value={colorPickerValue(settings.rankingCustomBorder)}
                           onChange={(e) =>
                             update("rankingCustomBorder", e.target.value)
                           }
                         />
+                        <input className="color-code-input" value={settings.rankingCustomBorder} onChange={(e)=>update("rankingCustomBorder",e.target.value)}/>
                       </label>
                       <label>
                         행 배경색
@@ -4946,21 +5126,23 @@ function Settings({ mode }) {
                     닉네임 색상
                     <input
                       type="color"
-                      value={settings.rankingNameColor}
+                      value={colorPickerValue(settings.rankingNameColor)}
                       onChange={(e) =>
                         update("rankingNameColor", e.target.value)
                       }
                     />
+                    <input className="color-code-input" value={settings.rankingNameColor} onChange={(e)=>update("rankingNameColor",e.target.value)}/>
                   </label>
                   <label>
                     금액 색상
                     <input
                       type="color"
-                      value={settings.rankingAmountColor}
+                      value={colorPickerValue(settings.rankingAmountColor)}
                       onChange={(e) =>
                         update("rankingAmountColor", e.target.value)
                       }
                     />
+                    <input className="color-code-input" value={settings.rankingAmountColor} onChange={(e)=>update("rankingAmountColor",e.target.value)}/>
                   </label>
                 </AlertSettingSection>
                 <AlertSettingSection
@@ -5326,12 +5508,16 @@ function AlertMessage({
   donorName,
   amountText,
   gradeImage = "",
+  gradeName = "",
   gradeSize = 56,
+  gradeDisplayMode = "image",
+  gradeTextStyle,
   showGrade = false,
   nameColorEnabled = false,
   nameColor,
   amountColorEnabled = false,
   amountColor,
+  suffixStyle,
 }) {
   return (
     <div className="alert-text">
@@ -5339,7 +5525,7 @@ function AlertMessage({
         <div className="alert-line" key={index}>
           {line.split(/(\{grade\}|\{name\}|\{amount\})/g).map((part, partIndex) => {
             if (part === "{grade}")
-              return showGrade && gradeImage ? (
+              return showGrade && gradeDisplayMode === "text" ? <span key={partIndex} className="alert-grade-text" style={gradeTextStyle}>{gradeName}</span> : showGrade && gradeImage ? (
                 <img
                   key={partIndex}
                   className="alert-grade-image"
@@ -5352,7 +5538,7 @@ function AlertMessage({
               return <span key={partIndex} className="alert-token-name" style={nameColorEnabled?{color:nameColor}:undefined}>{donorName}</span>;
             if (part === "{amount}")
               return <span key={partIndex} className="alert-token-amount" style={amountColorEnabled?{color:amountColor}:undefined}>{amountText}</span>;
-            return <Fragment key={partIndex}>{part}</Fragment>;
+            return <Fragment key={partIndex}>{part.split(/([님원])/g).map((text,textIndex)=>(text === "님" || text === "원") ? <span key={textIndex} className="alert-token-suffix" style={suffixStyle}>{text}</span> : text)}</Fragment>;
           })}
         </div>
       ))}
@@ -5373,12 +5559,16 @@ function AlertPreviewFrame({ appearance, donorName, amountText }) {
             donorName={donorName}
             amountText={amountText}
             gradeImage={appearance.gradeImage}
+            gradeName={appearance.gradeName}
             gradeSize={appearance.gradeSize}
+            gradeDisplayMode={appearance.gradeDisplayMode}
+            gradeTextStyle={appearance.gradeTextStyle}
             showGrade={appearance.showGrade}
             nameColorEnabled={appearance.nameColorEnabled}
             nameColor={appearance.nameColor}
             amountColorEnabled={appearance.amountColorEnabled}
             amountColor={appearance.amountColor}
+            suffixStyle={appearance.suffixStyle}
           />
         </div>
       </div>
@@ -5557,11 +5747,6 @@ function RankingCard({ items, settings, onEdit }) {
 function Widget({ token }) {
   useTransparentDocument();
   const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
-  const [editorOpen, setEditorOpen] = useState(false);
-  const [rankingMemo, setRankingMemo] = useState("");
-  const [editorStatus, setEditorStatus] = useState("");
-  const [saving, setSaving] = useState(false);
-  const loadRef = useRef(null);
   useEffect(() => {
     const load = () =>
       token
@@ -5572,59 +5757,30 @@ function Widget({ token }) {
             ([widgets, settings]) =>
               setData({ ranking: widgets.ranking, settings }),
           );
-    loadRef.current = load;
     load();
-    const timer = setInterval(load, 1000);
-    return () => clearInterval(timer);
+    let fallbackTimer = null;
+    const eventPath = token
+      ? `/api/widgets/${encodeURIComponent(token)}/events`
+      : "/api/my/deposits/events";
+    const stream = new EventSource(apiUrl(eventPath), { withCredentials:true });
+    stream.addEventListener("change", load);
+    stream.onopen = () => {
+      if (fallbackTimer) clearInterval(fallbackTimer);
+      fallbackTimer = null;
+    };
+    stream.onerror = () => {
+      if (!fallbackTimer) fallbackTimer = setInterval(load, 15000);
+    };
+    return () => {
+      stream.close();
+      if (fallbackTimer) clearInterval(fallbackTimer);
+    };
   }, [token]);
-  const openEditor = () => {
-    if (!token) return;
-    setRankingMemo(data.ranking.map((item) => `${item.donorName}  ${formatWon(item.amount)}`).join("\n"));
-    setEditorStatus("");
-    setEditorOpen(true);
-  };
-  const saveRankingMemo = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    setEditorStatus("");
-    try {
-      const rows = rankingMemo.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line, index) => {
-        const match = line.match(/^(.*?)\s+([\d,]+)\s*(?:원)?$/);
-        if (!match) throw new Error(`${index + 1}번째 줄을 '닉네임  금액' 형식으로 입력해주세요.`);
-        return { donorName:match[1].trim(), amount:Number(match[2].replaceAll(",", "")) };
-      });
-      const result = await api(`/api/widgets/${encodeURIComponent(token)}/ranking`, {
-        method: "PUT",
-        body: JSON.stringify({ rows }),
-      });
-      setData((current) => ({ ...current, ranking:result.ranking }));
-      setEditorStatus("순위표에 반영했습니다.");
-      setTimeout(() => setEditorOpen(false), 650);
-    } catch (error) {
-      setEditorStatus(error.message);
-    } finally {
-      setSaving(false);
-    }
-  };
   return (
-    <div className="interactive-ranking-root">
+    <div className="ranking-root">
       <RankingOutputCanvas>
-        <RankingCard items={data.ranking} settings={data.settings} onEdit={token ? openEditor : undefined} />
+        <RankingCard items={data.ranking} settings={data.settings} />
       </RankingOutputCanvas>
-      {token && <button type="button" className="ranking-interact-trigger" onClick={openEditor}>순위 메모 편집</button>}
-      {editorOpen && (
-        <div className="ranking-interact-backdrop" onMouseDown={(event) => {
-          if (event.target === event.currentTarget && !saving) setEditorOpen(false);
-        }}>
-          <form className="ranking-interact-editor ranking-memo-editor" onSubmit={saveRankingMemo}>
-            <strong>후원 순위 메모</strong>
-            <p>한 줄에 한 명씩 자유롭게 고치세요. 예: 폴조지  50,000</p>
-            <textarea autoFocus spellCheck="false" value={rankingMemo} onChange={(e) => setRankingMemo(e.target.value)} placeholder={"폴조지  50,000\n차니  30,000\n민권  10,000"} />
-            {editorStatus && <span className="ranking-interact-status">{editorStatus}</span>}
-            <div><button type="button" onClick={() => setEditorOpen(false)} disabled={saving}>취소</button><button type="submit" disabled={saving}>{saving ? "저장 중..." : "메모 저장"}</button></div>
-          </form>
-        </div>
-      )}
     </div>
   );
 }
@@ -5756,12 +5912,16 @@ function Overlay({ token, preview = false }) {
           donorName={current.donorName}
           amountText={formatWon(current.amount)}
           gradeImage={crewGrade?.imageData || ""}
+          gradeName={crewGrade?.name || ""}
           gradeSize={settings.crewGradeImageSize}
+          gradeDisplayMode={settings.crewGradeDisplayMode}
+          gradeTextStyle={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:settings.crewGradeTextSize}}
           showGrade={settings.crewGradeEnabled && Boolean(crewGrade)}
           nameColorEnabled={appearance.nameColorEnabled}
           nameColor={appearance.nameColor}
           amountColorEnabled={appearance.amountColorEnabled}
           amountColor={appearance.amountColor}
+          suffixStyle={appearance.suffixStyle}
         />
       </div>
     </AlertOutputCanvas>

@@ -112,6 +112,9 @@ export async function initializeDatabase() {
   if (!donationColumns.has('status')) await db.execute(`ALTER TABLE donations ADD COLUMN status TEXT NOT NULL DEFAULT 'included'`);
   const userColumns = new Set((await db.execute(`PRAGMA table_info(users)`)).rows.map(column => column.name));
   if (!userColumns.has('obs_token')) await db.execute(`ALTER TABLE users ADD COLUMN obs_token TEXT`);
+  if (!userColumns.has('broadcast_started_at')) await db.execute(`ALTER TABLE users ADD COLUMN broadcast_started_at TEXT`);
+  if (!userColumns.has('broadcast_start_donation_id')) await db.execute(`ALTER TABLE users ADD COLUMN broadcast_start_donation_id INTEGER`);
+  await db.execute(`UPDATE users SET broadcast_start_donation_id = COALESCE((SELECT MAX(d.id) FROM donations d WHERE d.recipient_user_id = users.id AND d.received_at <= users.broadcast_started_at), 0) WHERE broadcast_started_at IS NOT NULL AND broadcast_start_donation_id IS NULL`);
   if (!await activeSession()) {
     await db.execute({ sql: 'INSERT INTO broadcast_sessions (title) VALUES (?)', args: ['첫 방송'] });
   }

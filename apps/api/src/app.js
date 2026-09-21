@@ -6,10 +6,37 @@ import { createSession, currentUser, destroySession, hashPassword, requireAuth, 
 
 export const app = express();
 const overlayClients = new Set();
+const dataChangeClients = new Set();
 
 function sendOverlayEvent(res, event, data, id) {
   if (id != null) res.write(`id: ${id}\n`);
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+}
+
+function publishDataChange(userId, reason = 'updated') {
+  const payload = { reason, changedAt:new Date().toISOString() };
+  for (const client of dataChangeClients) {
+    if (Number(client.userId) !== Number(userId)) continue;
+    sendOverlayEvent(client.res, 'change', payload);
+  }
+}
+
+function openDataChangeStream(req, res, userId) {
+  res.set({
+    'Content-Type':'text/event-stream',
+    'Cache-Control':'no-cache, no-transform',
+    'Connection':'keep-alive',
+    'X-Accel-Buffering':'no'
+  });
+  res.flushHeaders();
+  const client = { res, userId };
+  dataChangeClients.add(client);
+  sendOverlayEvent(res, 'ready', { connected:true });
+  const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000);
+  res.on('close', () => {
+    clearInterval(heartbeat);
+    dataChangeClients.delete(client);
+  });
 }
 
 function publishOverlayDonation(donation, userId) {
@@ -120,10 +147,16 @@ function cleanSettings(input) {
   settings.amountColorEnabled=Boolean(settings.amountColorEnabled);
   settings.nameColor=String(settings.nameColor||DEFAULT_SETTINGS.nameColor).slice(0,20);
   settings.amountColor=String(settings.amountColor||DEFAULT_SETTINGS.amountColor).slice(0,20);
+  settings.suffixStyleEnabled=Boolean(settings.suffixStyleEnabled);
+  settings.suffixColor=String(settings.suffixColor||DEFAULT_SETTINGS.suffixColor).slice(0,20);
+  settings.suffixFontFamily=String(settings.suffixFontFamily||DEFAULT_SETTINGS.suffixFontFamily).slice(0,120);
   settings.animation = ['fade','zoom','slide-up','slide-down','slide-left','slide-right','bounce','flip','pulse','shake'].includes(settings.animation) ? settings.animation : 'zoom';
   settings.exitAnimation = ['fade-out','zoom-out','slide-down-out','slide-up-out'].includes(settings.exitAnimation) ? settings.exitAnimation : 'fade-out';
   settings.soundPreset = ['coin','chime','pop','fanfare','bell','sparkle','success','drum','laser','magic','custom','none'].includes(settings.soundPreset) || String(settings.soundPreset).startsWith('library:') ? settings.soundPreset : 'coin';
   settings.backgroundEnabled = Boolean(settings.backgroundEnabled);
+  settings.backgroundImageData=String(settings.backgroundImageData||'').slice(0,7000000);
+  if(settings.backgroundImageData&&!settings.backgroundImageData.startsWith('data:image/'))settings.backgroundImageData='';
+  settings.backgroundImageName=String(settings.backgroundImageName||'').slice(0,100);
   settings.outlineEnabled = settings.outlineEnabled !== false;
   settings.textShadow = Boolean(settings.textShadow);
   settings.soundEnabled = Boolean(settings.soundEnabled);
@@ -138,6 +171,10 @@ function cleanSettings(input) {
   settings.ttsPitch = Math.max(0, Math.min(2, Number(settings.ttsPitch) || 1));
   settings.ttsVolume = Math.max(0, Math.min(100, Number.isFinite(Number(settings.ttsVolume)) ? Number(settings.ttsVolume) : DEFAULT_SETTINGS.ttsVolume));
   settings.crewGradeEnabled = Boolean(settings.crewGradeEnabled);
+  settings.crewGradeDisplayMode=settings.crewGradeDisplayMode==='text'?'text':'image';
+  settings.crewGradeTextColor=String(settings.crewGradeTextColor||DEFAULT_SETTINGS.crewGradeTextColor).slice(0,20);
+  settings.crewGradeTextFontFamily=String(settings.crewGradeTextFontFamily||DEFAULT_SETTINGS.crewGradeTextFontFamily).slice(0,120);
+  settings.crewGradeTextSize=Math.max(16,Math.min(160,Number(settings.crewGradeTextSize)||54));
   settings.crewGradeMinimumAmount = Math.max(0, Math.min(1000000000, Number(settings.crewGradeMinimumAmount) || DEFAULT_SETTINGS.crewGradeMinimumAmount));
   settings.crewGradeImageData = String(settings.crewGradeImageData || '').slice(0,1400000);
   if (settings.crewGradeImageData && !settings.crewGradeImageData.startsWith('data:image/')) settings.crewGradeImageData = '';
@@ -158,7 +195,7 @@ function cleanSettings(input) {
     soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number(tier.soundVolume) || settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,7000000),
     ttsMode:tier.ttsMode === 'custom' ? 'custom' : 'inherit', ttsEnabled:tier.ttsEnabled !== false, ttsVoiceURI:String(tier.ttsVoiceURI || settings.ttsVoiceURI || '').slice(0,300), ttsRate:Math.max(.5,Math.min(2,Number(tier.ttsRate)||settings.ttsRate)), ttsPitch:Math.max(0,Math.min(2,Number(tier.ttsPitch)||settings.ttsPitch)), ttsVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.ttsVolume))?Number(tier.ttsVolume):settings.ttsVolume))
   })) : [];
-  settings.rankingLimit = Math.max(1, Math.min(60, Math.floor(Number(settings.rankingLimit) || DEFAULT_SETTINGS.rankingLimit)));
+  settings.rankingLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   settings.rankingFontSize = Math.max(16, Math.min(72, Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize)));
   settings.rankingFontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.rankingFontWeight) || 700)));
   settings.rankingUseLineHeight = Boolean(settings.rankingUseLineHeight);
@@ -368,7 +405,7 @@ app.get('/api/my/analytics', requireAuth, async (req, res) => {
 });
 
 app.get('/api/my/deposits', requireAuth, async (req, res) => {
-  const range = ['today','yesterday','7d','30d','month','custom','all'].includes(req.query.range) ? req.query.range : 'today';
+  const range = ['today','yesterday','7d','30d','month','custom','all','session'].includes(req.query.range) ? req.query.range : 'today';
   const query = String(req.query.query || '').trim().slice(0, 40);
   const status = ['included','excluded','below_minimum','needs_review'].includes(req.query.status) ? req.query.status : '';
   const dateClauses = {
@@ -381,6 +418,12 @@ app.get('/api/my/deposits', requireAuth, async (req, res) => {
   };
   const args = [req.user.id];
   let dateClause = dateClauses[range] || dateClauses.today;
+  if (range === 'session') {
+    const session = await activeSession();
+    const state=await db.execute({sql:'SELECT broadcast_started_at broadcastStartedAt, broadcast_start_donation_id broadcastStartDonationId FROM users WHERE id=?',args:[req.user.id]});
+    if(state.rows[0]?.broadcastStartDonationId!=null){dateClause=`d.id > ?`;args.push(Number(state.rows[0].broadcastStartDonationId));}
+    else{dateClause=`d.received_at >= ?`;args.push(state.rows[0]?.broadcastStartedAt||session.started_at);}
+  }
   if (range === 'custom') {
     const from = String(req.query.from || '');
     const to = String(req.query.to || '');
@@ -421,6 +464,7 @@ app.post('/api/my/deposits', requireAuth, async (req, res) => {
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
     const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, await getUserSettings(req.user.id));
     publishOverlayDonation(donation, req.user.id);
+    publishDataChange(req.user.id, 'deposit-created');
     res.status(201).json(donation);
   } catch (error) {
     res.status(400).json({ error:error.message });
@@ -433,6 +477,15 @@ app.post('/api/my/deposits/test-alert', requireAuth, async (req, res) => {
   const donation=await donationWithCrewGrade({ id:null, donorName:'폴조지', amount, bank:'test', receivedAt:new Date().toISOString() },req.user.id,settings);
   const delivered=publishOverlayTest(donation,req.user.id);
   res.json({ ok:true, delivered });
+});
+
+app.post('/api/my/deposits/:id/replay', requireAuth, async (req, res) => {
+  const donationId=Number(req.params.id);
+  const found=await db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id=d.recipient_user_id AND a.raw_name=d.donor_name WHERE d.id=? AND d.recipient_user_id=? LIMIT 1`, args:[donationId,req.user.id] });
+  if(!found.rows[0])return res.status(404).json({error:'입금 내역을 찾을 수 없습니다.'});
+  const donation=await donationWithCrewGrade(found.rows[0],req.user.id,await getUserSettings(req.user.id));
+  const delivered=publishOverlayTest(donation,req.user.id);
+  res.json({ok:true,delivered});
 });
 
 app.put('/api/my/deposits/:id/donor', requireAuth, async (req, res) => {
@@ -454,6 +507,7 @@ app.put('/api/my/deposits/:id/donor', requireAuth, async (req, res) => {
     await db.execute({ sql:'UPDATE donations SET donor_override_name = ? WHERE id = ?', args:[canonicalName || null,donationId] });
   }
   await db.execute({ sql:'INSERT INTO donor_name_changes (donation_id, changed_by_user_id, raw_name, canonical_name, scope) VALUES (?, ?, ?, ?, ?)', args:[donationId,req.user.id,donation.rawDonorName,canonicalName || null,scope] });
+  publishDataChange(req.user.id, 'donor-updated');
   res.json({ ok:true });
 });
 
@@ -469,14 +523,40 @@ app.put('/api/my/deposits/:id/status', requireAuth, async (req, res) => {
     await db.execute({ sql:'UPDATE donations SET status = ? WHERE id = ?', args:[status,donationId] });
     await db.execute({ sql:'INSERT INTO donation_status_changes (donation_id, changed_by_user_id, previous_status, new_status, note) VALUES (?, ?, ?, ?, ?)', args:[donationId,req.user.id,donation.status,status,note || null] });
   }
+  publishDataChange(req.user.id, 'status-updated');
   res.json({ ok:true, status });
+});
+
+app.put('/api/my/deposits/:id/amount', requireAuth, async (req, res) => {
+  const donationId = Number(req.params.id);
+  const amount = Number(req.body?.amount);
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 100000000) {
+    return res.status(400).json({ error:'금액은 1원 이상 1억원 이하의 정수로 입력해주세요.' });
+  }
+  const found = await db.execute({
+    sql:'SELECT id FROM donations WHERE id = ? AND recipient_user_id = ? LIMIT 1',
+    args:[donationId,req.user.id]
+  });
+  if (!found.rows[0]) return res.status(404).json({ error:'입금 내역을 찾을 수 없습니다.' });
+  await db.execute({ sql:'UPDATE donations SET amount = ? WHERE id = ?', args:[amount,donationId] });
+  publishDataChange(req.user.id, 'amount-updated');
+  res.json({ ok:true, amount });
+});
+
+app.get('/api/my/deposits/events', requireAuth, (req, res) => {
+  openDataChangeStream(req, res, req.user.id);
 });
 
 async function widgetDataForUser(userId) {
   const session = await activeSession();
+  const state=await db.execute({sql:'SELECT broadcast_started_at broadcastStartedAt, broadcast_start_donation_id broadcastStartDonationId FROM users WHERE id=?',args:[userId]});
+  const displayAfter=state.rows[0]?.broadcastStartedAt||session.display_after;
+  const useStartId=state.rows[0]?.broadcastStartDonationId!=null;
+  const startClause=useStartId?'d.id > ?':'d.received_at >= ?';
+  const startValue=useStartId?Number(state.rows[0].broadcastStartDonationId):displayAfter;
   const [donations, ranking, adjustments] = await Promise.all([
-    db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.received_at >= ? AND d.status = 'included' ORDER BY d.id DESC LIMIT 20`, args:[session.id,userId,session.display_after] }),
-    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.recipient_user_id = ? AND d.received_at >= ? AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName LIMIT 60`, args:[session.id,userId,session.display_after] }),
+    db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND ${startClause} AND d.status = 'included' ORDER BY d.id DESC LIMIT 20`, args:[userId,startValue] }),
+    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count, MAX(d.received_at) lastReceivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND ${startClause} AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, lastReceivedAt DESC LIMIT 60`, args:[userId,startValue] }),
     db.execute({ sql:'SELECT donor_name donorName, amount FROM ranking_adjustments WHERE session_id = ? AND recipient_user_id = ?', args:[session.id,userId] })
   ]);
   const merged = new Map(ranking.rows.map(row => [row.donorName, { ...row, amount:Number(row.amount), count:Number(row.count) }]));
@@ -485,7 +565,7 @@ async function widgetDataForUser(userId) {
     current.amount += Number(row.amount);
     merged.set(row.donorName, current);
   }
-  const visibleRanking = [...merged.values()].filter(row => row.amount > 0).sort((a,b) => b.amount - a.amount || a.donorName.localeCompare(b.donorName, 'ko')).slice(0,60);
+  const visibleRanking = [...merged.values()].filter(row => row.amount > 0).sort((a,b) => b.amount - a.amount || String(b.lastReceivedAt||'').localeCompare(String(a.lastReceivedAt||'')) || a.donorName.localeCompare(b.donorName, 'ko')).slice(0,60);
   return { donations:donations.rows, ranking:visibleRanking };
 }
 
@@ -494,6 +574,15 @@ app.get('/api/obs/sources', requireAuth, async (req, res) => {
   const obsToken = result.rows[0]?.obsToken;
   if (!obsToken) return res.status(500).json({ error:'OBS 전용 주소를 준비하지 못했습니다.' });
   res.json({ alertPath:`/overlay/${obsToken}`, rankingPath:`/ranking/${obsToken}` });
+});
+
+app.post('/api/my/broadcast/start', requireAuth, async (req,res)=>{
+  const latest=await db.execute({sql:'SELECT COALESCE(MAX(id),0) lastDonationId FROM donations WHERE recipient_user_id=?',args:[req.user.id]});
+  await db.execute({sql:'UPDATE users SET broadcast_started_at=CURRENT_TIMESTAMP, broadcast_start_donation_id=? WHERE id=?',args:[Number(latest.rows[0].lastDonationId)||0,req.user.id]});
+  const session=await activeSession();
+  await db.execute({sql:'DELETE FROM ranking_adjustments WHERE session_id=? AND recipient_user_id=?',args:[session.id,req.user.id]});
+  publishDataChange(req.user.id,'broadcast-started');
+  res.json({ok:true});
 });
 
 app.get('/api/widgets', requireAuth, async (req, res) => {
@@ -506,6 +595,12 @@ app.get('/api/widgets/:token', async (req, res) => {
   res.json({ ...(await widgetDataForUser(user.id)), settings:await getUserSettings(user.id) });
 });
 
+app.get('/api/widgets/:token/events', async (req, res) => {
+  const user = await getObsUser(req.params.token);
+  if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
+  openDataChangeStream(req, res, user.id);
+});
+
 app.post('/api/widgets/:token/manual-donation', async (req, res) => {
   try {
     const user = await getObsUser(req.params.token);
@@ -516,6 +611,7 @@ app.post('/api/widgets/:token/manual-donation', async (req, res) => {
       sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, 'manual', NULL)`,
       args:[session.id,user.id,input.donorName,input.amount]
     });
+    publishDataChange(user.id, 'deposit-created');
     res.status(201).json({ ok:true, id:Number(result.lastInsertRowid) });
   } catch (error) {
     res.status(400).json({ error:error.message });
@@ -545,6 +641,7 @@ app.put('/api/widgets/:token/ranking', async (req, res) => {
       const adjustment = (desired.get(donorName) || 0) - (baseMap.get(donorName) || 0);
       if (adjustment !== 0) await db.execute({ sql:'INSERT INTO ranking_adjustments (session_id, recipient_user_id, donor_name, amount) VALUES (?, ?, ?, ?)', args:[session.id,user.id,donorName,adjustment] });
     }
+    publishDataChange(user.id, 'ranking-updated');
     res.json({ ok:true, ranking:(await widgetDataForUser(user.id)).ranking });
   } catch (error) {
     res.status(400).json({ error:error.message });
@@ -630,6 +727,7 @@ app.post('/api/donations', requireAuth, async (req, res) => {
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
     const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, settings);
     publishOverlayDonation(donation, req.user.id);
+    publishDataChange(req.user.id, 'deposit-created');
     res.status(201).json(donation);
   } catch (error) {
     const duplicate = String(error.message).includes('UNIQUE constraint');
@@ -653,6 +751,7 @@ app.put('/api/settings', requireAuth, async (req, res) => {
   if(req.user.role!=='super')settings.crewGrades=await getSharedCrewGrades();
   const savedSettings = await settingsWithCrewPreview(req.user);
   publishOverlaySettings(savedSettings, req.user.id);
+  publishDataChange(req.user.id, 'settings-updated');
   res.json(savedSettings);
 });
 
@@ -668,11 +767,13 @@ app.post('/api/sessions', requireAuth, async (req, res) => {
 app.post('/api/display/reset', requireAuth, async (_req, res) => {
   const session = await activeSession();
   await db.execute({ sql:'UPDATE broadcast_sessions SET display_after = CURRENT_TIMESTAMP WHERE id = ?', args:[session.id] });
+  publishDataChange(_req.user.id, 'display-reset');
   res.json({ ok:true });
 });
 
 app.post('/api/display/restore', requireAuth, async (_req, res) => {
   const session = await activeSession();
   await db.execute({ sql:'UPDATE broadcast_sessions SET display_after = started_at WHERE id = ?', args:[session.id] });
+  publishDataChange(_req.user.id, 'display-restored');
   res.json({ ok:true });
 });
