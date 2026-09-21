@@ -1,7 +1,7 @@
 import express from 'express';
 import { DEFAULT_SETTINGS, normalizeDonation } from '@deposit-studio/shared';
 import { activeSession, db } from './db.js';
-import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, verifyPassword } from './auth.js';
+import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, requireSuper, verifyPassword } from './auth.js';
 import { parseNotification, validateRuleInput } from './notification-parser.js';
 
 export const app = express();
@@ -589,12 +589,12 @@ app.delete('/api/api-logs', requireAuth, requireManager, async (_req, res) => {
   res.json({ ok:true });
 });
 
-app.get('/api/notification-rules', requireAuth, requireManager, async (_req, res) => {
+app.get('/api/notification-rules', requireAuth, requireSuper, async (_req, res) => {
   const result = await db.execute(`SELECT package_name packageName, content_pattern contentPattern, created_at createdAt, updated_at updatedAt FROM notification_rules ORDER BY package_name`);
   res.json(result.rows);
 });
 
-app.post('/api/notification-rules', requireAuth, requireManager, async (req, res) => {
+app.post('/api/notification-rules', requireAuth, requireSuper, async (req, res) => {
   try {
     const rule = validateRuleInput(req.body);
     await db.execute({ sql:`INSERT INTO notification_rules (package_name, content_pattern) VALUES (?, ?)`, args:[rule.packageName,rule.contentPattern] });
@@ -605,7 +605,7 @@ app.post('/api/notification-rules', requireAuth, requireManager, async (req, res
   }
 });
 
-app.put('/api/notification-rules/:packageName', requireAuth, requireManager, async (req, res) => {
+app.put('/api/notification-rules/:packageName', requireAuth, requireSuper, async (req, res) => {
   try {
     const rule = validateRuleInput(req.body);
     const result = await db.execute({ sql:`UPDATE notification_rules SET package_name = ?, content_pattern = ?, updated_at = CURRENT_TIMESTAMP WHERE package_name = ?`, args:[rule.packageName,rule.contentPattern,req.params.packageName] });
@@ -617,7 +617,7 @@ app.put('/api/notification-rules/:packageName', requireAuth, requireManager, asy
   }
 });
 
-app.delete('/api/notification-rules/:packageName', requireAuth, requireManager, async (req, res) => {
+app.delete('/api/notification-rules/:packageName', requireAuth, requireSuper, async (req, res) => {
   const result = await db.execute({ sql:'DELETE FROM notification_rules WHERE package_name = ?', args:[req.params.packageName] });
   if (!result.rowsAffected) return res.status(404).json({ error:'정규식 규칙을 찾을 수 없습니다.' });
   res.json({ ok:true });

@@ -224,13 +224,14 @@ function AuthenticatedApp() {
 function AuthenticatedRoutes() {
   const { user } = useAuth();
   const canManage = ["super", "admin"].includes(user.role);
+  const isSuper = user.role === "super";
   if (location.pathname === "/" || location.pathname === "/my-dashboard")
     return <MyDashboard />;
   if (location.pathname === "/crew-dashboard") return <Dashboard />;
   if (location.pathname === "/deposits") return <DepositHistory />;
   if (location.pathname === "/deposits/live") return <LiveDepositPopup />;
   if (location.pathname === "/phone-test") return <PhoneTestPage />;
-  if (location.pathname === "/admin/notification-rules") return canManage ? <NotificationRules /> : <AccessDenied />;
+  if (location.pathname === "/admin/notification-rules") return isSuper ? <NotificationRules /> : <AccessDenied />;
   if (location.pathname === "/admin/api-logs") return canManage ? <ApiLogs /> : <AccessDenied />;
   if (location.pathname === "/admin/users") return <AdminAccounts />;
   if (location.pathname === "/obs") return <ObsSetup />;
@@ -685,7 +686,7 @@ function PageLayout({ children }) {
                 label="계정 관리"
                 hint="크루 멤버와 권한"
               />
-              <Link href="/admin/notification-rules" label="알림 파싱 규칙" hint="앱 패키지별 정규식" />
+              {user.role === "super" && <Link href="/admin/notification-rules" label="알림 파싱 규칙" hint="앱 패키지별 정규식" />}
               <Link href="/admin/api-logs" label="API 로그" hint="요청과 응답 기록" />
             </>
           )}
