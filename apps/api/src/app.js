@@ -342,6 +342,8 @@ function cleanSettings(input) {
   settings.rankingRowAlign = ['spread','left','center','right'].includes(settings.rankingRowAlign) ? settings.rankingRowAlign : 'spread';
   settings.rankingTheme = ['midnight','clean','neon','gold','rose','ocean','forest','lavender','mono','transparent','custom'].includes(settings.rankingTheme) ? settings.rankingTheme : DEFAULT_SETTINGS.rankingTheme;
   settings.rankingBackgroundEnabled=Boolean(settings.rankingBackgroundEnabled);
+  settings.rankingCustomBorderEnabled=settings.rankingCustomBorderEnabled !== false;
+  settings.rankingCustomRowBackgroundEnabled=settings.rankingCustomRowBackgroundEnabled !== false;
   for (const key of ['rankingCustomBackground','rankingCustomBorder','rankingCustomRowBackground']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
   settings.rankingCustomRadius=Math.max(0,Math.min(60,Number(settings.rankingCustomRadius)||0));
   settings.rankingCustomMarker=['circle','square','pill','plain'].includes(settings.rankingCustomMarker)?settings.rankingCustomMarker:'circle';
@@ -350,6 +352,7 @@ function cleanSettings(input) {
   settings.rankingShowTitle = settings.rankingShowTitle !== false;
   settings.rankingTitleSize = Math.max(14,Math.min(72,Number(settings.rankingTitleSize)||24));
   settings.rankingTitleAlign = ['left','center','right'].includes(settings.rankingTitleAlign)?settings.rankingTitleAlign:'left';
+  settings.rankingTitleColumn = settings.rankingTitleColumn === 'last' ? 'last' : 'first';
   for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
   settings.rankingColumns = Math.max(1,Math.min(4,Math.floor(Number(settings.rankingColumns)||1)));
   settings.rankingRowsPerColumn = Math.max(1,Math.min(20,Math.floor(Number(settings.rankingRowsPerColumn)||10)));
@@ -1283,6 +1286,26 @@ app.post('/api/youtube/reconnect', requireAuth, async (req, res) => {
 });
 
 app.get('/api/youtube/donor-links', requireAuth, async (req, res) => {
+  const paginated = req.query.page != null || req.query.pageSize != null || req.query.query != null;
+  if (paginated) {
+    const page = Math.max(1, Math.floor(Number(req.query.page) || 1));
+    const pageSize = Math.max(10, Math.min(100, Math.floor(Number(req.query.pageSize) || 50)));
+    const query = String(req.query.query || '').trim().slice(0, 100);
+    const where = query
+      ? `recipient_user_id = ? AND (instr(lower(COALESCE(youtube_name,'')),lower(?)) > 0 OR instr(lower(youtube_channel_id),lower(?)) > 0 OR instr(lower(donor_name),lower(?)) > 0)`
+      : 'recipient_user_id = ?';
+    const args = query ? [req.user.id,query,query,query] : [req.user.id];
+    const [count, result] = await Promise.all([
+      db.execute({ sql:`SELECT COUNT(*) total FROM youtube_donor_links WHERE ${where}`, args }),
+      db.execute({
+        sql:`SELECT id, youtube_channel_id youtubeChannelId, youtube_name youtubeName,
+          donor_name donorName, created_at createdAt, updated_at updatedAt
+          FROM youtube_donor_links WHERE ${where} ORDER BY updated_at DESC, id DESC LIMIT ? OFFSET ?`,
+        args:[...args,pageSize,(page-1)*pageSize]
+      })
+    ]);
+    return res.json({ items:result.rows, total:Number(count.rows[0].total)||0, page, pageSize });
+  }
   const result = await db.execute({
     sql:`SELECT id, youtube_channel_id youtubeChannelId, youtube_name youtubeName,
       donor_name donorName, created_at createdAt, updated_at updatedAt

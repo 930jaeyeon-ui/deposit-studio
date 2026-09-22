@@ -230,6 +230,7 @@ function AuthenticatedRoutes() {
   if (location.pathname === "/crew-dashboard") return <Dashboard />;
   if (location.pathname === "/deposits") return <DepositHistory />;
   if (location.pathname === "/deposits/live") return <LiveDepositPopup />;
+  if (location.pathname === "/settings/youtube-donors") return <YoutubeDonorLinksPopup />;
   if (location.pathname === "/phone-test") return <PhoneTestPage />;
   if (location.pathname === "/admin/notification-rules") return isSuper ? <NotificationRules /> : <AccessDenied />;
   if (location.pathname === "/admin/api-logs") return canManage ? <ApiLogs /> : <AccessDenied />;
@@ -1282,6 +1283,87 @@ function AnalyticsChart({
   );
 }
 
+function YoutubeDonorLinksPopup() {
+  const [data, setData] = useState({ items:[], total:0, page:1, pageSize:50 });
+  const [queryInput, setQueryInput] = useState("");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const pageCount = Math.max(1, Math.ceil(data.total / data.pageSize));
+  const load = async (targetPage = data.page, targetQuery = query) => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ page:String(targetPage), pageSize:"50" });
+      if (targetQuery) params.set("query", targetQuery);
+      setData(await api(`/api/youtube/donor-links?${params}`, { cache:"no-store" }));
+      setMessage("");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { load(data.page, query); }, [data.page, query]);
+  const search = (event) => {
+    event.preventDefault();
+    const next = queryInput.trim();
+    if (data.page === 1 && query === next) return load(1, next);
+    setData((current) => ({ ...current, page:1 }));
+    setQuery(next);
+  };
+  const edit = async (link) => {
+    const donorName = prompt("변경할 입금자명을 입력하세요.", link.donorName);
+    if (!donorName || donorName === link.donorName) return;
+    try {
+      await api(`/api/youtube/donor-links/${link.id}`, { method:"PUT", body:JSON.stringify({ donorName }) });
+      setMessage("유튜브 후원자 연결을 수정했습니다.");
+      await load(data.page, query);
+    } catch (error) { setMessage(error.message); }
+  };
+  const remove = async (link) => {
+    if (!confirm(`${link.youtubeName || link.youtubeChannelId} 연결을 삭제할까요?`)) return;
+    try {
+      await api(`/api/youtube/donor-links/${link.id}`, { method:"DELETE" });
+      const nextPage = data.items.length === 1 && data.page > 1 ? data.page - 1 : data.page;
+      setMessage("유튜브 후원자 연결을 삭제했습니다.");
+      if (nextPage === data.page) await load(nextPage, query);
+      else setData((current) => ({ ...current, page:nextPage }));
+    } catch (error) { setMessage(error.message); }
+  };
+  return (
+    <main className="youtube-donor-popup">
+      <header>
+        <div><small>YOUTUBE DONORS</small><h1>등록된 유튜브 후원자</h1><p>유튜브 채널과 입금자명 연결을 검색하고 관리합니다.</p></div>
+        <button type="button" onClick={()=>window.close()}>닫기</button>
+      </header>
+      <form className="youtube-donor-search" onSubmit={search}>
+        <input value={queryInput} onChange={(event)=>setQueryInput(event.target.value)} placeholder="유튜브 이름·채널 ID·입금자명 검색" />
+        <button>검색</button>
+        {query && <button type="button" onClick={()=>{setQueryInput("");setData((current)=>({...current,page:1}));setQuery("");}}>전체 보기</button>}
+      </form>
+      <div className="youtube-donor-summary"><b>총 {formatWon(data.total)}명</b><span>{data.page} / {pageCount} 페이지</span></div>
+      {message && <p className="notice">{message}</p>}
+      <section className="youtube-donor-list">
+        <div className="youtube-donor-head"><span>유튜브 채널</span><span>연결된 입금자명</span><span>관리</span></div>
+        {data.items.map((link) => (
+          <article key={link.id}>
+            <div><strong>{link.youtubeName || "이름 없는 채널"}</strong><small>{link.youtubeChannelId}</small></div>
+            <b>{link.donorName}</b>
+            <div><button type="button" onClick={()=>edit(link)}>수정</button><button type="button" className="delete" onClick={()=>remove(link)}>삭제</button></div>
+          </article>
+        ))}
+        {!loading && !data.items.length && <p className="empty">{query ? "검색 결과가 없습니다." : "아직 등록된 연결이 없습니다."}</p>}
+        {loading && <p className="empty">목록을 불러오는 중입니다.</p>}
+      </section>
+      <nav className="youtube-donor-pagination" aria-label="유튜브 후원자 페이지">
+        <button type="button" disabled={data.page <= 1 || loading} onClick={()=>setData((current)=>({...current,page:current.page-1}))}>이전</button>
+        <span>{data.page} / {pageCount}</span>
+        <button type="button" disabled={data.page >= pageCount || loading} onClick={()=>setData((current)=>({...current,page:current.page+1}))}>다음</button>
+      </nav>
+    </main>
+  );
+}
+
 function LiveDepositPopup() {
   const [deposits, setDeposits] = useState([]);
   const [message, setMessage] = useState("");
@@ -1291,7 +1373,7 @@ function LiveDepositPopup() {
   const [adding, setAdding] = useState(false);
   const [youtubeControl, setYoutubeControl] = useState({ enabled:false, state:"disabled", text:"채팅 TTS 꺼짐" });
   const [youtubeSaving, setYoutubeSaving] = useState(false);
-  const [editForm, setEditForm] = useState({ donorName: "", amount: "" });
+  const [editForm, setEditForm] = useState({ donorName: "", amount: "", scope: "single" });
   const selected = deposits.find((item) => item.id === selectedId) || null;
   const load = async () => {
     try {
@@ -1359,7 +1441,7 @@ function LiveDepositPopup() {
       await Promise.all([
         api(`/api/my/deposits/${editing.id}/donor`, {
           method: "PUT",
-          body: JSON.stringify({ canonicalName: editForm.donorName, scope: "single" }),
+          body: JSON.stringify({ canonicalName: editForm.donorName, scope: editForm.scope }),
         }),
         api(`/api/my/deposits/${editing.id}/amount`, {
           method: "PUT",
@@ -1396,7 +1478,7 @@ function LiveDepositPopup() {
       <div className="live-manager-layout"><div className="live-deposit-table">
         <div className="live-deposit-head"><span>시간</span><span>입금자</span><span>금액</span><span>상태</span></div>
         {deposits.map((item) => (
-          <article key={item.id} className={`${item.status !== "included" ? "excluded" : ""} ${selectedId===item.id?"selected":""}`} onClick={()=>setSelectedId(item.id)} onDoubleClick={()=>{setSelectedId(item.id);setEditing(item);setEditForm({donorName:item.donorName,amount:String(item.amount)});}}>
+          <article key={item.id} className={`${item.status !== "included" ? "excluded" : ""} ${selectedId===item.id?"selected":""}`} onClick={()=>setSelectedId(item.id)} onDoubleClick={()=>{setSelectedId(item.id);setEditing(item);setEditForm({donorName:item.donorName,amount:String(item.amount),scope:"single"});}}>
             <time>{String(item.receivedAt).slice(11, 16)}</time>
             <strong className="live-donor-name">
               <span>{item.donorName}</span>
@@ -1421,8 +1503,8 @@ function LiveDepositPopup() {
           <button className="rerun" onClick={replay} disabled={!selected||selected.status!=="included"||savingId}>알림만 재실행</button>
         </section>
         <section className="live-action-group"><h2>후원 내역</h2>
-          <button onClick={()=>{if(!selected)return setMessage("먼저 입금 내역을 선택해주세요.");setEditing(selected);setEditForm({donorName:selected.donorName,amount:String(selected.amount)});}} disabled={!selected}>수정</button>
-          <button onClick={()=>{setAdding(true);setEditForm({donorName:"",amount:""});}}>추가</button>
+          <button onClick={()=>{if(!selected)return setMessage("먼저 입금 내역을 선택해주세요.");setEditing(selected);setEditForm({donorName:selected.donorName,amount:String(selected.amount),scope:"single"});}} disabled={!selected}>수정</button>
+          <button onClick={()=>{setAdding(true);setEditForm({donorName:"",amount:"",scope:"single"});}}>추가</button>
           <button className="delete" onClick={()=>setSelectedStatus("excluded")} disabled={!selected||selected.status!=="included"}>제외</button>
           <button onClick={()=>setSelectedStatus("included")} disabled={!selected||selected.status==="included"}>되돌리기</button>
           <button onClick={load}>목록 새로고침</button>
@@ -1439,7 +1521,13 @@ function LiveDepositPopup() {
           <label>입금자명<input autoFocus required maxLength="40" value={editForm.donorName} onChange={(event) => setEditForm({...editForm, donorName:event.target.value})}/></label>
           <label>후원 금액<input required type="number" min="1" max="100000000" value={editForm.amount} onChange={(event) => setEditForm({...editForm, amount:event.target.value})}/></label>
           <p>저장하면 후원 합계와 순위표가 자동으로 다시 계산됩니다.</p>
-          <div><button type="button" onClick={() => setEditing(null)}>취소</button><button className="primary-button" disabled={savingId === editing.id}>저장</button></div>
+          <div className="live-edit-actions">
+            <label className="live-edit-scope">
+              <input type="checkbox" checked={editForm.scope === "same_name"} onChange={(event) => setEditForm({...editForm, scope:event.target.checked ? "same_name" : "single"})}/>
+              <span><b>앞으로 같은 입금자명 전체 변경</b><small>같은 은행 원본 이름에도 계속 적용</small></span>
+            </label>
+            <div className="live-edit-buttons"><button type="button" onClick={() => setEditing(null)}>취소</button><button className="primary-button" disabled={savingId === editing.id}>저장</button></div>
+          </div>
         </form>
       </div>}
       {adding && <div className="dialog-backdrop" onMouseDown={(event)=>event.target===event.currentTarget&&setAdding(false)}><form className="live-edit-dialog" onSubmit={addDeposit}><h2>입금 내역 추가</h2><label>입금자명<input autoFocus required maxLength="40" value={editForm.donorName} onChange={(event)=>setEditForm({...editForm,donorName:event.target.value})}/></label><label>후원 금액<input required type="number" min="1" max="100000000" value={editForm.amount} onChange={(event)=>setEditForm({...editForm,amount:event.target.value})}/></label><p>추가 즉시 후원 합계와 순위표에 반영됩니다.</p><div><button type="button" onClick={()=>setAdding(false)}>취소</button><button className="primary-button" disabled={savingId==="new"}>추가</button></div></form></div>}
@@ -2473,6 +2561,7 @@ function Dashboard() {
   });
   const [message, setMessage] = useState("");
   const [savingGrades, setSavingGrades] = useState(false);
+  const [isGradeEditing, setIsGradeEditing] = useState(false);
   const load = () =>
     api("/api/dashboard")
       .then(setData)
@@ -2563,6 +2652,7 @@ function Dashboard() {
         body: JSON.stringify(data.settings),
       });
       setData((current) => ({ ...current, settings }));
+      setIsGradeEditing(false);
       setMessage(
         "크루 등급표를 저장했습니다. 후원 알림에서 자동으로 사용됩니다.",
       );
@@ -2617,7 +2707,7 @@ function Dashboard() {
           </article>
         </section>
         <section
-          className={`panel crew-grade-panel ${canManageGrades ? "" : "readonly"}`}
+          className={`panel crew-grade-panel ${canManageGrades && isGradeEditing ? "" : "readonly"}`}
         >
           <div className="panel-title">
             <div>
@@ -2629,15 +2719,14 @@ function Dashboard() {
                 </p>
               )}
             </div>
-            {canManageGrades && (
-              <button
-                type="button"
-                className="header-button"
-                onClick={addGrade}
-              >
-                등급 추가
-              </button>
-            )}
+            {canManageGrades && (!isGradeEditing ? (
+              <button type="button" className="header-button" onClick={()=>setIsGradeEditing(true)}>등급 추가/변경</button>
+            ) : (
+              <div className="grade-panel-actions">
+                <button type="button" className="secondary-button" onClick={async()=>{setIsGradeEditing(false);await load();}}>편집 취소</button>
+                <button type="button" className="header-button" onClick={addGrade}>등급 추가</button>
+              </div>
+            ))}
           </div>
           <div className="crew-grade-list">
             {visibleGrades.map((grade) => (
@@ -2647,7 +2736,7 @@ function Dashboard() {
                 ) : (
                   <span className="grade-image-empty">이미지</span>
                 )}
-                {canManageGrades ? (
+                {canManageGrades && isGradeEditing ? (
                   <>
                     <label className="grade-name">
                       등급명
@@ -2749,7 +2838,7 @@ function Dashboard() {
               <p className="empty">등록된 등급이 없습니다.</p>
             )}
           </div>
-          {canManageGrades && (
+          {canManageGrades && isGradeEditing && (
             <button
               type="button"
               className="primary-button grade-save"
@@ -3470,9 +3559,9 @@ function Settings({ mode }) {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [toonationStatus, setToonationStatus] = useState({ state:"disabled", text:"투네이션 수신 꺼짐" });
   const [youtubeStatus, setYoutubeStatus] = useState({ state:"disabled", text:"유튜브 채팅 수신 꺼짐" });
-  const [youtubeDonorLinks, setYoutubeDonorLinks] = useState([]);
   const [saved, setSaved] = useState("");
   const [previewRun, setPreviewRun] = useState(0);
+  const [rankingPreviewCount, setRankingPreviewCount] = useState(60);
   const [openTiers, setOpenTiers] = useState({});
   const [openAlertSections, setOpenAlertSections] = useState({});
   const [leaveRequest, setLeaveRequest] = useState(null);
@@ -3519,10 +3608,6 @@ function Settings({ mode }) {
     loadStatus();
     const timer = setInterval(loadStatus, 10000);
     return () => { active = false; clearInterval(timer); };
-  }, [mode, settingsLoaded]);
-  const loadYoutubeDonorLinks = () => api("/api/youtube/donor-links", { cache:"no-store" }).then(setYoutubeDonorLinks).catch(() => {});
-  useEffect(() => {
-    if (mode === "alert" && settingsLoaded) loadYoutubeDonorLinks();
   }, [mode, settingsLoaded]);
   const isDirty =
     settingsLoaded &&
@@ -3934,16 +4019,9 @@ function Settings({ mode }) {
                   <p className="alert-setting-help">
                     실제 입금 전후에 <code>!후원등록 입금자명</code>을 입력하면 유튜브 채널 ID와 입금자명이 연결됩니다. 입금자명이 바뀌면 새 이름으로 다시 입금하고 같은 명령을 입력해 직접 변경할 수 있습니다. 이후에는 해당 채널이 입금 전후 30초 안에 작성한 첫 미사용 일반 채팅을 자동으로 찾아 효과음 후 읽습니다.
                   </p>
-                  <div className="youtube-link-manager">
-                    <b>등록된 유튜브 후원자</b>
-                    {!youtubeDonorLinks.length ? <p className="alert-setting-help">아직 등록된 연결이 없습니다.</p> : youtubeDonorLinks.map((link) => (
-                      <article key={link.id}>
-                        <div><strong>{link.youtubeName || "이름 없는 채널"}</strong><small>{link.youtubeChannelId}</small></div>
-                        <span>↔ {link.donorName}</span>
-                        <button type="button" onClick={async()=>{const donorName=prompt("변경할 입금자명을 입력하세요.",link.donorName);if(!donorName||donorName===link.donorName)return;try{await api(`/api/youtube/donor-links/${link.id}`,{method:"PUT",body:JSON.stringify({donorName})});await loadYoutubeDonorLinks();setSaved("유튜브 후원자 연결을 수정했습니다.");}catch(error){setSaved(error.message);}}}>수정</button>
-                        <button type="button" className="delete" onClick={async()=>{if(!confirm(`${link.youtubeName || link.youtubeChannelId} 연결을 삭제할까요?`))return;try{await api(`/api/youtube/donor-links/${link.id}`,{method:"DELETE"});await loadYoutubeDonorLinks();setSaved("유튜브 후원자 연결을 삭제했습니다.");}catch(error){setSaved(error.message);}}}>삭제</button>
-                      </article>
-                    ))}
+                  <div className="youtube-link-launcher">
+                    <div><b>등록된 유튜브 후원자</b><small>목록이 많아도 설정 화면이 느려지지 않도록 별도 창에서 검색·관리합니다.</small></div>
+                    <button type="button" onClick={()=>{const popup=window.open("/settings/youtube-donors","n9-youtube-donors","popup=yes,width=1040,height=760");popup?.focus();}}>관리</button>
                   </div>
                   <div className={`toonation-connection-status ${youtubeStatus.state}`}>
                     <span />
@@ -4137,12 +4215,10 @@ function Settings({ mode }) {
                   <div className="text-color-row">
                     <label className="color-control">
                       글자색
-                      <input
-                        type="color"
-                        value={colorPickerValue(settings.textColor)}
-                        onChange={(e) => update("textColor", e.target.value)}
-                      />
-                      <input className="color-code-input" value={settings.textColor} onChange={(e)=>update("textColor",e.target.value)} placeholder="#FFFFFF 또는 rgb(255,255,255)" />
+                      <span className="inline-color-control">
+                        <input type="color" value={colorPickerValue(settings.textColor)} onChange={(e) => update("textColor", e.target.value)} />
+                        <input className="color-code-input" value={settings.textColor} onChange={(e)=>update("textColor",e.target.value)} placeholder="#FFFFFF" />
+                      </span>
                     </label>
                     <div
                       className={`outline-control ${settings.outlineEnabled === false ? "disabled" : ""}`}
@@ -4163,14 +4239,10 @@ function Settings({ mode }) {
                           <span aria-hidden="true" />
                         </label>
                       </div>
-                      <input
-                        aria-label="테두리색"
-                        type="color"
-                        disabled={settings.outlineEnabled === false}
-                        value={colorPickerValue(settings.outlineColor)}
-                        onChange={(e) => update("outlineColor", e.target.value)}
-                      />
-                      <input aria-label="테두리 색상 코드" className="color-code-input" disabled={settings.outlineEnabled === false} value={settings.outlineColor} onChange={(e)=>update("outlineColor",e.target.value)} />
+                      <span className="inline-color-control">
+                        <input aria-label="테두리색" type="color" disabled={settings.outlineEnabled === false} value={colorPickerValue(settings.outlineColor)} onChange={(e) => update("outlineColor", e.target.value)} />
+                        <input aria-label="테두리 색상 코드" className="color-code-input" disabled={settings.outlineEnabled === false} value={settings.outlineColor} onChange={(e)=>update("outlineColor",e.target.value)} />
+                      </span>
                     </div>
                   </div>
                   {settings.outlineEnabled !== false && (
@@ -4251,7 +4323,7 @@ function Settings({ mode }) {
                     <i />
                   </label>
                   <label className="toggle-label">‘님’·‘원’ 개별 스타일<input type="checkbox" checked={Boolean(settings.suffixStyleEnabled)} onChange={(e)=>update("suffixStyleEnabled",e.target.checked)}/><i /></label>
-                  {settings.suffixStyleEnabled && <><label>‘님’·‘원’ 글꼴<select value={settings.suffixFontFamily} onChange={(e)=>update("suffixFontFamily",e.target.value)}>{FONT_OPTIONS.map(([value,label])=><option value={value} key={label}>{label}</option>)}</select></label><label>‘님’·‘원’ 색상<input type="color" value={settings.suffixColor} onChange={(e)=>update("suffixColor",e.target.value)}/><input className="color-code-input" value={settings.suffixColor} onChange={(e)=>update("suffixColor",e.target.value)} placeholder="#FFFFFF 또는 rgb(255,255,255)"/></label></>}
+                  {settings.suffixStyleEnabled && <><label>‘님’·‘원’ 글꼴<select value={settings.suffixFontFamily} onChange={(e)=>update("suffixFontFamily",e.target.value)}>{FONT_OPTIONS.map(([value,label])=><option value={value} key={label}>{label}</option>)}</select></label><label>‘님’·‘원’ 색상<span className="inline-color-control"><input type="color" value={colorPickerValue(settings.suffixColor)} onChange={(e)=>update("suffixColor",e.target.value)}/><input className="color-code-input" value={settings.suffixColor} onChange={(e)=>update("suffixColor",e.target.value)} placeholder="#FFFFFF"/></span></label></>}
                 </AlertSettingSection>
                 <AlertSettingSection
                   id="background"
@@ -4975,36 +5047,17 @@ function Settings({ mode }) {
                                     </label>
                                     <label>
                                       글자색
-                                      <input
-                                        type="color"
-                                        value={
-                                          tier.textColor || settings.textColor
-                                        }
-                                        onChange={(e) =>
-                                          changeTier(
-                                            tier.id,
-                                            "textColor",
-                                            e.target.value,
-                                          )
-                                        }
-                                      />
+                                      <span className="inline-color-control">
+                                        <input type="color" value={colorPickerValue(tier.textColor || settings.textColor)} onChange={(e) => changeTier(tier.id, "textColor", e.target.value)} />
+                                        <input className="color-code-input" value={tier.textColor || settings.textColor} onChange={(e) => changeTier(tier.id, "textColor", e.target.value)} aria-label="구간 글자색 HEX 코드" />
+                                      </span>
                                     </label>
                                     <label>
                                       테두리색
-                                      <input
-                                        type="color"
-                                        value={
-                                          tier.outlineColor ||
-                                          settings.outlineColor
-                                        }
-                                        onChange={(e) =>
-                                          changeTier(
-                                            tier.id,
-                                            "outlineColor",
-                                            e.target.value,
-                                          )
-                                        }
-                                      />
+                                      <span className="inline-color-control">
+                                        <input type="color" value={colorPickerValue(tier.outlineColor || settings.outlineColor)} onChange={(e) => changeTier(tier.id, "outlineColor", e.target.value)} />
+                                        <input className="color-code-input" value={tier.outlineColor || settings.outlineColor} onChange={(e) => changeTier(tier.id, "outlineColor", e.target.value)} aria-label="구간 테두리색 HEX 코드" />
+                                      </span>
                                     </label>
                                     <label>
                                       테두리 굵기
@@ -5114,7 +5167,7 @@ function Settings({ mode }) {
                                 }
                               >
                                 {tier.soundMode === "custom" && (
-                                  <div className="tier-custom-grid">
+                                  <div className="tier-custom-grid tier-sound-grid">
                                     <label>
                                       효과음
                                       <select
@@ -5178,7 +5231,7 @@ function Settings({ mode }) {
                                     </label>
                                     <button
                                       type="button"
-                                      className="secondary-button"
+                                      className="secondary-button tier-preview-button"
                                       onClick={() =>
                                         playAlertSound(
                                           settings,
@@ -5192,7 +5245,7 @@ function Settings({ mode }) {
                                         )
                                       }
                                     >
-                                      구간 효과음 미리 듣기
+                                          효과음 듣기
                                     </button>
                                   </div>
                                 )}
@@ -5357,7 +5410,7 @@ function Settings({ mode }) {
                                         </label>
                                         <button
                                           type="button"
-                                          className="secondary-button"
+                                          className="secondary-button tier-preview-button"
                                           onClick={() =>
                                             playAlertSpeech(
                                               alertAppearance(
@@ -5381,7 +5434,7 @@ function Settings({ mode }) {
                                             )
                                           }
                                         >
-                                          구간 TTS 미리 듣기
+                                          TTS 듣기
                                         </button>
                                       </>
                                     )}
@@ -5487,27 +5540,42 @@ function Settings({ mode }) {
                         />
                         <input className="color-code-input" value={settings.rankingCustomBackground} onChange={(e)=>update("rankingCustomBackground",e.target.value)}/>
                       </label>
-                      <label>
-                        테두리색
+                      <div className="custom-color-setting">
+                        <span className="setting-label-row">
+                          테두리색
+                          <span className="inline-setting-check">
+                            <input type="checkbox" checked={settings.rankingCustomBorderEnabled !== false} onChange={(e)=>update("rankingCustomBorderEnabled",e.target.checked)}/>
+                            사용
+                          </span>
+                        </span>
                         <input
                           type="color"
                           value={colorPickerValue(settings.rankingCustomBorder)}
+                          disabled={settings.rankingCustomBorderEnabled === false}
                           onChange={(e) =>
                             update("rankingCustomBorder", e.target.value)
                           }
                         />
-                        <input className="color-code-input" value={settings.rankingCustomBorder} onChange={(e)=>update("rankingCustomBorder",e.target.value)}/>
-                      </label>
-                      <label>
-                        행 배경색
+                        <input className="color-code-input" disabled={settings.rankingCustomBorderEnabled === false} value={settings.rankingCustomBorder} onChange={(e)=>update("rankingCustomBorder",e.target.value)}/>
+                      </div>
+                      <div className="custom-color-setting">
+                        <span className="setting-label-row">
+                          행 배경색
+                          <span className="inline-setting-check">
+                            <input type="checkbox" checked={settings.rankingCustomRowBackgroundEnabled !== false} onChange={(e)=>update("rankingCustomRowBackgroundEnabled",e.target.checked)}/>
+                            사용
+                          </span>
+                        </span>
                         <input
                           type="color"
-                          value={settings.rankingCustomRowBackground}
+                          value={colorPickerValue(settings.rankingCustomRowBackground)}
+                          disabled={settings.rankingCustomRowBackgroundEnabled === false}
                           onChange={(e) =>
                             update("rankingCustomRowBackground", e.target.value)
                           }
                         />
-                      </label>
+                        <input className="color-code-input" disabled={settings.rankingCustomRowBackgroundEnabled === false} value={settings.rankingCustomRowBackground} onChange={(e)=>update("rankingCustomRowBackground",e.target.value)}/>
+                      </div>
                       <label>
                         모서리 둥글기
                         <input
@@ -5597,14 +5665,22 @@ function Settings({ mode }) {
                         </select>
                       </label>
                       <label>
+                        제목 기준 열
+                        <select value={settings.rankingTitleColumn || "first"} onChange={(e)=>update("rankingTitleColumn",e.target.value)}>
+                          <option value="first">1위가 포함된 열</option>
+                          <option value="last">가장 오른쪽 열</option>
+                        </select>
+                      </label>
+                      <label>
                         제목 색상
                         <input
                           type="color"
-                          value={settings.rankingTitleColor}
+                          value={colorPickerValue(settings.rankingTitleColor)}
                           onChange={(e) =>
                             update("rankingTitleColor", e.target.value)
                           }
                         />
+                        <input className="color-code-input" value={settings.rankingTitleColor} onChange={(e)=>update("rankingTitleColor",e.target.value)}/>
                       </label>
                     </>
                   )}
@@ -5909,52 +5985,66 @@ function Settings({ mode }) {
                   </label>
                   {settings.rankingRankHighlightEnabled !== false && (
                     <div className="rank-style-editor">
-                      {["1위", "2위", "3위", "4위 이하"].map((label, index) => {
+                      <p className="rank-style-help">전체 글자 크기와 같은 px 단위입니다. 1~3위만 개별 강조되며 4위 이하는 선택한 테마 설정을 따라갑니다.</p>
+                      {["1위", "2위", "3위"].map((label, index) => {
                         const rankStyle = (settings.rankingRankStyles ||
                           DEFAULT_SETTINGS.rankingRankStyles)[index];
+                        const rankSizePx = Math.round(
+                          settings.rankingFontSize * (rankStyle.size / 100),
+                        );
                         return (
                           <article key={label}>
                             <b>{label}</b>
                             <label>
                               글자색
-                              <input
-                                type="color"
-                                value={rankStyle.color}
-                                onChange={(e) =>
-                                  changeRankStyle(
-                                    index,
-                                    "color",
-                                    e.target.value,
-                                  )
-                                }
-                              />
+                              <span className="rank-color-control">
+                                <input
+                                  type="color"
+                                  value={colorPickerValue(rankStyle.color)}
+                                  onChange={(e) => changeRankStyle(index, "color", e.target.value)}
+                                />
+                                <input
+                                  className="color-code-input"
+                                  value={rankStyle.color}
+                                  maxLength="7"
+                                  aria-label={`${label} 글자색 HEX 코드`}
+                                  onChange={(e) => changeRankStyle(index, "color", e.target.value)}
+                                />
+                              </span>
                             </label>
                             <label>
                               순위색
-                              <input
-                                type="color"
-                                value={rankStyle.badge}
-                                onChange={(e) =>
-                                  changeRankStyle(
-                                    index,
-                                    "badge",
-                                    e.target.value,
-                                  )
-                                }
-                              />
+                              <span className="rank-color-control">
+                                <input
+                                  type="color"
+                                  value={colorPickerValue(rankStyle.badge)}
+                                  onChange={(e) => changeRankStyle(index, "badge", e.target.value)}
+                                />
+                                <input
+                                  className="color-code-input"
+                                  value={rankStyle.badge}
+                                  maxLength="7"
+                                  aria-label={`${label} 순위색 HEX 코드`}
+                                  onChange={(e) => changeRankStyle(index, "badge", e.target.value)}
+                                />
+                              </span>
                             </label>
                             <label>
-                              크기
+                              크기 (px)
                               <input
                                 type="number"
-                                min="70"
-                                max="160"
-                                value={rankStyle.size}
+                                min="12"
+                                max="96"
+                                step="1"
+                                value={rankSizePx}
                                 onChange={(e) =>
                                   changeRankStyle(
                                     index,
                                     "size",
-                                    Number(e.target.value),
+                                    Math.round(
+                                      (Number(e.target.value) /
+                                        settings.rankingFontSize) * 100,
+                                    ),
                                   )
                                 }
                               />
@@ -6017,6 +6107,21 @@ function Settings({ mode }) {
                     다시 재생
                   </button>
                 )}
+                {!isAlert && (
+                  <div className="ranking-preview-count" aria-label="미리보기 후원자 수">
+                    {[20, 40, 60].map((count) => (
+                      <button
+                        key={count}
+                        type="button"
+                        className={rankingPreviewCount === count ? "active" : ""}
+                        aria-pressed={rankingPreviewCount === count}
+                        onClick={() => setRankingPreviewCount(count)}
+                      >
+                        {count}명
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               {isAlert ? (
                 <AlertPreviewFrame
@@ -6026,7 +6131,7 @@ function Settings({ mode }) {
                   amountText="50,000"
                 />
               ) : (
-                <RankingPreview key={previewRun} settings={settings} />
+                <RankingPreview key={previewRun} settings={settings} count={rankingPreviewCount} />
               )}
               <div className="widget-links">
                 <button type="button" onClick={openWidgetPreview}>
@@ -6250,7 +6355,7 @@ function RankingOutputCanvas({ children, preview = false }) {
   );
 }
 
-function RankingPreview({ settings }) {
+function RankingPreview({ settings, count = 60 }) {
   const sampleNames = [
     "폴조지",
     "제병이",
@@ -6259,7 +6364,7 @@ function RankingPreview({ settings }) {
     "둥이운동",
     "피스",
   ];
-  const sample = Array.from({ length: 60 }, (_, index) => ({
+  const sample = Array.from({ length: count }, (_, index) => ({
     donorName:
       sampleNames[index] || `후원자 ${String(index + 1).padStart(2, "0")}`,
     amount: Math.max(10000, 180000 - index * 2800),
@@ -6275,6 +6380,17 @@ function RankingPreview({ settings }) {
 function RankingCard({ items, settings, onEdit }) {
   const rows = Math.max(1, settings.rankingRowsPerColumn || 10);
   const maxColumns = Math.max(1, settings.rankingColumns || 1);
+  const estimatedLineHeight = settings.rankingUseLineHeight
+    ? settings.rankingLineHeight
+    : 1.2;
+  const safeFontSize = Math.max(
+    12,
+    Math.floor(
+      ((RANKING_OUTPUT_HEIGHT - 120) / rows - settings.rankingRowGap) /
+        estimatedLineHeight,
+    ),
+  );
+  const effectiveFontSize = Math.min(settings.rankingFontSize, safeFontSize);
   const visible = items.slice(0, rows * maxColumns);
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   const columns = Array.from(
@@ -6284,7 +6400,7 @@ function RankingCard({ items, settings, onEdit }) {
   const firstGridColumn = maxColumns - columns.length + 1;
   const cardStyle = {
     fontFamily: settings.rankingFontFamily,
-    "--ranking-size": `${settings.rankingFontSize}px`,
+    "--ranking-size": `${effectiveFontSize}px`,
     "--ranking-gap": `${settings.rankingRowGap}px`,
     "--column-gap": `${settings.rankingColumnGap}px`,
     "--line-height": settings.rankingUseLineHeight
@@ -6294,10 +6410,13 @@ function RankingCard({ items, settings, onEdit }) {
     "--name-color": settings.rankingNameColor,
     "--amount-color": settings.rankingAmountColor,
     "--custom-bg": settings.rankingCustomBackground,
-    "--custom-border": settings.rankingCustomBorder,
-    "--custom-row": settings.rankingCustomRowBackground,
+    "--custom-border": settings.rankingCustomBorderEnabled === false ? "transparent" : settings.rankingCustomBorder,
+    "--custom-row": settings.rankingCustomRowBackgroundEnabled === false ? "transparent" : settings.rankingCustomRowBackground,
     "--custom-radius": `${settings.rankingCustomRadius}px`,
   };
+  const titleGridColumn = settings.rankingTitleColumn === "last"
+    ? firstGridColumn + columns.length - 1
+    : firstGridColumn;
   return (
     <div
       className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} ranking-enter-${settings.rankingAnimation}`}
@@ -6315,7 +6434,7 @@ function RankingCard({ items, settings, onEdit }) {
         >
           <span
             style={{
-              gridColumn: `${firstGridColumn} / span ${columns.length}`,
+              gridColumn: titleGridColumn,
               textAlign: settings.rankingTitleAlign,
             }}
           >
@@ -6335,8 +6454,15 @@ function RankingCard({ items, settings, onEdit }) {
           >
             {column.map((item, rowIndex) => {
               const index = columnIndex * rows + rowIndex;
-              const rankStyle = (settings.rankingRankStyles ||
-                DEFAULT_SETTINGS.rankingRankStyles)[Math.min(index, 3)];
+              const savedRankStyles = settings.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles;
+              const rankStyle = index < 3
+                ? savedRankStyles[index]
+                : {
+                    color: settings.rankingNameColor,
+                    badge: (RANKING_THEME_PRESETS[settings.rankingTheme]?.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles)[3].badge,
+                    size: 100,
+                    weight: settings.rankingFontWeight,
+                  };
               const rankHighlight =
                 settings.rankingRankHighlightEnabled !== false;
               return (
@@ -6354,7 +6480,9 @@ function RankingCard({ items, settings, onEdit }) {
                       ? rankStyle.color
                       : settings.rankingNameColor,
                     "--rank-badge": rankHighlight ? rankStyle.badge : undefined,
-                    "--rank-scale": rankHighlight ? rankStyle.size / 100 : 1,
+                    "--rank-scale": rankHighlight && index < 3
+                      ? Math.max(0.7, Math.min(2.4, rankStyle.size / 100))
+                      : 1,
                     "--rank-weight": rankHighlight
                       ? rankStyle.weight
                       : settings.rankingFontWeight,

@@ -70,6 +70,9 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       toonationEnabled:false,
       toonationWidgetUrl:'  https://toon.at/widget/alertbox/abcdefgh  ',
       toonationAlertMode:'custom-original-audio',
+      rankingCustomBorderEnabled:false,
+      rankingCustomRowBackgroundEnabled:false,
+      rankingTitleColumn:'last',
       backgroundImageData:'data:text/plain;base64,Zm9v',
       soundLibrary:[
         { id:'valid',name:'효과음',data:'data:audio/mp3;base64,Zm9v' },
@@ -100,6 +103,9 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.toonationWidgetUrl,'https://toon.at/widget/alertbox/abcdefgh');
     assert.equal(result.data.toonationAlertMode,'custom-original-audio');
     assert.equal(result.data.toonationUseOwnAlert,true);
+    assert.equal(result.data.rankingCustomBorderEnabled,false);
+    assert.equal(result.data.rankingCustomRowBackgroundEnabled,false);
+    assert.equal(result.data.rankingTitleColumn,'last');
     assert.equal(result.data.backgroundImageData,'');
     assert.equal(result.data.soundLibrary.length,1);
     assert.equal(result.data.amountTiers[0].minAmount,0);
@@ -201,6 +207,11 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     result = await request('/api/youtube/donor-links',{cookie:memberCookie});
     assert.equal(result.data.length,1);
     const donorLinkId = result.data[0].id;
+    result = await request('/api/youtube/donor-links?page=1&pageSize=10&query=E2E',{cookie:memberCookie});
+    assert.equal(result.data.total,1);
+    assert.equal(result.data.items[0].id,donorLinkId);
+    assert.equal(result.data.page,1);
+    assert.equal(result.data.pageSize,10);
     assert.equal((await request(`/api/youtube/donor-links/${donorLinkId}`,{method:'PUT',cookie:memberCookie,body:{donorName:'길동이'}})).response.status,200);
     result = await request('/api/youtube/donor-links',{cookie:memberCookie});
     assert.equal(result.data[0].donorName,'길동이');
