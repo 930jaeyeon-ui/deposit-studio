@@ -289,9 +289,15 @@ function cleanSettings(input) {
   settings.exitAnimation = ['fade-out','zoom-out','slide-down-out','slide-up-out'].includes(settings.exitAnimation) ? settings.exitAnimation : 'fade-out';
   settings.soundPreset = ['coin','chime','pop','fanfare','bell','sparkle','success','drum','laser','magic','custom','none'].includes(settings.soundPreset) || String(settings.soundPreset).startsWith('library:') ? settings.soundPreset : 'coin';
   settings.backgroundEnabled = Boolean(settings.backgroundEnabled);
+  settings.backgroundColorEnabled = settings.backgroundColorEnabled !== false;
   settings.backgroundImageData=String(settings.backgroundImageData||'').slice(0,7000000);
   if(settings.backgroundImageData&&!settings.backgroundImageData.startsWith('data:image/'))settings.backgroundImageData='';
   settings.backgroundImageName=String(settings.backgroundImageName||'').slice(0,100);
+  settings.backgroundImageArea=settings.backgroundImageArea==='canvas' ? 'canvas' : 'alert';
+  settings.backgroundImageFit=['cover','contain'].includes(settings.backgroundImageFit) ? settings.backgroundImageFit : DEFAULT_SETTINGS.backgroundImageFit;
+  settings.backgroundImageScale=Math.max(25,Math.min(300,Number.isFinite(Number(settings.backgroundImageScale))?Number(settings.backgroundImageScale):DEFAULT_SETTINGS.backgroundImageScale));
+  settings.backgroundImagePositionX=Math.max(0,Math.min(100,Number.isFinite(Number(settings.backgroundImagePositionX))?Number(settings.backgroundImagePositionX):DEFAULT_SETTINGS.backgroundImagePositionX));
+  settings.backgroundImagePositionY=Math.max(0,Math.min(100,Number.isFinite(Number(settings.backgroundImagePositionY))?Number(settings.backgroundImagePositionY):DEFAULT_SETTINGS.backgroundImagePositionY));
   settings.outlineEnabled = settings.outlineEnabled !== false;
   settings.textShadow = Boolean(settings.textShadow);
   settings.soundEnabled = Boolean(settings.soundEnabled);

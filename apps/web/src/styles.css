@@ -645,6 +645,8 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 
 /* Text shadow is controlled only by the alert text setting. */
 .alert{filter:none}
+.alert.alert-full-canvas{width:100%;height:100%;display:grid;place-items:center}
+.alert.alert-foreground{width:auto;height:auto;padding:0;border-radius:0;background:transparent}
 
 /* One canonical 600 × 800 ranking canvas is shared by editor preview, full preview and OBS. */
 .ranking-output-frame{position:relative;width:100vw;height:100vh;overflow:hidden;background:transparent}

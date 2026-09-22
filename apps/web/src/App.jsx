@@ -3222,6 +3222,7 @@ function alertAppearance(settings, amount = 50000) {
     ttsRate: customTts ? tier.ttsRate : settings.ttsRate,
     ttsPitch: customTts ? tier.ttsPitch : settings.ttsPitch,
     ttsVolume: customTts ? tier.ttsVolume : settings.ttsVolume,
+    backgroundImageArea: settings.backgroundImageArea === "canvas" ? "canvas" : "alert",
     style: {
       color: customText ? tier.textColor : settings.textColor,
       fontSize: customText ? tier.fontSize : settings.fontSize,
@@ -3241,13 +3242,16 @@ function alertAppearance(settings, amount = 50000) {
       borderRadius: settings.backgroundEnabled
         ? `${settings.backgroundRadius}px`
         : "0",
-      backgroundColor: settings.backgroundEnabled
+      backgroundColor: settings.backgroundEnabled && settings.backgroundColorEnabled !== false
         ? hexToRgba(settings.backgroundColor, settings.backgroundOpacity)
         : "transparent",
       backgroundImage: settings.backgroundEnabled && settings.backgroundImageData
         ? `url(${settings.backgroundImageData})` : "none",
-      backgroundSize: "cover",
-      backgroundPosition: "center",
+      backgroundSize: Number(settings.backgroundImageScale || 100) === 100
+        ? (settings.backgroundImageFit === "contain" ? "contain" : "cover")
+        : `${settings.backgroundImageScale}% auto`,
+      backgroundPosition: `${settings.backgroundImagePositionX ?? 50}% ${settings.backgroundImagePositionY ?? 50}%`,
+      backgroundRepeat: "no-repeat",
     },
   };
 }
@@ -3810,7 +3814,6 @@ function Settings({ mode }) {
         : messageWithoutGrade;
       return { ...current, crewGradeEnabled: enabled, messageTemplate };
     });
-    setPreviewRun((current) => current + 1);
   };
   const addTier = () => {
     const id = crypto.randomUUID();
@@ -4405,23 +4408,69 @@ function Settings({ mode }) {
                       <i />
                     </label>
                     {settings.backgroundEnabled && (
-                      <label className="background-color-control">
-                        <span>배경색</span>
-                        <input
-                          aria-label="알림 배경색"
-                          type="color"
-                          value={colorPickerValue(settings.backgroundColor)}
-                          onChange={(e) =>
-                            update("backgroundColor", e.target.value)
-                          }
-                        />
-                        <input className="color-code-input" value={settings.backgroundColor} onChange={(e)=>update("backgroundColor",e.target.value)} />
-                      </label>
+                      <>
+                        <label className="toggle-label">
+                          배경색 사용
+                          <input type="checkbox" checked={settings.backgroundColorEnabled !== false} onChange={(e)=>update("backgroundColorEnabled",e.target.checked)} />
+                          <i />
+                        </label>
+                        {settings.backgroundColorEnabled !== false && (
+                          <label className="background-color-control">
+                            <span>배경색</span>
+                            <input
+                              aria-label="알림 배경색"
+                              type="color"
+                              value={colorPickerValue(settings.backgroundColor)}
+                              onChange={(e) =>
+                                update("backgroundColor", e.target.value)
+                              }
+                            />
+                            <input className="color-code-input" value={settings.backgroundColor} onChange={(e)=>update("backgroundColor",e.target.value)} />
+                          </label>
+                        )}
+                      </>
                     )}
                   </div>
                   {settings.backgroundEnabled && (
                     <>
-                      <label>배경 이미지<input type="file" accept="image/*" onChange={(event)=>{const file=event.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){setSaved("배경 이미지는 5MB 이하만 사용할 수 있습니다.");return;}const reader=new FileReader();reader.onload=()=>setSettings(current=>({...current,backgroundImageData:String(reader.result),backgroundImageName:file.name}));reader.readAsDataURL(file);}} />{settings.backgroundImageName&&<small>{settings.backgroundImageName} <button type="button" onClick={()=>setSettings(current=>({...current,backgroundImageData:"",backgroundImageName:""}))}>제거</button></small>}</label>
+                      <label>배경 이미지<input type="file" accept="image/*" onChange={(event)=>{const file=event.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){setSaved("배경 이미지는 5MB 이하만 사용할 수 있습니다.");return;}const reader=new FileReader();reader.onload=()=>setSettings(current=>({...current,backgroundImageData:String(reader.result),backgroundImageName:file.name,backgroundImageArea:"canvas"}));reader.readAsDataURL(file);}} />{settings.backgroundImageName&&<small>{settings.backgroundImageName} <button type="button" onClick={()=>setSettings(current=>({...current,backgroundImageData:"",backgroundImageName:""}))}>제거</button></small>}</label>
+                      {settings.backgroundImageData && (
+                        <>
+                          <label>
+                            사진 적용 영역
+                            <select value={settings.backgroundImageArea || "alert"} onChange={(e)=>update("backgroundImageArea",e.target.value)}>
+                              <option value="canvas">알림 화면 전체 (위·아래 빈 공간 포함)</option>
+                              <option value="alert">문구 영역만</option>
+                            </select>
+                          </label>
+                          <label>
+                            이미지 맞춤
+                            <select
+                              value={settings.backgroundImageFit || "cover"}
+                              onChange={(e) => update("backgroundImageFit", e.target.value)}
+                            >
+                              <option value="cover">영역 채우기 (일부 잘릴 수 있음)</option>
+                              <option value="contain">사진 전체 보기 (여백 생길 수 있음)</option>
+                            </select>
+                          </label>
+                          <label>
+                            사진 크기
+                            <input type="range" min="25" max="300" step="5" value={settings.backgroundImageScale ?? 100} onChange={(e)=>update("backgroundImageScale",Number(e.target.value))} />
+                            <span>{settings.backgroundImageScale ?? 100}%</span>
+                            <small>100%에서는 위의 맞춤 방식을 사용합니다. 값을 바꾸면 사진 너비를 기준으로 자유롭게 확대·축소합니다.</small>
+                          </label>
+                          <label>
+                            가로 위치
+                            <input type="range" min="0" max="100" value={settings.backgroundImagePositionX ?? 50} onChange={(e)=>update("backgroundImagePositionX",Number(e.target.value))} />
+                            <span>{settings.backgroundImagePositionX ?? 50}%</span>
+                          </label>
+                          <label>
+                            세로 위치
+                            <input type="range" min="0" max="100" value={settings.backgroundImagePositionY ?? 50} onChange={(e)=>update("backgroundImagePositionY",Number(e.target.value))} />
+                            <span>{settings.backgroundImagePositionY ?? 50}%</span>
+                          </label>
+                        </>
+                      )}
                       <label>
                         배경 투명도
                         <input
@@ -6467,29 +6516,33 @@ function AlertMessage({
 }
 
 function AlertPreviewFrame({ appearance, donorName, amountText }) {
+  const fullCanvasBackground = appearance.backgroundImageArea === "canvas" && appearance.style.backgroundImage !== "none";
+  const message = (
+    <AlertMessage
+      template={appearance.messageTemplate}
+      donorName={donorName}
+      amountText={amountText}
+      gradeImage={appearance.gradeImage}
+      gradeName={appearance.gradeName}
+      gradeSize={appearance.gradeSize}
+      gradeDisplayMode={appearance.gradeDisplayMode}
+      gradeTextStyle={appearance.gradeTextStyle}
+      showGrade={appearance.showGrade}
+      nameColorEnabled={appearance.nameColorEnabled}
+      nameColor={appearance.nameColor}
+      amountColorEnabled={appearance.amountColorEnabled}
+      amountColor={appearance.amountColor}
+      suffixStyle={appearance.suffixStyle}
+    />
+  );
   return (
     <AlertOutputCanvas className="preview-stage alert-preview-frame">
       <div className="alert-preview-canvas dark-mosaic">
         <div
-          className={`alert ${appearance.animation}`}
+          className={`alert ${fullCanvasBackground ? "alert-full-canvas" : appearance.animation}`}
           style={appearance.style}
         >
-          <AlertMessage
-            template={appearance.messageTemplate}
-            donorName={donorName}
-            amountText={amountText}
-            gradeImage={appearance.gradeImage}
-            gradeName={appearance.gradeName}
-            gradeSize={appearance.gradeSize}
-            gradeDisplayMode={appearance.gradeDisplayMode}
-            gradeTextStyle={appearance.gradeTextStyle}
-            showGrade={appearance.showGrade}
-            nameColorEnabled={appearance.nameColorEnabled}
-            nameColor={appearance.nameColor}
-            amountColorEnabled={appearance.amountColorEnabled}
-            amountColor={appearance.amountColor}
-            suffixStyle={appearance.suffixStyle}
-          />
+          {fullCanvasBackground ? <div className={`alert alert-foreground ${appearance.animation}`}>{message}</div> : message}
         </div>
       </div>
     </AlertOutputCanvas>
@@ -6939,29 +6992,33 @@ function Overlay({ token, preview = false }) {
   const crewGrade = (settings.crewGrades || []).find(
     (grade) => grade.id === current.crewGradeId,
   );
+  const fullCanvasBackground = appearance.backgroundImageArea === "canvas" && appearance.style.backgroundImage !== "none";
+  const message = (
+    <AlertMessage
+      template={outputTemplate}
+      donorName={current.donorName}
+      amountText={formatWon(current.amount)}
+      message={current.message || ""}
+      gradeImage={crewGrade?.imageData || ""}
+      gradeName={crewGrade?.name || ""}
+      gradeSize={settings.crewGradeImageSize}
+      gradeDisplayMode={settings.crewGradeDisplayMode}
+      gradeTextStyle={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:settings.crewGradeTextSize}}
+      showGrade={settings.crewGradeEnabled && Boolean(crewGrade)}
+      nameColorEnabled={appearance.nameColorEnabled}
+      nameColor={appearance.nameColor}
+      amountColorEnabled={appearance.amountColorEnabled}
+      amountColor={appearance.amountColor}
+      suffixStyle={appearance.suffixStyle}
+    />
+  );
   return (
     <AlertOutputCanvas className="overlay-stage">
       <div
-        className={`alert ${exiting ? appearance.exitAnimation : appearance.animation}`}
+        className={`alert ${fullCanvasBackground ? "alert-full-canvas" : exiting ? appearance.exitAnimation : appearance.animation}`}
         style={appearance.style}
       >
-        <AlertMessage
-          template={outputTemplate}
-          donorName={current.donorName}
-          amountText={formatWon(current.amount)}
-          message={current.message || ""}
-          gradeImage={crewGrade?.imageData || ""}
-          gradeName={crewGrade?.name || ""}
-          gradeSize={settings.crewGradeImageSize}
-          gradeDisplayMode={settings.crewGradeDisplayMode}
-          gradeTextStyle={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:settings.crewGradeTextSize}}
-          showGrade={settings.crewGradeEnabled && Boolean(crewGrade)}
-          nameColorEnabled={appearance.nameColorEnabled}
-          nameColor={appearance.nameColor}
-          amountColorEnabled={appearance.amountColorEnabled}
-          amountColor={appearance.amountColor}
-          suffixStyle={appearance.suffixStyle}
-        />
+        {fullCanvasBackground ? <div className={`alert alert-foreground ${exiting ? appearance.exitAnimation : appearance.animation}`}>{message}</div> : message}
       </div>
     </AlertOutputCanvas>
   );
