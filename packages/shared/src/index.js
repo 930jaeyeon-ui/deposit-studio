@@ -38,13 +38,16 @@ export const DEFAULT_SETTINGS = Object.freeze({
   customSoundData: '',
   soundLibrary: [],
   ttsEnabled: false,
-  ttsProvider: 'browser',
+  ttsProvider: 'typecast',
   ttsVoiceURI: '',
   ttsElevenVoiceId: '',
   ttsElevenVoiceName: '',
   ttsModel: 'eleven_flash_v2_5',
+  ttsTypecastVoiceId: '',
+  ttsTypecastVoiceName: '',
+  ttsTypecastEmotion: 'smart',
   ttsRate: 1,
-  ttsPitch: 1,
+  ttsPitch: 0,
   ttsVolume: 100,
   amountTiers: [],
   crewGradeEnabled: false,
@@ -107,9 +110,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingShowCount: false,
   rankingRankHighlightEnabled: true,
   rankingRankStyles: [
-    { color:'#ffd76a', badge:'#8a6414', size:110, weight:900 },
-    { color:'#dce8f5', badge:'#60758b', size:105, weight:800 },
-    { color:'#e7aa78', badge:'#855137', size:102, weight:800 },
+    { color:'#ffd76a', amountColor:'#b9dcff', badge:'#8a6414', size:110, weight:900 },
+    { color:'#dce8f5', amountColor:'#b9dcff', badge:'#60758b', size:105, weight:800 },
+    { color:'#e7aa78', amountColor:'#b9dcff', badge:'#855137', size:102, weight:800 },
     { color:'#ffffff', badge:'#315b88', size:100, weight:700 }
   ]
 });

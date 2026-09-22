@@ -60,10 +60,11 @@ jobs:
       - name: Deploy API to WAS
         env:
           ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+          TYPECAST_API_KEY: ${{ secrets.TYPECAST_API_KEY }}
         run: |
           user="${OCI_USER:-opc}"
           umask 077
-          printf 'ELEVENLABS_API_KEY=%s\n' "$ELEVENLABS_API_KEY" > /tmp/deposit-studio-api.env
+          printf 'ELEVENLABS_API_KEY=%s\nTYPECAST_API_KEY=%s\n' "$ELEVENLABS_API_KEY" "$TYPECAST_API_KEY" > /tmp/deposit-studio-api.env
           scp -i ~/.ssh/oci_deploy /tmp/deposit-studio-api-${GITHUB_SHA}.tar.gz deploy/oci/deploy-was.sh /tmp/deposit-studio-api.env "${user}@${OCI_WAS_HOST}:/tmp/"
           ssh -i ~/.ssh/oci_deploy "${user}@${OCI_WAS_HOST}" "sudo RELEASE_ID='${GITHUB_SHA}' WEB_ORIGIN='https://n9signal.duckdns.org' bash /tmp/deploy-was.sh"
       - name: Verify public endpoints

@@ -16,6 +16,8 @@ services:
         sync: false
       - key: ELEVENLABS_API_KEY
         sync: false
+      - key: TYPECAST_API_KEY
+        sync: false
       - key: WEB_ORIGIN
         value: https://deposit-studio-web.onrender.com
   - type: web

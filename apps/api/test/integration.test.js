@@ -48,6 +48,8 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.response.status,200);
     assert.equal((await request('/api/settings')).response.status,401);
     assert.equal((await request('/api/tts/voices',{cookie:memberCookie})).data.configured,false);
+    assert.equal((await request('/api/tts/typecast-voices',{cookie:memberCookie})).data.configured,false);
+    assert.equal((await request('/api/tts/typecast-voices')).response.status,401);
     assert.equal((await request('/api/tts/preview',{method:'POST',cookie:memberCookie,body:{text:'테스트',voiceId:'voice-test'}})).response.status,503);
     assert.equal((await request('/api/settings',{method:'PUT',cookie:memberCookie,body:{...result.data,toonationEnabled:true,toonationWidgetUrl:'https://example.com/widget/alertbox/abcdefgh'}})).response.status,400);
 
@@ -96,9 +98,9 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.animation,'zoom');
     assert.equal(result.data.exitAnimation,'fade-out');
     assert.equal(result.data.soundVolume,0);
-    assert.equal(result.data.ttsProvider,'browser');
+    assert.equal(result.data.ttsProvider,'typecast');
     assert.equal(result.data.ttsRate,2);
-    assert.equal(result.data.ttsPitch,0);
+    assert.equal(result.data.ttsPitch,-1);
     assert.equal(result.data.ttsVolume,100);
     assert.equal(result.data.toonationWidgetUrl,'https://toon.at/widget/alertbox/abcdefgh');
     assert.equal(result.data.toonationAlertMode,'custom-original-audio');
@@ -114,9 +116,9 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.amountTiers[0].fontWeight,100);
     assert.equal(result.data.amountTiers[0].durationMs,1000);
     assert.equal(result.data.amountTiers[0].soundVolume,100);
-    assert.equal(result.data.amountTiers[0].ttsProvider,'browser');
+    assert.equal(result.data.amountTiers[0].ttsProvider,'typecast');
     assert.equal(result.data.amountTiers[0].ttsRate,.5);
-    assert.equal(result.data.amountTiers[0].ttsPitch,2);
+    assert.equal(result.data.amountTiers[0].ttsPitch,9);
     assert.equal(result.data.amountTiers[0].ttsVolume,0);
     assert.equal(result.data.crewGrades.some(grade=>grade.id==='forbidden'),false);
     assert.equal((await request('/api/toonation/status',{cookie:memberCookie})).data.state,'disabled');

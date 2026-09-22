@@ -3,6 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "scripts": {"dev":"node --env-file-if-exists=.env --env-file-if-exists=../../.env src/index.js","start":"node --env-file-if-exists=.env --env-file-if-exists=../../.env src/index.js","test":"node --test test/*.test.js"},
-  "dependencies": {"@deposit-studio/shared":"*","@grpc/grpc-js":"^1.14.0","@grpc/proto-loader":"^0.8.0","@libsql/client":"^0.15.15","express":"^5.1.0"}
+  "scripts": {
+    "dev": "node --env-file-if-exists=.env --env-file-if-exists=../../.env src/index.js",
+    "start": "node --env-file-if-exists=.env --env-file-if-exists=../../.env src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@deposit-studio/shared": "*",
+    "@grpc/grpc-js": "^1.14.0",
+    "@grpc/proto-loader": "^0.8.0",
+    "@libsql/client": "^0.15.15",
+    "@neosapience/typecast-js": "^0.4.13",
+    "express": "^5.1.0"
+  }
 }

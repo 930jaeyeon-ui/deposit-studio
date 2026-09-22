@@ -5,6 +5,7 @@ import { activeSession, db } from './db.js';
 import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, requireSuper, verifyPassword } from './auth.js';
 import { parseNotification, validateRuleInput } from './notification-parser.js';
 import { createElevenSpeech, elevenLabsConfigured, listElevenVoices } from './elevenlabs.js';
+import { createTypecastSpeech, listTypecastVoices, typecastConfigured } from './typecast.js';
 import { ToonationManager, toonationWidgetKey } from './toonation.js';
 import { parseDonationCommand, parseRegistrationCommand, YouTubeChatManager, youtubeVideoId } from './youtube.js';
 
@@ -155,7 +156,7 @@ app.use((req, res, next) => {
   });
   next();
 });
-app.get('/api/health', (_req, res) => res.json({ ok:true, ttsConfigured:elevenLabsConfigured() }));
+app.get('/api/health', (_req, res) => res.json({ ok:true, ttsConfigured:elevenLabsConfigured(), typecastConfigured:typecastConfigured() }));
 
 app.get('/api/tts/voices', requireAuth, async (_req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -167,17 +168,25 @@ app.get('/api/tts/voices', requireAuth, async (_req, res) => {
   }
 });
 
+app.get('/api/tts/typecast-voices', requireAuth, async (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  if (!typecastConfigured()) return res.json({ configured:false, voices:[] });
+  try {
+    res.json({ configured:true, voices:await listTypecastVoices() });
+  } catch (error) {
+    res.status(error.status || 502).json({ error:error.message });
+  }
+});
+
 app.post('/api/tts/preview', requireAuth, async (req, res) => {
   try {
     if (!allowTtsRequest(`preview:${req.user.id}`, 20)) {
       return res.status(429).json({ error:'미리듣기 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' });
     }
-    const audio = await createElevenSpeech({
-      text:req.body?.text,
-      voiceId:req.body?.voiceId,
-      model:req.body?.model,
-      rate:req.body?.rate,
-    });
+    const provider = req.body?.provider === 'typecast' ? 'typecast' : 'elevenlabs';
+    const audio = provider === 'typecast'
+      ? await createTypecastSpeech({ text:req.body?.text, voiceId:req.body?.voiceId, rate:req.body?.rate, pitch:req.body?.pitch, emotion:req.body?.emotion })
+      : await createElevenSpeech({ text:req.body?.text, voiceId:req.body?.voiceId, model:req.body?.model, rate:req.body?.rate });
     res.set({ 'Content-Type':'audio/mpeg', 'Cache-Control':'no-store' });
     res.send(audio);
   } catch (error) {
@@ -194,22 +203,18 @@ app.post('/api/overlay/:token/tts', async (req, res) => {
     }
     const settings = await getUserSettings(user.id);
     const requestedVoiceId = String(req.body?.voiceId || '');
-    const allowedVoiceIds = new Set([
-      settings.ttsElevenVoiceId,
-      ...(settings.amountTiers || []).map((tier) => tier.ttsElevenVoiceId),
-    ].filter(Boolean));
-    if (settings.ttsProvider !== 'elevenlabs' && !(settings.amountTiers || []).some((tier) => tier.ttsProvider === 'elevenlabs')) {
-      return res.status(400).json({ error:'ElevenLabs TTS가 선택되지 않았습니다.' });
+    const provider = req.body?.provider === 'typecast' ? 'typecast' : 'elevenlabs';
+    const voiceKey = provider === 'typecast' ? 'ttsTypecastVoiceId' : 'ttsElevenVoiceId';
+    const allowedVoiceIds = new Set([settings[voiceKey], ...(settings.amountTiers || []).map((tier) => tier[voiceKey])].filter(Boolean));
+    if (settings.ttsProvider !== provider && !(settings.amountTiers || []).some((tier) => tier.ttsProvider === provider)) {
+      return res.status(400).json({ error:`${provider === 'typecast' ? 'Typecast' : 'ElevenLabs'} TTS가 선택되지 않았습니다.` });
     }
     if (!allowedVoiceIds.has(requestedVoiceId)) {
       return res.status(400).json({ error:'저장되지 않은 TTS 음성입니다.' });
     }
-    const audio = await createElevenSpeech({
-      text:req.body?.text,
-      voiceId:requestedVoiceId,
-      model:req.body?.model,
-      rate:req.body?.rate,
-    });
+    const audio = provider === 'typecast'
+      ? await createTypecastSpeech({ text:req.body?.text, voiceId:requestedVoiceId, rate:req.body?.rate, pitch:req.body?.pitch, emotion:req.body?.emotion })
+      : await createElevenSpeech({ text:req.body?.text, voiceId:requestedVoiceId, model:req.body?.model, rate:req.body?.rate });
     res.set({ 'Content-Type':'audio/mpeg', 'Cache-Control':'no-store' });
     res.send(audio);
   } catch (error) {
@@ -291,17 +296,20 @@ function cleanSettings(input) {
   settings.textShadow = Boolean(settings.textShadow);
   settings.soundEnabled = Boolean(settings.soundEnabled);
   settings.ttsEnabled = Boolean(settings.ttsEnabled);
-  settings.ttsProvider = settings.ttsProvider === 'elevenlabs' ? 'elevenlabs' : 'browser';
+  settings.ttsProvider = 'typecast';
   settings.ttsVoiceURI = String(settings.ttsVoiceURI || '').slice(0,300);
   settings.ttsElevenVoiceId = String(settings.ttsElevenVoiceId || '').slice(0,80);
   settings.ttsElevenVoiceName = String(settings.ttsElevenVoiceName || '').slice(0,120);
   settings.ttsModel = settings.ttsModel === 'eleven_multilingual_v2' ? 'eleven_multilingual_v2' : 'eleven_flash_v2_5';
+  settings.ttsTypecastVoiceId = String(settings.ttsTypecastVoiceId || '').slice(0,120);
+  settings.ttsTypecastVoiceName = String(settings.ttsTypecastVoiceName || '').slice(0,120);
+  settings.ttsTypecastEmotion = ['smart','normal','happy','sad','angry','whisper','toneup','tonedown'].includes(settings.ttsTypecastEmotion) ? settings.ttsTypecastEmotion : 'smart';
   delete settings.ttsAzureVoice;
   delete settings.previewCrewGradeId;
   delete settings.previewDonorName;
   delete settings.previewCumulativeAmount;
   settings.ttsRate = Math.max(0.5, Math.min(2, Number(settings.ttsRate) || 1));
-  settings.ttsPitch = Math.max(0, Math.min(2, Number.isFinite(Number(settings.ttsPitch)) ? Number(settings.ttsPitch) : 1));
+  settings.ttsPitch = Math.max(-12, Math.min(12, Number.isFinite(Number(settings.ttsPitch)) ? Number(settings.ttsPitch) : 0));
   settings.ttsVolume = Math.max(0, Math.min(100, Number.isFinite(Number(settings.ttsVolume)) ? Number(settings.ttsVolume) : DEFAULT_SETTINGS.ttsVolume));
   settings.crewGradeEnabled = Boolean(settings.crewGradeEnabled);
   settings.crewGradeDisplayMode=settings.crewGradeDisplayMode==='text'?'text':'image';
@@ -326,7 +334,7 @@ function cleanSettings(input) {
     textMode:tier.textMode === 'custom' ? 'custom' : 'inherit', fontFamily:String(tier.fontFamily || settings.fontFamily).slice(0,120), fontSize:Math.max(20,Math.min(160,Number(tier.fontSize)||settings.fontSize)), fontWeight:Math.max(100,Math.min(900,Number(tier.fontWeight)||settings.fontWeight)), textColor:String(tier.textColor || settings.textColor).slice(0,20), outlineColor:String(tier.outlineColor || settings.outlineColor).slice(0,20), outlineWidth:Math.max(0,Math.min(12,Number(tier.outlineWidth)||0)),
     effectMode:tier.effectMode === 'custom' ? 'custom' : 'inherit', animation:String(tier.animation || settings.animation).slice(0,30), exitAnimation:String(tier.exitAnimation || settings.exitAnimation).slice(0,30), durationMs:Math.max(1000,Math.min(30000,Number(tier.durationMs)||settings.durationMs)),
     soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.soundVolume)) ? Number(tier.soundVolume) : settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,7000000),
-    ttsMode:tier.ttsMode === 'custom' ? 'custom' : 'inherit', ttsEnabled:tier.ttsEnabled !== false, ttsProvider:tier.ttsProvider === 'elevenlabs' ? 'elevenlabs' : 'browser', ttsVoiceURI:String(tier.ttsVoiceURI || settings.ttsVoiceURI || '').slice(0,300), ttsElevenVoiceId:String(tier.ttsElevenVoiceId || settings.ttsElevenVoiceId || '').slice(0,80), ttsElevenVoiceName:String(tier.ttsElevenVoiceName || settings.ttsElevenVoiceName || '').slice(0,120), ttsModel:tier.ttsModel === 'eleven_multilingual_v2' ? 'eleven_multilingual_v2' : 'eleven_flash_v2_5', ttsRate:Math.max(.5,Math.min(2,Number(tier.ttsRate)||settings.ttsRate)), ttsPitch:Math.max(0,Math.min(2,Number.isFinite(Number(tier.ttsPitch)) ? Number(tier.ttsPitch) : settings.ttsPitch)), ttsVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.ttsVolume))?Number(tier.ttsVolume):settings.ttsVolume))
+    ttsMode:tier.ttsMode === 'custom' ? 'custom' : 'inherit', ttsEnabled:tier.ttsEnabled !== false, ttsProvider:'typecast', ttsVoiceURI:String(tier.ttsVoiceURI || settings.ttsVoiceURI || '').slice(0,300), ttsElevenVoiceId:String(tier.ttsElevenVoiceId || settings.ttsElevenVoiceId || '').slice(0,80), ttsElevenVoiceName:String(tier.ttsElevenVoiceName || settings.ttsElevenVoiceName || '').slice(0,120), ttsModel:tier.ttsModel === 'eleven_multilingual_v2' ? 'eleven_multilingual_v2' : 'eleven_flash_v2_5', ttsTypecastVoiceId:String(tier.ttsTypecastVoiceId || settings.ttsTypecastVoiceId || '').slice(0,120), ttsTypecastVoiceName:String(tier.ttsTypecastVoiceName || settings.ttsTypecastVoiceName || '').slice(0,120), ttsTypecastEmotion:['smart','normal','happy','sad','angry','whisper','toneup','tonedown'].includes(tier.ttsTypecastEmotion) ? tier.ttsTypecastEmotion : settings.ttsTypecastEmotion, ttsRate:Math.max(.5,Math.min(2,Number(tier.ttsRate)||settings.ttsRate)), ttsPitch:Math.max(-12,Math.min(12,Number.isFinite(Number(tier.ttsPitch)) ? Number(tier.ttsPitch) : settings.ttsPitch)), ttsVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.ttsVolume))?Number(tier.ttsVolume):settings.ttsVolume))
   })) : [];
   settings.rankingLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   settings.rankingFontFamily = String(settings.rankingFontFamily || DEFAULT_SETTINGS.rankingFontFamily).slice(0,120);
@@ -354,11 +362,11 @@ function cleanSettings(input) {
   settings.rankingTitleAlign = ['left','center','right'].includes(settings.rankingTitleAlign)?settings.rankingTitleAlign:'left';
   settings.rankingTitleColumn = settings.rankingTitleColumn === 'last' ? 'last' : 'first';
   for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
-  settings.rankingColumns = Math.max(1,Math.min(4,Math.floor(Number(settings.rankingColumns)||1)));
+  settings.rankingColumns = Math.max(1,Math.min(5,Math.floor(Number(settings.rankingColumns)||1)));
   settings.rankingRowsPerColumn = Math.max(1,Math.min(20,Math.floor(Number(settings.rankingRowsPerColumn)||10)));
   settings.rankingAnimation = ['none','fade','slide-up','slide-left','zoom','stagger'].includes(settings.rankingAnimation)?settings.rankingAnimation:'fade';
   settings.rankingRankHighlightEnabled = settings.rankingRankHighlightEnabled !== false;
-  settings.rankingRankStyles = Array.from({length:4},(_,index)=>{const source=Array.isArray(settings.rankingRankStyles)?settings.rankingRankStyles[index]||{}:{};const fallback=DEFAULT_SETTINGS.rankingRankStyles[index];return {color:String(source.color||fallback.color).slice(0,20),badge:String(source.badge||fallback.badge).slice(0,20),size:Math.max(70,Math.min(160,Number(source.size)||fallback.size)),weight:Math.max(100,Math.min(900,Number(source.weight)||fallback.weight))};});
+  settings.rankingRankStyles = Array.from({length:4},(_,index)=>{const source=Array.isArray(settings.rankingRankStyles)?settings.rankingRankStyles[index]||{}:{};const fallback=DEFAULT_SETTINGS.rankingRankStyles[index];return {color:String(source.color||fallback.color).slice(0,20),amountColor:String(source.amountColor||settings.rankingAmountColor||fallback.amountColor||DEFAULT_SETTINGS.rankingAmountColor).slice(0,20),badge:String(source.badge||fallback.badge).slice(0,20),size:Math.max(70,Math.min(160,Number(source.size)||fallback.size)),weight:Math.max(100,Math.min(900,Number(source.weight)||fallback.weight))};});
   settings.rankingShowRank = Boolean(settings.rankingShowRank);
   settings.rankingShowCount = Boolean(settings.rankingShowCount);
   settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);

@@ -1499,7 +1499,7 @@ function LiveDepositPopup() {
         </section>
         <section className="live-action-group alert-actions"><h2>후원 알림</h2>
           <button className="stop-chat" onClick={async()=>{try{const result=await api("/api/overlay/control",{method:"POST",body:JSON.stringify({action:"stop-current-chat"})});setMessage(result.delivered?"현재 후원 채팅 화면과 TTS를 강제 종료했습니다.":"연결된 OBS 알림 화면이 없습니다.");}catch(error){setMessage(error.message);}}}>현재 채팅 강제 종료</button>
-          <button className="run" onClick={async()=>{if(!selected)return;await setSelectedStatus("included");await replay();}} disabled={!selected||selected.status==="included"||savingId}>반영 후 실행</button>
+          <button className="run" onClick={async()=>{if(!selected)return;await setSelectedStatus("included");await replay();}} disabled={!selected||selected.status==="included"||savingId}>반영 후 알림 실행</button>
           <button className="rerun" onClick={replay} disabled={!selected||selected.status!=="included"||savingId}>알림만 재실행</button>
         </section>
         <section className="live-action-group"><h2>후원 내역</h2>
@@ -3210,6 +3210,15 @@ function alertAppearance(settings, amount = 50000) {
       ? tier.ttsElevenVoiceName
       : settings.ttsElevenVoiceName,
     ttsModel: customTts ? tier.ttsModel : settings.ttsModel,
+    ttsTypecastVoiceId: customTts
+      ? tier.ttsTypecastVoiceId
+      : settings.ttsTypecastVoiceId,
+    ttsTypecastVoiceName: customTts
+      ? tier.ttsTypecastVoiceName
+      : settings.ttsTypecastVoiceName,
+    ttsTypecastEmotion: customTts
+      ? tier.ttsTypecastEmotion
+      : settings.ttsTypecastEmotion,
     ttsRate: customTts ? tier.ttsRate : settings.ttsRate,
     ttsPitch: customTts ? tier.ttsPitch : settings.ttsPitch,
     ttsVolume: customTts ? tier.ttsVolume : settings.ttsVolume,
@@ -3334,7 +3343,7 @@ function stopActiveAlertSpeech() {
   }
 }
 
-async function playElevenSpeech(appearance, text, token = null) {
+async function playRemoteSpeech(appearance, text, token = null) {
   const endpoint = token
     ? `/api/overlay/${encodeURIComponent(token)}/tts`
     : "/api/tts/preview";
@@ -3344,15 +3353,20 @@ async function playElevenSpeech(appearance, text, token = null) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       text,
-      voiceId: appearance.ttsElevenVoiceId,
+      provider: appearance.ttsProvider,
+      voiceId: appearance.ttsProvider === "typecast"
+        ? appearance.ttsTypecastVoiceId
+        : appearance.ttsElevenVoiceId,
       model: appearance.ttsModel,
       rate: appearance.ttsRate,
+      pitch: appearance.ttsPitch,
+      emotion: appearance.ttsTypecastEmotion,
     }),
     signal: AbortSignal.timeout(25000),
   });
   if (!response.ok) {
     const data = await response.json().catch(() => null);
-    throw new Error(data?.error || "ElevenLabs 음성을 만들지 못했습니다.");
+    throw new Error(data?.error || "AI 음성을 만들지 못했습니다.");
   }
   const url = URL.createObjectURL(await response.blob());
   const audio = new Audio(url);
@@ -3366,24 +3380,47 @@ async function playElevenSpeech(appearance, text, token = null) {
   audio.addEventListener("ended", cleanup, { once: true });
   audio.addEventListener("error", cleanup, { once: true });
   await audio.play();
-  return "elevenlabs";
+  return appearance.ttsProvider;
 }
 
 async function playAlertSpeech(appearance, text, options = {}) {
-  if (
-    appearance.ttsProvider === "elevenlabs" &&
-    appearance.ttsElevenVoiceId
-  ) {
-    try {
-      return await playElevenSpeech(appearance, text, options.token);
-    } catch (error) {
-      if (options.allowFallback === false) throw error;
-      console.warn("ElevenLabs TTS 재생 실패, 브라우저 음성으로 전환:", error);
-    }
-  }
-  await playBrowserSpeech(appearance, text);
-  return "browser";
+  const speechText = String(text || "")
+    .replaceAll("{grade}", "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!speechText) return "none";
+  if (!appearance.ttsTypecastVoiceId) return "none";
+  return playRemoteSpeech(
+    { ...appearance, ttsProvider:"typecast" },
+    speechText,
+    options.token,
+  );
 }
+
+const TYPECAST_EMOTION_LABELS = {
+  smart:"스마트 감정 · 문맥 자동 분석",
+  normal:"보통",
+  happy:"기쁨",
+  sad:"슬픔",
+  angry:"화남",
+  whisper:"속삭임",
+  toneup:"밝은 톤",
+  tonedown:"차분한 톤",
+};
+const TYPECAST_SEARCH_PRESETS = [
+  ["여성", "female"], ["남성", "male"], ["젊은 목소리", "young_adult"],
+  ["어린이", "child"], ["대화", "Conversational"], ["나레이션", "Narration"],
+  ["아나운서", "Announcer"], ["뉴스", "News"], ["오디오북", "Audiobook"],
+  ["게임", "Game"], ["쇼츠", "Tiktok/Reels"],
+];
+const TYPECAST_SEARCH_ALIASES = {
+  female:"여성 여자", male:"남성 남자", child:"어린이 아이 키즈",
+  teenager:"청소년 십대", young_adult:"청년 젊은", middle_age:"중년", senior:"노년 시니어",
+  conversational:"대화 친근한", narration:"나레이션 내레이션", announcer:"아나운서",
+  news:"뉴스 기자", audiobook:"오디오북 낭독", game:"게임 캐릭터",
+  "tiktok/reels":"쇼츠 릴스 틱톡", podcast:"팟캐스트", documentary:"다큐멘터리",
+  "e-learning":"교육 학습", ads:"광고", voicemail:"안내 음성",
+};
 
 async function playAlertSound(
   settings,
@@ -3551,6 +3588,11 @@ function Settings({ mode }) {
   const [elevenVoices, setElevenVoices] = useState([]);
   const [elevenConfigured, setElevenConfigured] = useState(null);
   const [elevenVoiceError, setElevenVoiceError] = useState("");
+  const [typecastVoices, setTypecastVoices] = useState([]);
+  const [typecastConfigured, setTypecastConfigured] = useState(null);
+  const [typecastVoiceError, setTypecastVoiceError] = useState("");
+  const [typecastVoiceQuery, setTypecastVoiceQuery] = useState("");
+  const [typecastGenderFilter, setTypecastGenderFilter] = useState("");
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [savedSettings, setSavedSettings] = useState(DEFAULT_SETTINGS);
   const [settingsLoaded, setSettingsLoaded] = useState(false);
@@ -3567,22 +3609,33 @@ function Settings({ mode }) {
   const [leaveRequest, setLeaveRequest] = useState(null);
   const leaveResolver = useRef(null);
   const savingBeforeLeave = useRef(false);
+  const selectedTypecastVoice = typecastVoices.find(
+    (voice) => voice.id === settings.ttsTypecastVoiceId,
+  );
+  const filteredTypecastVoices = typecastVoices.filter((voice) => {
+    const query = typecastVoiceQuery.trim().toLowerCase();
+    const rawTerms = [voice.gender, voice.age, ...(voice.useCases || [])];
+    const aliases = rawTerms.flatMap((term) => TYPECAST_SEARCH_ALIASES[String(term).toLowerCase()] || []);
+    const haystack = [voice.name, voice.englishName, ...rawTerms, ...aliases]
+      .join(" ")
+      .toLowerCase();
+    return (!query || haystack.includes(query)) &&
+      (!typecastGenderFilter || voice.gender === typecastGenderFilter);
+  });
   useEffect(() => {
     let active = true;
-    api("/api/tts/voices", { cache: "no-store" })
+    api("/api/tts/typecast-voices", { cache: "no-store" })
       .then((value) => {
         if (!active) return;
-        setElevenConfigured(Boolean(value.configured));
-        setElevenVoices(value.voices || []);
+        setTypecastConfigured(Boolean(value.configured));
+        setTypecastVoices(value.voices || []);
       })
       .catch((error) => {
         if (!active) return;
-        setElevenConfigured(false);
-        setElevenVoiceError(error.message || "ElevenLabs 음성을 불러오지 못했습니다.");
+        setTypecastConfigured(false);
+        setTypecastVoiceError(error.message || "Typecast 음성을 불러오지 못했습니다.");
       });
-    return () => {
-      active = false;
-    };
+    return () => { active = false; };
   }, []);
   useEffect(() => {
     let active=true;
@@ -3795,6 +3848,9 @@ function Settings({ mode }) {
         ttsElevenVoiceId: settings.ttsElevenVoiceId,
         ttsElevenVoiceName: settings.ttsElevenVoiceName,
         ttsModel: settings.ttsModel,
+        ttsTypecastVoiceId: settings.ttsTypecastVoiceId,
+        ttsTypecastVoiceName: settings.ttsTypecastVoiceName,
+        ttsTypecastEmotion: settings.ttsTypecastEmotion,
         ttsRate: settings.ttsRate,
         ttsPitch: settings.ttsPitch,
         ttsVolume: settings.ttsVolume,
@@ -4582,8 +4638,8 @@ function Settings({ mode }) {
                   onToggle={() => toggleAlertSection("tts")}
                 >
                   <p className="alert-setting-help">
-                    방송 PC의 기본 음성 또는 ElevenLabs 계정에 저장된 AI
-                    음성을 선택할 수 있습니다.
+                    Typecast SSFM 3.0 전용으로 동작합니다. 선택한 보이스가
+                    제공하는 실제 감정과 스타일만 표시합니다.
                   </p>
                   <label className="toggle-label">
                     TTS 사용
@@ -4596,16 +4652,10 @@ function Settings({ mode }) {
                   </label>
                   {settings.ttsEnabled && (
                     <>
-                      <label>
-                        음성 제공자
-                        <select
-                          value={settings.ttsProvider || "browser"}
-                          onChange={(e) => update("ttsProvider", e.target.value)}
-                        >
-                          <option value="browser">방송 PC 기본 음성 · 무료</option>
-                          <option value="elevenlabs">ElevenLabs AI 음성</option>
-                        </select>
-                      </label>
+                      <div className="tts-provider-fixed">
+                        <b>Typecast AI 음성</b>
+                        <span>SSFM 3.0 · 한국어 · 스마트 감정</span>
+                      </div>
                       {settings.ttsProvider === "elevenlabs" ? (
                         <>
                           {!elevenConfigured && (
@@ -4661,6 +4711,119 @@ function Settings({ mode }) {
                             </select>
                           </label>
                         </>
+                      ) : settings.ttsProvider === "typecast" ? (
+                        <>
+                          {!typecastConfigured && (
+                            <p className="form-message">
+                              {typecastVoiceError ||
+                                "서버에 TYPECAST_API_KEY를 설정하면 음성 목록이 표시됩니다."}
+                            </p>
+                          )}
+                          <div className="typecast-voice-filters">
+                            <label>
+                              보이스 검색
+                              <input
+                                value={typecastVoiceQuery}
+                                onChange={(e) => setTypecastVoiceQuery(e.target.value)}
+                                placeholder="이름·연령·용도 검색"
+                              />
+                            </label>
+                            <label>
+                              성별
+                              <select
+                                value={typecastGenderFilter}
+                                onChange={(e) => setTypecastGenderFilter(e.target.value)}
+                              >
+                                <option value="">전체</option>
+                                <option value="female">여성</option>
+                                <option value="male">남성</option>
+                              </select>
+                            </label>
+                          </div>
+                          <div className="typecast-search-suggestions">
+                            <span>추천 검색어</span>
+                            {TYPECAST_SEARCH_PRESETS.map(([label, query]) => (
+                              <button
+                                type="button"
+                                key={query}
+                                className={typecastVoiceQuery === query ? "active" : ""}
+                                onClick={() => setTypecastVoiceQuery(query)}
+                              >
+                                {label}
+                              </button>
+                            ))}
+                            {typecastVoiceQuery && (
+                              <button type="button" onClick={() => setTypecastVoiceQuery("")}>초기화</button>
+                            )}
+                          </div>
+                          <label>
+                            Typecast 목소리
+                            <select
+                              value={settings.ttsTypecastVoiceId || ""}
+                              disabled={!typecastConfigured}
+                              onChange={(e) => {
+                                const selected = typecastVoices.find(
+                                  (voice) => voice.id === e.target.value,
+                                );
+                                setSettings((current) => ({
+                                  ...current,
+                                  ttsTypecastVoiceId: e.target.value,
+                                  ttsTypecastVoiceName: selected?.name || "",
+                                  ttsTypecastEmotion: "smart",
+                                }));
+                                setPreviewRun((current) => current + 1);
+                              }}
+                            >
+                              <option value="">목소리를 선택해주세요</option>
+                              {filteredTypecastVoices.map((voice) => (
+                                <option value={voice.id} key={voice.id}>
+                                  {voice.name}
+                                  {voice.gender ? ` · ${voice.gender}` : ""}
+                                  {voice.age ? ` · ${voice.age}` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <small className="tts-voice-count">
+                              검색 결과 {filteredTypecastVoices.length}개 / 전체 {typecastVoices.length}개
+                            </small>
+                          </label>
+                          {selectedTypecastVoice && (
+                            <div className="typecast-voice-detail">
+                              <div>
+                                <b>{selectedTypecastVoice.name}</b>
+                                {selectedTypecastVoice.englishName && <span>{selectedTypecastVoice.englishName}</span>}
+                              </div>
+                              <small>
+                                {[selectedTypecastVoice.gender, selectedTypecastVoice.age, ...(selectedTypecastVoice.useCases || [])]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </small>
+                              {selectedTypecastVoice.previewUrl && (
+                                <button
+                                  type="button"
+                                  className="secondary-button"
+                                  onClick={() => new Audio(selectedTypecastVoice.previewUrl).play()}
+                                >
+                                  Typecast 원본 샘플 듣기
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          <label>
+                            감정 표현
+                            <select
+                              value={settings.ttsTypecastEmotion || "smart"}
+                              onChange={(e) => update("ttsTypecastEmotion", e.target.value)}
+                            >
+                              <option value="smart">{TYPECAST_EMOTION_LABELS.smart}</option>
+                              {(selectedTypecastVoice?.emotions || []).map((emotion) => (
+                                <option value={emotion} key={emotion}>
+                                  {TYPECAST_EMOTION_LABELS[emotion] || emotion}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </>
                       ) : (
                       <label>
                         목소리
@@ -4698,19 +4861,19 @@ function Settings({ mode }) {
                         />
                         <span>{settings.ttsRate}×</span>
                       </label>
-                      {settings.ttsProvider !== "elevenlabs" && <label>
-                        목소리 높낮이
+                      {settings.ttsProvider === "typecast" && <label>
+                        목소리 높낮이 (반음)
                         <input
                           type="range"
-                          min="0"
-                          max="2"
-                          step="0.1"
+                          min="-12"
+                          max="12"
+                          step="1"
                           value={settings.ttsPitch}
                           onChange={(e) =>
                             update("ttsPitch", Number(e.target.value))
                           }
                         />
-                        <span>{settings.ttsPitch}</span>
+                        <span>{settings.ttsPitch > 0 ? "+" : ""}{settings.ttsPitch}</span>
                       </label>}
                       <label>
                         TTS 볼륨
@@ -4729,8 +4892,10 @@ function Settings({ mode }) {
                         type="button"
                         className="secondary-button"
                         disabled={
-                          settings.ttsProvider === "elevenlabs" &&
-                          (!elevenConfigured || !settings.ttsElevenVoiceId)
+                          (settings.ttsProvider === "elevenlabs" &&
+                            (!elevenConfigured || !settings.ttsElevenVoiceId)) ||
+                          (settings.ttsProvider === "typecast" &&
+                            (!typecastConfigured || !settings.ttsTypecastVoiceId))
                         }
                         onClick={async () => {
                           try {
@@ -4742,7 +4907,9 @@ function Settings({ mode }) {
                             setSaved(
                               provider === "elevenlabs"
                                 ? "선택한 ElevenLabs 음성을 재생했습니다."
-                                : "방송 PC 기본 음성을 재생했습니다.",
+                                : provider === "typecast"
+                                  ? "선택한 Typecast 음성을 재생했습니다."
+                                  : "방송 PC 기본 음성을 재생했습니다.",
                             );
                           } catch (error) {
                             setSaved(error.message || "TTS 미리듣기에 실패했습니다.");
@@ -4959,19 +5126,54 @@ function Settings({ mode }) {
                                 }
                               >
                                 {tier.messageMode === "custom" && (
-                                  <label>
-                                    이 구간 전용 문구
-                                    <textarea
-                                      value={tier.messageTemplate || ""}
-                                      onChange={(e) =>
-                                        changeTier(
-                                          tier.id,
-                                          "messageTemplate",
-                                          e.target.value,
-                                        )
-                                      }
-                                    />
-                                  </label>
+                                  <div className="tier-message-editor">
+                                    <div className="tier-message-token-guide">
+                                      <span><code>{"{name}"}</code> 후원자명</span>
+                                      <span><code>{"{amount}"}</code> 금액</span>
+                                      <span><code>{"{grade}"}</code> 크루 등급</span>
+                                      <span><code>{"{message}"}</code> 후원 메시지</span>
+                                    </div>
+                                    <div className="tier-message-token-buttons">
+                                      <span>빠른 삽입</span>
+                                      {["{name}", "{amount}", "{grade}", "{message}"].map((token) => (
+                                        <button
+                                          type="button"
+                                          key={token}
+                                          onClick={() => {
+                                            const current = tier.messageTemplate || "";
+                                            changeTier(tier.id, "messageTemplate", `${current}${current && !/\s$/.test(current) ? " " : ""}${token}`);
+                                          }}
+                                        >
+                                          {token}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <label>
+                                      이 구간 전용 문구
+                                      <textarea
+                                        value={tier.messageTemplate || ""}
+                                        placeholder={settings.messageTemplate}
+                                        onChange={(e) =>
+                                          changeTier(
+                                            tier.id,
+                                            "messageTemplate",
+                                            e.target.value,
+                                          )
+                                        }
+                                      />
+                                    </label>
+                                    <div className="tier-message-example">
+                                      <small>표시 예시</small>
+                                      <p>{(tier.messageTemplate || settings.messageTemplate)
+                                        .replaceAll("{name}", "폴조지")
+                                        .replaceAll("{amount}", formatWon(tier.minAmount || 50000))
+                                        .replaceAll("{grade}", "[크루 등급]")
+                                        .replaceAll("{message}", "응원합니다!")}</p>
+                                    </div>
+                                    <small className="tier-message-note">
+                                      {"{grade}"}는 화면의 등급 이미지·텍스트 위치에만 사용되며 TTS에서는 읽지 않습니다.
+                                    </small>
+                                  </div>
                                 )}
                               </TierMode>
                               <TierMode
@@ -5277,22 +5479,10 @@ function Settings({ mode }) {
                                     </label>
                                     {tier.ttsEnabled !== false && (
                                       <>
-                                        <label>
-                                          음성 제공자
-                                          <select
-                                            value={tier.ttsProvider || "browser"}
-                                            onChange={(e) =>
-                                              changeTier(
-                                                tier.id,
-                                                "ttsProvider",
-                                                e.target.value,
-                                              )
-                                            }
-                                          >
-                                            <option value="browser">방송 PC 기본 음성</option>
-                                            <option value="elevenlabs">ElevenLabs AI 음성</option>
-                                          </select>
-                                        </label>
+                                        <div className="tts-provider-fixed">
+                                          <b>Typecast AI 음성</b>
+                                          <span>이 구간 전용 보이스 설정</span>
+                                        </div>
                                         {tier.ttsProvider === "elevenlabs" ? (
                                           <label>
                                             ElevenLabs 목소리
@@ -5315,6 +5505,49 @@ function Settings({ mode }) {
                                               ))}
                                             </select>
                                           </label>
+                                        ) : tier.ttsProvider === "typecast" ? (
+                                          <>
+                                            <label>
+                                              Typecast 목소리
+                                              <select
+                                                value={tier.ttsTypecastVoiceId || ""}
+                                                disabled={!typecastConfigured}
+                                                onChange={(e) => {
+                                                  const selected = typecastVoices.find(
+                                                    (voice) => voice.id === e.target.value,
+                                                  );
+                                                  changeTier(tier.id, "ttsTypecastVoiceId", e.target.value);
+                                                  changeTier(tier.id, "ttsTypecastVoiceName", selected?.name || "");
+                                                  changeTier(tier.id, "ttsTypecastEmotion", "smart");
+                                                }}
+                                              >
+                                                <option value="">목소리를 선택해주세요</option>
+                                                {typecastVoices.map((voice) => (
+                                                  <option value={voice.id} key={voice.id}>
+                                                    {voice.name}
+                                                  </option>
+                                                ))}
+                                              </select>
+                                            </label>
+                                            <label>
+                                              감정 표현
+                                              <select
+                                                value={tier.ttsTypecastEmotion || "smart"}
+                                                onChange={(e) =>
+                                                  changeTier(tier.id, "ttsTypecastEmotion", e.target.value)
+                                                }
+                                              >
+                                                <option value="smart">스마트 감정</option>
+                                                <option value="normal">보통</option>
+                                                <option value="happy">기쁨</option>
+                                                <option value="sad">슬픔</option>
+                                                <option value="angry">화남</option>
+                                                <option value="whisper">속삭임</option>
+                                                <option value="toneup">밝은 톤</option>
+                                                <option value="tonedown">차분한 톤</option>
+                                              </select>
+                                            </label>
+                                          </>
                                         ) : (
                                         <label>
                                           목소리
@@ -5363,12 +5596,12 @@ function Settings({ mode }) {
                                           </span>
                                         </label>
                                         <label>
-                                          높낮이
+                                          높낮이 (반음)
                                           <input
                                             type="range"
-                                            min="0"
-                                            max="2"
-                                            step="0.1"
+                                            min="-12"
+                                            max="12"
+                                            step="1"
                                             value={
                                               tier.ttsPitch ?? settings.ttsPitch
                                             }
@@ -5381,6 +5614,7 @@ function Settings({ mode }) {
                                             }
                                           />
                                           <span>
+                                            {(tier.ttsPitch ?? settings.ttsPitch) > 0 ? "+" : ""}
                                             {tier.ttsPitch ?? settings.ttsPitch}
                                           </span>
                                         </label>
@@ -5863,52 +6097,26 @@ function Settings({ mode }) {
                     </select>
                   </label>
                   <label>
-                    닉네임 정렬
-                    <select
-                      value={settings.rankingNameAlign}
-                      onChange={(e) =>
-                        update("rankingNameAlign", e.target.value)
-                      }
-                    >
-                      <option value="left">왼쪽</option>
-                      <option value="center">가운데</option>
-                      <option value="right">오른쪽</option>
-                    </select>
-                  </label>
-                  <label>
-                    금액 정렬
-                    <select
-                      value={settings.rankingAmountAlign}
-                      onChange={(e) =>
-                        update("rankingAmountAlign", e.target.value)
-                      }
-                    >
-                      <option value="left">왼쪽</option>
-                      <option value="center">가운데</option>
-                      <option value="right">오른쪽</option>
-                    </select>
-                  </label>
-                  <label>
-                    열 수
+                    열 수 (1~5)
                     <input
                       type="number"
                       min="1"
-                      max="4"
+                      max="5"
                       value={settings.rankingColumns}
                       onChange={(e) =>
-                        update("rankingColumns", Number(e.target.value))
+                        update("rankingColumns", Math.max(1, Math.min(5, Number(e.target.value))))
                       }
                     />
                   </label>
                   <label>
-                    한 열의 인원
+                    한 열의 인원 (1~20)
                     <input
                       type="number"
                       min="1"
                       max="20"
                       value={settings.rankingRowsPerColumn}
                       onChange={(e) =>
-                        update("rankingRowsPerColumn", Number(e.target.value))
+                        update("rankingRowsPerColumn", Math.max(1, Math.min(20, Number(e.target.value))))
                       }
                     />
                   </label>
@@ -5996,37 +6204,24 @@ function Settings({ mode }) {
                           <article key={label}>
                             <b>{label}</b>
                             <label>
-                              글자색
+                              순위색
                               <span className="rank-color-control">
-                                <input
-                                  type="color"
-                                  value={colorPickerValue(rankStyle.color)}
-                                  onChange={(e) => changeRankStyle(index, "color", e.target.value)}
-                                />
-                                <input
-                                  className="color-code-input"
-                                  value={rankStyle.color}
-                                  maxLength="7"
-                                  aria-label={`${label} 글자색 HEX 코드`}
-                                  onChange={(e) => changeRankStyle(index, "color", e.target.value)}
-                                />
+                                <input type="color" value={colorPickerValue(rankStyle.badge)} onChange={(e) => changeRankStyle(index, "badge", e.target.value)} />
+                                <input className="color-code-input" value={rankStyle.badge} maxLength="7" aria-label={`${label} 순위색 HEX 코드`} onChange={(e) => changeRankStyle(index, "badge", e.target.value)} />
                               </span>
                             </label>
                             <label>
-                              순위색
+                              닉네임색
                               <span className="rank-color-control">
-                                <input
-                                  type="color"
-                                  value={colorPickerValue(rankStyle.badge)}
-                                  onChange={(e) => changeRankStyle(index, "badge", e.target.value)}
-                                />
-                                <input
-                                  className="color-code-input"
-                                  value={rankStyle.badge}
-                                  maxLength="7"
-                                  aria-label={`${label} 순위색 HEX 코드`}
-                                  onChange={(e) => changeRankStyle(index, "badge", e.target.value)}
-                                />
+                                <input type="color" value={colorPickerValue(rankStyle.color)} onChange={(e) => changeRankStyle(index, "color", e.target.value)} />
+                                <input className="color-code-input" value={rankStyle.color} maxLength="7" aria-label={`${label} 닉네임색 HEX 코드`} onChange={(e) => changeRankStyle(index, "color", e.target.value)} />
+                              </span>
+                            </label>
+                            <label>
+                              금액색
+                              <span className="rank-color-control">
+                                <input type="color" value={colorPickerValue(rankStyle.amountColor || settings.rankingAmountColor)} onChange={(e) => changeRankStyle(index, "amountColor", e.target.value)} />
+                                <input className="color-code-input" value={rankStyle.amountColor || settings.rankingAmountColor} maxLength="7" aria-label={`${label} 금액색 HEX 코드`} onChange={(e) => changeRankStyle(index, "amountColor", e.target.value)} />
                               </span>
                             </label>
                             <label>
@@ -6048,23 +6243,6 @@ function Settings({ mode }) {
                                   )
                                 }
                               />
-                            </label>
-                            <label>
-                              굵기
-                              <select
-                                value={rankStyle.weight}
-                                onChange={(e) =>
-                                  changeRankStyle(
-                                    index,
-                                    "weight",
-                                    Number(e.target.value),
-                                  )
-                                }
-                              >
-                                {[400, 500, 600, 700, 800, 900].map((value) => (
-                                  <option key={value}>{value}</option>
-                                ))}
-                              </select>
                             </label>
                           </article>
                         );
@@ -6109,7 +6287,7 @@ function Settings({ mode }) {
                 )}
                 {!isAlert && (
                   <div className="ranking-preview-count" aria-label="미리보기 후원자 수">
-                    {[20, 40, 60].map((count) => (
+                    {[20, 40, 60, 80, 100].map((count) => (
                       <button
                         key={count}
                         type="button"
@@ -6372,22 +6550,52 @@ function RankingPreview({ settings, count = 60 }) {
   }));
   return (
     <RankingOutputCanvas preview>
-      <RankingCard items={sample} settings={settings} />
+      <RankingCard
+        items={sample}
+        settings={{
+          ...settings,
+          rankingColumns: 5,
+          rankingRowsPerColumn: 20,
+        }}
+      />
     </RankingOutputCanvas>
   );
 }
 
 function RankingCard({ items, settings, onEdit }) {
-  const rows = Math.max(1, settings.rankingRowsPerColumn || 10);
-  const maxColumns = Math.max(1, settings.rankingColumns || 1);
+  const rows = Math.max(1, Math.min(20, settings.rankingRowsPerColumn || 10));
+  const maxColumns = Math.max(1, Math.min(5, settings.rankingColumns || 1));
   const estimatedLineHeight = settings.rankingUseLineHeight
     ? settings.rankingLineHeight
     : 1.2;
+  const themeRowVerticalPadding = {
+    ocean: 16,
+    lavender: 18,
+    transparent: 4,
+  }[settings.rankingTheme] ?? 10;
+  const configuredRankStyles =
+    settings.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles;
+  const topRankScaleOverhead = settings.rankingRankHighlightEnabled === false
+    ? 0
+    : configuredRankStyles
+        .slice(0, Math.min(3, rows))
+        .reduce(
+          (total, rankStyle) =>
+            total +
+            Math.max(
+              0,
+              Math.max(0.7, Math.min(2.4, rankStyle.size / 100)) - 1,
+            ),
+          0,
+        );
+  const availableRowsHeight = RANKING_OUTPUT_HEIGHT - 180;
+  const fixedRowsHeight =
+    rows * (settings.rankingRowGap + themeRowVerticalPadding);
   const safeFontSize = Math.max(
     12,
     Math.floor(
-      ((RANKING_OUTPUT_HEIGHT - 120) / rows - settings.rankingRowGap) /
-        estimatedLineHeight,
+      (availableRowsHeight - fixedRowsHeight) /
+        (estimatedLineHeight * (rows + topRankScaleOverhead)),
     ),
   );
   const effectiveFontSize = Math.min(settings.rankingFontSize, safeFontSize);
@@ -6480,12 +6688,13 @@ function RankingCard({ items, settings, onEdit }) {
                       ? rankStyle.color
                       : settings.rankingNameColor,
                     "--rank-badge": rankHighlight ? rankStyle.badge : undefined,
+                    "--rank-amount-color": rankHighlight && index < 3
+                      ? (rankStyle.amountColor || settings.rankingAmountColor)
+                      : settings.rankingAmountColor,
                     "--rank-scale": rankHighlight && index < 3
                       ? Math.max(0.7, Math.min(2.4, rankStyle.size / 100))
                       : 1,
-                    "--rank-weight": rankHighlight
-                      ? rankStyle.weight
-                      : settings.rankingFontWeight,
+                    "--rank-weight": settings.rankingFontWeight,
                     "--delay": `${index * 0.07}s`,
                   }}
                 >
@@ -6669,15 +6878,19 @@ function Overlay({ token, preview = false }) {
     if (!previewSoundMuted && !usesToonationOriginalAudio) {
       if (donation.message) {
         void (async () => {
-          await playAlertSound(
-            settingsRef.current,
-            appearance.soundPreset,
-            appearance.soundVolume,
-            appearance.customSoundData,
-            true,
-          );
-          if (playbackSequence.current !== sequence) return;
-          await playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
+          try {
+            await playAlertSound(
+              settingsRef.current,
+              appearance.soundPreset,
+              appearance.soundVolume,
+              appearance.customSoundData,
+              true,
+            );
+            if (playbackSequence.current !== sequence) return;
+            await playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
+          } catch (error) {
+            console.warn("알림 음성 재생을 건너뜁니다:", error);
+          }
         })();
       } else {
         playAlertSound(
@@ -6686,7 +6899,8 @@ function Overlay({ token, preview = false }) {
           appearance.soundVolume,
           appearance.customSoundData,
         );
-        playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
+        playAlertSpeech(appearance, spokenText, { token: preview ? null : token })
+          .catch((error) => console.warn("알림 음성 재생을 건너뜁니다:", error));
       }
     }
     if (previewMode) return;

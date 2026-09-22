@@ -58,6 +58,13 @@ API 서버의 `ELEVENLABS_API_KEY` 환경변수에 ElevenLabs API 키를 설정�
 API 키는 웹 브라우저로 전달되지 않으며 서버에서만 사용됩니다. 키가 없거나 외부
 음성 생성에 실패하면 OBS 알림은 방송 PC의 기본 TTS로 자동 대체됩니다.
 
+## Typecast TTS
+
+API 서버의 `TYPECAST_API_KEY` 환경변수에 Typecast API 키를 설정하면 후원 알림
+설정에서 SSFM 3.0 음성과 감정 표현을 선택하고 미리 들을 수 있습니다. 기본 설정과
+금액 구간별 설정에서 각각 Typecast를 선택할 수 있으며, API 키는 서버에서만 사용됩니다.
+Typecast 음성 생성에 실패할 때도 OBS 알림은 방송 PC의 기본 TTS로 자동 대체됩니다.
+
 ## 유튜브 후원 채팅
 
 각 사용자가 후원 알림 설정에서 자신의 YouTube Data API v3 키와 현재 라이브 방송
@@ -101,6 +108,7 @@ GitHub 저장소의 **Settings > Secrets and variables > Actions**에 다음 Rep
 - `OCI_SSH_PRIVATE_KEY`: 배포용 SSH 개인 키 전체 내용
 - `OCI_KNOWN_HOSTS`: 두 서버에 대한 `ssh-keyscan -H <OCI_WEB_HOST> <OCI_WAS_HOST>` 결과
 - `ELEVENLABS_API_KEY`: 후원 알림 TTS에 사용할 ElevenLabs API 키
+- `TYPECAST_API_KEY`: 후원 알림 TTS에 사용할 Typecast API 키
 
 워크플로 파일은 `.github/workflows/deploy-oci.yml`, 서버 배포 스크립트는
 `deploy/oci/deploy-web.sh`와 `deploy/oci/deploy-was.sh`입니다. 배포마다 새 릴리스를 만들고,
