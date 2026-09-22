@@ -31,6 +31,11 @@ export async function initializeDatabase() {
       bank TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'included',
       external_id TEXT UNIQUE,
+      message TEXT,
+      youtube_chat_id TEXT,
+      youtube_channel_id TEXT,
+      message_matched_at TEXT,
+      alert_published_at TEXT,
       received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
     `CREATE TABLE IF NOT EXISTS settings (
@@ -135,12 +140,84 @@ export async function initializeDatabase() {
       amount INTEGER NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(session_id, recipient_user_id, donor_name)
+    )`,
+    `CREATE TABLE IF NOT EXISTS youtube_chat_commands (
+      chat_id TEXT PRIMARY KEY,
+      recipient_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      donor_name TEXT NOT NULL,
+      donor_normalized TEXT NOT NULL,
+      message TEXT NOT NULL,
+      youtube_channel_id TEXT,
+      youtube_name TEXT,
+      donation_id INTEGER REFERENCES donations(id) ON DELETE SET NULL,
+      received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      matched_at TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS youtube_donor_links (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipient_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      youtube_channel_id TEXT NOT NULL,
+      youtube_name TEXT,
+      donor_name TEXT NOT NULL,
+      donor_normalized TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(recipient_user_id, youtube_channel_id),
+      UNIQUE(recipient_user_id, donor_normalized)
+    )`,
+    `CREATE TABLE IF NOT EXISTS youtube_chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      chat_id TEXT NOT NULL,
+      recipient_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      youtube_channel_id TEXT NOT NULL,
+      youtube_name TEXT,
+      message TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'chat',
+      requested_donor_name TEXT,
+      requested_donor_normalized TEXT,
+      donation_id INTEGER REFERENCES donations(id) ON DELETE SET NULL,
+      received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      matched_at TEXT,
+      UNIQUE(recipient_user_id, chat_id)
     )`
   ]);
   const donationColumns = new Set((await db.execute(`PRAGMA table_info(donations)`)).rows.map(column => column.name));
   if (!donationColumns.has('recipient_user_id')) await db.execute(`ALTER TABLE donations ADD COLUMN recipient_user_id INTEGER REFERENCES users(id)`);
   if (!donationColumns.has('donor_override_name')) await db.execute(`ALTER TABLE donations ADD COLUMN donor_override_name TEXT`);
   if (!donationColumns.has('status')) await db.execute(`ALTER TABLE donations ADD COLUMN status TEXT NOT NULL DEFAULT 'included'`);
+  if (!donationColumns.has('message')) await db.execute(`ALTER TABLE donations ADD COLUMN message TEXT`);
+  if (!donationColumns.has('youtube_chat_id')) await db.execute(`ALTER TABLE donations ADD COLUMN youtube_chat_id TEXT`);
+  if (!donationColumns.has('youtube_channel_id')) await db.execute(`ALTER TABLE donations ADD COLUMN youtube_channel_id TEXT`);
+  if (!donationColumns.has('message_matched_at')) await db.execute(`ALTER TABLE donations ADD COLUMN message_matched_at TEXT`);
+  if (!donationColumns.has('alert_published_at')) {
+    await db.execute(`ALTER TABLE donations ADD COLUMN alert_published_at TEXT`);
+    await db.execute(`UPDATE donations SET alert_published_at = COALESCE(received_at, CURRENT_TIMESTAMP)`);
+  }
+  const youtubeChatMessageColumns = new Set((await db.execute(`PRAGMA table_info(youtube_chat_messages)`)).rows.map(column => column.name));
+  if (youtubeChatMessageColumns.size && !youtubeChatMessageColumns.has('id')) {
+    await db.batch([
+      `ALTER TABLE youtube_chat_messages RENAME TO youtube_chat_messages_legacy`,
+      `CREATE TABLE youtube_chat_messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chat_id TEXT NOT NULL,
+        recipient_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        youtube_channel_id TEXT NOT NULL,
+        youtube_name TEXT,
+        message TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'chat',
+        requested_donor_name TEXT,
+        requested_donor_normalized TEXT,
+        donation_id INTEGER REFERENCES donations(id) ON DELETE SET NULL,
+        received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        matched_at TEXT,
+        UNIQUE(recipient_user_id, chat_id)
+      )`,
+      `INSERT INTO youtube_chat_messages (chat_id, recipient_user_id, youtube_channel_id, youtube_name, message, kind, requested_donor_name, requested_donor_normalized, donation_id, received_at, matched_at)
+        SELECT chat_id, recipient_user_id, youtube_channel_id, youtube_name, message, kind, requested_donor_name, requested_donor_normalized, donation_id, received_at, matched_at FROM youtube_chat_messages_legacy`,
+      `DROP TABLE youtube_chat_messages_legacy`
+    ]);
+  }
+  await db.execute(`CREATE UNIQUE INDEX IF NOT EXISTS donations_youtube_chat_id_unique ON donations(youtube_chat_id) WHERE youtube_chat_id IS NOT NULL`);
   const notificationRuleColumns = new Set((await db.execute(`PRAGMA table_info(notification_rules)`)).rows.map(column => column.name));
   if (notificationRuleColumns.has('id')) {
     await db.batch([

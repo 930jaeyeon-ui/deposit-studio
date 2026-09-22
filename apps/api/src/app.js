@@ -6,6 +6,7 @@ import { createSession, currentUser, destroySession, hashPassword, requireAuth, 
 import { parseNotification, validateRuleInput } from './notification-parser.js';
 import { createElevenSpeech, elevenLabsConfigured, listElevenVoices } from './elevenlabs.js';
 import { ToonationManager, toonationWidgetKey } from './toonation.js';
+import { parseDonationCommand, parseRegistrationCommand, YouTubeChatManager, youtubeVideoId } from './youtube.js';
 
 export const app = express();
 const phoneTestClients = new Map();
@@ -17,7 +18,9 @@ const overlayClients = new Set();
 const dataChangeClients = new Set();
 const ttsRateWindows = new Map();
 const overlayPreviewSessions = new Map();
+const pendingBankAlertTimers = new Map();
 const toonationManager = new ToonationManager(handleToonationDonation);
+const youtubeChatManager = new YouTubeChatManager(handleYouTubeDonationCommand);
 
 function allowTtsRequest(key, limit = 60) {
   const now = Date.now();
@@ -87,8 +90,18 @@ function publishOverlaySettings(settings, userId) {
   return delivered;
 }
 
+function publishOverlayControl(userId, action) {
+  let delivered = 0;
+  for (const client of overlayClients) {
+    if (Number(client.userId) !== Number(userId) || !client.ready) continue;
+    sendOverlayEvent(client.res, 'control', { action });
+    delivered += 1;
+  }
+  return delivered;
+}
+
 function overlaySettings(settings) {
-  const { toonationWidgetUrl: _privateToonationWidgetUrl, ...safe } = settings || {};
+  const { toonationWidgetUrl: _privateToonationWidgetUrl, youtubeApiKey: _privateYoutubeApiKey, ...safe } = settings || {};
   return safe;
 }
 
@@ -240,6 +253,12 @@ function cleanSettings(input) {
   const legacyToonationMode = settings.toonationUseOwnAlert ? 'custom' : 'official';
   settings.toonationAlertMode = ['official','custom','custom-original-audio'].includes(settings.toonationAlertMode) ? settings.toonationAlertMode : legacyToonationMode;
   settings.toonationUseOwnAlert = settings.toonationAlertMode !== 'official';
+  settings.youtubeChatEnabled = Boolean(settings.youtubeChatEnabled);
+  settings.youtubeApiKey = String(settings.youtubeApiKey || '').trim().slice(0, 500);
+  settings.youtubeVideoId = String(settings.youtubeVideoId || '').trim().slice(0, 500);
+  settings.youtubeMatchWindowSeconds = Math.max(10, Math.min(120, Math.floor(Number(settings.youtubeMatchWindowSeconds) || 30)));
+  settings.youtubeMessageMaxLength = Math.max(20, Math.min(500, Math.floor(Number(settings.youtubeMessageMaxLength) || 200)));
+  settings.youtubeChatMinimumAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.youtubeChatMinimumAmount) || 0)));
   settings.durationMs = Math.max(1000, Math.min(30000, Math.floor(Number(settings.durationMs) || 5000)));
   settings.fontSize = Math.max(20, Math.min(160, Math.floor(Number(settings.fontSize) || 54)));
   settings.fontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.fontWeight) || 800)));
@@ -357,9 +376,198 @@ async function handleToonationDonation(userId, input) {
   publishDataChange(userId, 'toonation-created');
 }
 
-export async function startToonationConnections() {
+export async function handleYouTubeDonationCommand(userId, input) {
+  const settings = await getUserSettings(userId);
+  if (!settings.youtubeChatEnabled) return;
+  const text = String(input.text || '').trim();
+  if (!text || !input.chatId || !input.channelId) return;
+  const registration = parseRegistrationCommand(text);
+  const legacyCommand = registration ? null : parseDonationCommand(text);
+  const kind = registration ? 'registration' : legacyCommand ? 'legacy-command' : 'chat';
+  const message = (legacyCommand?.message || text).slice(0, settings.youtubeMessageMaxLength).trim();
+  const inserted = await db.execute({
+    sql:`INSERT OR IGNORE INTO youtube_chat_messages
+      (chat_id, recipient_user_id, youtube_channel_id, youtube_name, message, kind, requested_donor_name, requested_donor_normalized)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args:[input.chatId,userId,input.channelId,input.youtubeName || null,message,kind,registration?.donorName || legacyCommand?.donorName || null,registration?.donorNormalized || legacyCommand?.donorName?.replace(/\s+/g,'').toLowerCase() || null]
+  });
+  if (!inserted.rowsAffected) return;
+  if (registration) {
+    const found = await findRecentDonationByName(userId, settings, registration.donorNormalized, false);
+    if (found) {
+      const linked = await linkYouTubeDonor(userId, input, registration, found.id);
+      if (linked) await publishBankDonationWithoutMessage(found.id, userId, settings);
+    }
+    return;
+  }
+  if (legacyCommand) {
+    const normalizedName = legacyCommand.donorName.replace(/\s+/g, '').toLowerCase();
+    const found = await findRecentDonationByName(userId, settings, normalizedName, true);
+    if (found) await matchDonationWithYouTubeCommand(found.id, userId, settings, { ...input, message });
+    return;
+  }
+  const link = await db.execute({
+    sql:`SELECT donor_normalized donorNormalized FROM youtube_donor_links
+      WHERE recipient_user_id = ? AND youtube_channel_id = ? LIMIT 1`,
+    args:[userId,input.channelId]
+  });
+  if (!link.rows[0]) return;
+  const found = await findRecentDonationByName(userId, settings, link.rows[0].donorNormalized, true);
+  if (found) await matchDonationWithYouTubeCommand(found.id, userId, settings, { ...input, message });
+}
+
+async function findRecentDonationByName(userId, settings, normalizedName, requirePending) {
+  const windowModifier = `-${settings.youtubeMatchWindowSeconds} seconds`;
+  const found = await db.execute({
+    sql:`SELECT d.id
+      FROM donations d
+      LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name
+      WHERE d.recipient_user_id = ?
+        AND d.status = 'included'
+        ${requirePending ? `AND d.message IS NULL AND d.alert_published_at IS NULL` : ''}
+        AND d.amount >= ?
+        AND d.bank NOT IN ('toonation','manual','test')
+        AND d.received_at >= datetime('now', ?)
+        AND lower(replace(${effectiveDonorName}, ' ', '')) = ?
+      ORDER BY d.id DESC LIMIT 1`,
+    args:[userId,requirePending ? settings.youtubeChatMinimumAmount : 0,windowModifier,normalizedName]
+  });
+  return found.rows[0] || null;
+}
+
+async function linkYouTubeDonor(userId, input, registration, donationId) {
+  const donorConflict = await db.execute({
+    sql:`SELECT youtube_channel_id channelId FROM youtube_donor_links
+      WHERE recipient_user_id = ? AND donor_normalized = ? AND youtube_channel_id <> ? LIMIT 1`,
+    args:[userId,registration.donorNormalized,input.channelId]
+  });
+  if (donorConflict.rows.length) return false;
+  await db.execute({
+    sql:`INSERT INTO youtube_donor_links
+      (recipient_user_id, youtube_channel_id, youtube_name, donor_name, donor_normalized)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(recipient_user_id, youtube_channel_id) DO UPDATE SET
+        youtube_name = excluded.youtube_name, donor_name = excluded.donor_name,
+        donor_normalized = excluded.donor_normalized, updated_at = CURRENT_TIMESTAMP`,
+    args:[userId,input.channelId,input.youtubeName || null,registration.donorName,registration.donorNormalized]
+  });
+  await db.execute({
+    sql:'UPDATE youtube_chat_messages SET donation_id = ?, matched_at = CURRENT_TIMESTAMP WHERE recipient_user_id = ? AND chat_id = ?',
+    args:[donationId,userId,input.chatId]
+  });
+  publishDataChange(userId, 'youtube-donor-linked');
+  return true;
+}
+
+async function donationForOverlay(donationId, userId, settings) {
+  const found = await db.execute({
+    sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, d.bank, d.message,
+      MAX(0, unixepoch('now') - unixepoch(d.received_at)) receivedAgeSeconds,
+      datetime(d.received_at, '+9 hours') receivedAt
+      FROM donations d LEFT JOIN donor_aliases a
+      ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name
+      WHERE d.id = ? AND d.recipient_user_id = ? LIMIT 1`,
+    args:[donationId,userId]
+  });
+  return found.rows[0] ? donationWithCrewGrade(found.rows[0], userId, settings) : null;
+}
+
+async function matchDonationWithYouTubeCommand(donationId, userId, settings, command) {
+  const updated = await db.execute({
+    sql:`UPDATE donations SET message = ?, youtube_chat_id = ?, youtube_channel_id = ?,
+      message_matched_at = CURRENT_TIMESTAMP, alert_published_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND recipient_user_id = ? AND message IS NULL AND alert_published_at IS NULL`,
+    args:[command.message,command.chatId,command.channelId || null,donationId,userId]
+  });
+  if (!updated.rowsAffected) return;
+  await db.execute({
+    sql:'UPDATE youtube_chat_commands SET donation_id = ?, matched_at = CURRENT_TIMESTAMP WHERE chat_id = ? AND matched_at IS NULL',
+    args:[donationId,command.chatId]
+  });
+  await db.execute({
+    sql:'UPDATE youtube_chat_messages SET donation_id = ?, matched_at = CURRENT_TIMESTAMP WHERE recipient_user_id = ? AND chat_id = ? AND matched_at IS NULL',
+    args:[donationId,userId,command.chatId]
+  });
+  clearTimeout(pendingBankAlertTimers.get(Number(donationId)));
+  pendingBankAlertTimers.delete(Number(donationId));
+  const donation = await donationForOverlay(donationId, userId, settings);
+  if (donation) publishOverlayDonation({ ...donation, youtubeName:command.youtubeName }, userId);
+  publishDataChange(userId, 'youtube-message-matched');
+}
+
+async function publishBankDonationWithoutMessage(donationId, userId, settings) {
+  const updated = await db.execute({
+    sql:'UPDATE donations SET alert_published_at = CURRENT_TIMESTAMP WHERE id = ? AND recipient_user_id = ? AND alert_published_at IS NULL',
+    args:[donationId,userId]
+  });
+  pendingBankAlertTimers.delete(Number(donationId));
+  if (!updated.rowsAffected) return;
+  const donation = await donationForOverlay(donationId, userId, settings);
+  if (donation) publishOverlayDonation(donation, userId);
+}
+
+export async function queueBankDonationAlert(donationId, userId, settings) {
+  if (!settings.youtubeChatEnabled) return publishBankDonationWithoutMessage(donationId, userId, settings);
+  const donation = await donationForOverlay(donationId, userId, settings);
+  if (!donation) return;
+  if (Number(donation.amount) < settings.youtubeChatMinimumAmount) {
+    return publishBankDonationWithoutMessage(donationId, userId, settings);
+  }
+  const normalizedName = String(donation.donorName || '').replace(/\s+/g, '').toLowerCase();
+  const registration = await db.execute({
+    sql:`SELECT chat_id chatId, youtube_channel_id channelId, youtube_name youtubeName,
+      requested_donor_name donorName, requested_donor_normalized donorNormalized
+      FROM youtube_chat_messages
+      WHERE recipient_user_id = ? AND kind = 'registration' AND requested_donor_normalized = ?
+        AND matched_at IS NULL AND received_at >= datetime('now', ?)
+      ORDER BY received_at DESC LIMIT 1`,
+    args:[userId,normalizedName,`-${settings.youtubeMatchWindowSeconds} seconds`]
+  });
+  if (registration.rows[0]) {
+    const linked = await linkYouTubeDonor(userId, registration.rows[0], registration.rows[0], donationId);
+    if (linked) return publishBankDonationWithoutMessage(donationId, userId, settings);
+  }
+  const linkedMessage = await db.execute({
+    sql:`SELECT m.chat_id chatId, m.message, m.youtube_channel_id channelId, m.youtube_name youtubeName
+      FROM youtube_donor_links l JOIN youtube_chat_messages m
+        ON m.recipient_user_id = l.recipient_user_id AND m.youtube_channel_id = l.youtube_channel_id
+      WHERE l.recipient_user_id = ? AND l.donor_normalized = ? AND m.kind = 'chat'
+        AND m.matched_at IS NULL AND m.received_at >= datetime('now', ?)
+      ORDER BY m.received_at DESC LIMIT 1`,
+    args:[userId,normalizedName,`-${settings.youtubeMatchWindowSeconds} seconds`]
+  });
+  if (linkedMessage.rows[0]) return matchDonationWithYouTubeCommand(donationId, userId, settings, linkedMessage.rows[0]);
+  const command = await db.execute({
+    sql:`SELECT chat_id chatId, message, youtube_channel_id channelId, youtube_name youtubeName
+      FROM youtube_chat_commands
+      WHERE recipient_user_id = ? AND donor_normalized = ? AND matched_at IS NULL
+        AND received_at >= datetime('now', ?)
+      ORDER BY received_at DESC LIMIT 1`,
+    args:[userId,normalizedName,`-${settings.youtubeMatchWindowSeconds} seconds`]
+  });
+  if (command.rows[0]) return matchDonationWithYouTubeCommand(donationId, userId, settings, command.rows[0]);
+  const remainingSeconds = Math.max(0, settings.youtubeMatchWindowSeconds - Number(donation.receivedAgeSeconds || 0));
+  const timer = setTimeout(() => {
+    publishBankDonationWithoutMessage(donationId, userId, settings)
+      .catch(error => console.error('계좌 후원 알림 발행 실패:', error.message));
+  }, remainingSeconds * 1000);
+  timer.unref?.();
+  pendingBankAlertTimers.set(Number(donationId), timer);
+}
+
+export async function startExternalConnections() {
   const users = await db.execute(`SELECT id FROM users WHERE is_active = 1`);
-  for (const user of users.rows) toonationManager.configure(user.id, await getUserSettings(user.id));
+  for (const user of users.rows) {
+    const settings = await getUserSettings(user.id);
+    toonationManager.configure(user.id, settings);
+    youtubeChatManager.configure(user.id, settings);
+    const pending = await db.execute({
+      sql:`SELECT id FROM donations WHERE recipient_user_id = ? AND alert_published_at IS NULL
+        AND bank NOT IN ('toonation','manual','test') ORDER BY id`,
+      args:[user.id]
+    });
+    for (const donation of pending.rows) await queueBankDonationAlert(donation.id, user.id, settings);
+  }
 }
 
 app.post('/api/auth/login', async (req, res) => {
@@ -773,8 +981,11 @@ app.post('/api/notifications', async (req, res) => {
     const inserted = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, ?, ?, ?)`, args:[session.id,apiUser.id,parsed.donorName,parsed.amount,packageName] });
     const donationId = Number(inserted.lastInsertRowid);
     await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, donation_id, status) VALUES (?, ?, ?, ?, ?, 'created')`, args:[packageName,title,content,packageName,donationId] });
+    const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[donationId] });
+    const donation = await donationWithCrewGrade(saved.rows[0], apiUser.id, settings);
+    await queueBankDonationAlert(donationId, apiUser.id, settings);
     publishDataChange(apiUser.id, 'deposit-created');
-    res.status(201).json({ ok:true, donation:{ id:donationId, ...parsed }, packageName, recipient:{ loginId:apiUser.loginId, displayName:apiUser.displayName } });
+    res.status(201).json({ ok:true, donation, packageName, recipient:{ loginId:apiUser.loginId, displayName:apiUser.displayName } });
   } catch (error) {
     await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, status, error) VALUES (?, ?, ?, ?, 'parse_error', ?)`, args:[packageName,title,content,packageName,String(error.message).slice(0,500)] });
     res.status(422).json({ error:error.message });
@@ -926,6 +1137,12 @@ app.post('/api/overlay/preview-session', requireAuth, async (req, res) => {
   res.json({ token });
 });
 
+app.post('/api/overlay/control', requireAuth, (req, res) => {
+  const action = String(req.body?.action || '');
+  if (action !== 'stop-current-chat') return res.status(400).json({ error:'지원하지 않는 OBS 제어 명령입니다.' });
+  res.json({ ok:true, delivered:publishOverlayControl(req.user.id, action) });
+});
+
 app.get('/api/overlay/preview-session/:token', async (req, res) => {
   const preview = overlayPreviewSessions.get(req.params.token);
   if (!preview || preview.expiresAt < Date.now()) {
@@ -998,7 +1215,7 @@ app.post('/api/donations', requireAuth, async (req, res) => {
       return res.status(202).json({ ignored:true, minimumDonationAmount:settings.minimumDonationAmount, message:`${settings.minimumDonationAmount.toLocaleString('ko-KR')}원 미만 입금은 후원 리스트에 기록하지 않습니다.` });
     }
     const session = await activeSession();
-    const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id) VALUES (?, ?, ?, ?, ?, ?)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId] });
+    const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id, alert_published_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
     const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, settings);
     publishOverlayDonation(donation, req.user.id);
@@ -1024,6 +1241,86 @@ app.post('/api/toonation/reconnect', requireAuth, async (req, res) => {
   res.json({ ok:true, status:toonationManager.status(req.user.id) });
 });
 
+app.get('/api/youtube/status', requireAuth, async (req, res) => {
+  const settings = await getUserSettings(req.user.id);
+  res.json({ ...youtubeChatManager.status(req.user.id), enabled:settings.youtubeChatEnabled, messageMaxLength:settings.youtubeMessageMaxLength });
+});
+
+app.put('/api/youtube/enabled', requireAuth, async (req, res) => {
+  const enabled = Boolean(req.body?.enabled);
+  const settings = await getUserSettings(req.user.id);
+  if (enabled && !settings.youtubeApiKey) return res.status(400).json({ error:'먼저 후원 알림 설정에서 YouTube Data API 키를 입력해주세요.' });
+  if (enabled && !youtubeVideoId(settings.youtubeVideoId)) return res.status(400).json({ error:'먼저 후원 알림 설정에서 유튜브 라이브 주소를 입력해주세요.' });
+  settings.youtubeChatEnabled = enabled;
+  if(req.user.role!=='super') settings.crewGrades=[];
+  await db.execute({
+    sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+    args:[req.user.id,JSON.stringify(settings)]
+  });
+  youtubeChatManager.configure(req.user.id, settings);
+  if (!enabled) {
+    const pending = await db.execute({
+      sql:`SELECT id FROM donations WHERE recipient_user_id = ? AND alert_published_at IS NULL
+        AND bank NOT IN ('toonation','manual','test') ORDER BY id`,
+      args:[req.user.id]
+    });
+    for (const donation of pending.rows) {
+      clearTimeout(pendingBankAlertTimers.get(Number(donation.id)));
+      await publishBankDonationWithoutMessage(donation.id, req.user.id, settings);
+    }
+  }
+  const savedSettings = await settingsWithCrewPreview(req.user);
+  publishOverlaySettings(savedSettings, req.user.id);
+  publishDataChange(req.user.id, 'youtube-chat-toggled');
+  res.json({ ok:true, enabled, ...youtubeChatManager.status(req.user.id) });
+});
+
+app.post('/api/youtube/reconnect', requireAuth, async (req, res) => {
+  const settings = await getUserSettings(req.user.id);
+  youtubeChatManager.reconnect(req.user.id, settings);
+  res.json({ ok:true, status:youtubeChatManager.status(req.user.id) });
+});
+
+app.get('/api/youtube/donor-links', requireAuth, async (req, res) => {
+  const result = await db.execute({
+    sql:`SELECT id, youtube_channel_id youtubeChannelId, youtube_name youtubeName,
+      donor_name donorName, created_at createdAt, updated_at updatedAt
+      FROM youtube_donor_links WHERE recipient_user_id = ? ORDER BY updated_at DESC, id DESC`,
+    args:[req.user.id]
+  });
+  res.json(result.rows);
+});
+
+app.put('/api/youtube/donor-links/:id', requireAuth, async (req, res) => {
+  const donorName = String(req.body?.donorName || '').trim();
+  const donorNormalized = donorName.replace(/\s+/g, '').toLowerCase();
+  if (!donorName || donorName.length > 40) return res.status(400).json({ error:'입금자명은 1~40자로 입력해주세요.' });
+  try {
+    const result = await db.execute({
+      sql:`UPDATE youtube_donor_links SET donor_name = ?, donor_normalized = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND recipient_user_id = ?`,
+      args:[donorName,donorNormalized,Number(req.params.id),req.user.id]
+    });
+    if (!result.rowsAffected) return res.status(404).json({ error:'유튜브 후원자 연결을 찾을 수 없습니다.' });
+    publishDataChange(req.user.id, 'youtube-donor-link-updated');
+    res.json({ ok:true });
+  } catch (error) {
+    const duplicate = String(error.message).includes('UNIQUE');
+    res.status(duplicate?409:400).json({ error:duplicate?'이미 다른 유튜브 채널에 등록된 입금자명입니다.':error.message });
+  }
+});
+
+app.delete('/api/youtube/donor-links/:id', requireAuth, async (req, res) => {
+  const result = await db.execute({
+    sql:'DELETE FROM youtube_donor_links WHERE id = ? AND recipient_user_id = ?',
+    args:[Number(req.params.id),req.user.id]
+  });
+  if (!result.rowsAffected) return res.status(404).json({ error:'유튜브 후원자 연결을 찾을 수 없습니다.' });
+  publishDataChange(req.user.id, 'youtube-donor-link-deleted');
+  res.json({ ok:true });
+});
+
 app.put('/api/settings', requireAuth, async (req, res) => {
   if(req.user.role==='super'&&Array.isArray(req.body?.crewGrades)){
     const ranges=req.body.crewGrades.map(grade=>({min:Number(grade.minAmount)||0,max:grade.maxAmount==null||grade.maxAmount===''?null:Number(grade.maxAmount)})).sort((a,b)=>a.min-b.min);
@@ -1034,9 +1331,16 @@ app.put('/api/settings', requireAuth, async (req, res) => {
   if (settings.toonationEnabled && !toonationWidgetKey(settings.toonationWidgetUrl)) {
     return res.status(400).json({ error:'투네이션 공식 알림 위젯 URL을 확인해주세요.' });
   }
+  if (settings.youtubeChatEnabled && !youtubeVideoId(settings.youtubeVideoId)) {
+    return res.status(400).json({ error:'유튜브 라이브 주소 또는 11자리 영상 ID를 확인해주세요.' });
+  }
+  if (settings.youtubeChatEnabled && !settings.youtubeApiKey) {
+    return res.status(400).json({ error:'YouTube Data API 키를 입력해주세요.' });
+  }
   if(req.user.role!=='super')settings.crewGrades=[];
   await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
   toonationManager.configure(req.user.id, settings);
+  youtubeChatManager.configure(req.user.id, settings);
   if(req.user.role!=='super')settings.crewGrades=await getSharedCrewGrades();
   const savedSettings = await settingsWithCrewPreview(req.user);
   publishOverlaySettings(savedSettings, req.user.id);

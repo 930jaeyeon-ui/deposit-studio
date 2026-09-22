@@ -1289,6 +1289,8 @@ function LiveDepositPopup() {
   const [editing, setEditing] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [adding, setAdding] = useState(false);
+  const [youtubeControl, setYoutubeControl] = useState({ enabled:false, state:"disabled", text:"채팅 TTS 꺼짐" });
+  const [youtubeSaving, setYoutubeSaving] = useState(false);
   const [editForm, setEditForm] = useState({ donorName: "", amount: "" });
   const selected = deposits.find((item) => item.id === selectedId) || null;
   const load = async () => {
@@ -1302,6 +1304,9 @@ function LiveDepositPopup() {
   };
   useEffect(() => {
     load();
+    const loadYoutube = () => api("/api/youtube/status", { cache:"no-store" }).then(setYoutubeControl).catch(() => {});
+    loadYoutube();
+    const youtubeTimer = setInterval(loadYoutube, 10000);
     let fallbackTimer = null;
     const stream = new EventSource(apiUrl("/api/my/deposits/events"), { withCredentials:true });
     stream.addEventListener("change", load);
@@ -1314,9 +1319,25 @@ function LiveDepositPopup() {
     };
     return () => {
       stream.close();
+      clearInterval(youtubeTimer);
       if (fallbackTimer) clearInterval(fallbackTimer);
     };
   }, []);
+  const toggleYoutubeChat = async () => {
+    setYoutubeSaving(true);
+    try {
+      const result = await api("/api/youtube/enabled", {
+        method:"PUT",
+        body:JSON.stringify({ enabled:!youtubeControl.enabled }),
+      });
+      setYoutubeControl(result);
+      setMessage(result.enabled ? "유튜브 후원 채팅 TTS를 켰습니다." : "유튜브 후원 채팅 TTS를 즉시 껐습니다.");
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setYoutubeSaving(false);
+    }
+  };
   const toggleStatus = async (item) => {
     setSavingId(item.id);
     try {
@@ -1389,7 +1410,13 @@ function LiveDepositPopup() {
         ))}
         {!deposits.length && <p className="empty">오늘 들어온 입금이 없습니다.</p>}
       </div><aside className="live-manager-actions"><span className="live-indicator"><i /> 실시간</span>
+        <section className="live-action-group"><h2>유튜브 채팅 TTS</h2>
+          <button className={youtubeControl.enabled ? "youtube-on" : "youtube-off"} onClick={toggleYoutubeChat} disabled={youtubeSaving} title={youtubeControl.text}>
+            {youtubeSaving ? "변경 중…" : youtubeControl.enabled ? "채팅 TTS 끄기" : "채팅 TTS 켜기"}
+          </button>
+        </section>
         <section className="live-action-group alert-actions"><h2>후원 알림</h2>
+          <button className="stop-chat" onClick={async()=>{try{const result=await api("/api/overlay/control",{method:"POST",body:JSON.stringify({action:"stop-current-chat"})});setMessage(result.delivered?"현재 후원 채팅 화면과 TTS를 강제 종료했습니다.":"연결된 OBS 알림 화면이 없습니다.");}catch(error){setMessage(error.message);}}}>현재 채팅 강제 종료</button>
           <button className="run" onClick={async()=>{if(!selected)return;await setSelectedStatus("included");await replay();}} disabled={!selected||selected.status==="included"||savingId}>반영 후 실행</button>
           <button className="rerun" onClick={replay} disabled={!selected||selected.status!=="included"||savingId}>알림만 재실행</button>
         </section>
@@ -3206,6 +3233,18 @@ async function playBrowserSpeech(appearance, text) {
   window.speechSynthesis.speak(utterance);
 }
 
+let activeAlertSpeechAudio = null;
+
+function stopActiveAlertSpeech() {
+  window.speechSynthesis?.cancel();
+  if (activeAlertSpeechAudio) {
+    activeAlertSpeechAudio.audio.pause();
+    activeAlertSpeechAudio.audio.currentTime = 0;
+    URL.revokeObjectURL(activeAlertSpeechAudio.url);
+    activeAlertSpeechAudio = null;
+  }
+}
+
 async function playElevenSpeech(appearance, text, token = null) {
   const endpoint = token
     ? `/api/overlay/${encodeURIComponent(token)}/tts`
@@ -3228,9 +3267,15 @@ async function playElevenSpeech(appearance, text, token = null) {
   }
   const url = URL.createObjectURL(await response.blob());
   const audio = new Audio(url);
+  activeAlertSpeechAudio?.audio.pause();
+  activeAlertSpeechAudio = { audio, url };
   audio.volume = Math.max(0, Math.min(1, Number(appearance.ttsVolume) / 100));
-  audio.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
-  audio.addEventListener("error", () => URL.revokeObjectURL(url), { once: true });
+  const cleanup = () => {
+    if (activeAlertSpeechAudio?.audio === audio) activeAlertSpeechAudio = null;
+    URL.revokeObjectURL(url);
+  };
+  audio.addEventListener("ended", cleanup, { once: true });
+  audio.addEventListener("error", cleanup, { once: true });
   await audio.play();
   return "elevenlabs";
 }
@@ -3256,6 +3301,7 @@ async function playAlertSound(
   preset = settings.soundPreset,
   volume = settings.soundVolume,
   customSoundData = settings.customSoundData,
+  waitForCompletion = false,
 ) {
   if (!settings.soundEnabled || preset === "none") return;
   if (
@@ -3265,6 +3311,14 @@ async function playAlertSound(
     const audio = new Audio(customSoundData);
     audio.volume = Math.max(0, Math.min(1, volume / 100));
     await audio.play().catch(() => {});
+    if (waitForCompletion && !audio.paused) {
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, 15000);
+        const finish = () => { clearTimeout(timer); resolve(); };
+        audio.addEventListener("ended", finish, { once:true });
+        audio.addEventListener("error", finish, { once:true });
+      });
+    }
     return;
   }
   const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -3289,6 +3343,7 @@ async function playAlertSound(
     laser: [1320, 990, 660, 330],
     magic: [659, 988, 1318, 1760],
   }[preset] || [660];
+  let finishAt = 0;
   notes.forEach((frequency, index) => {
     const oscillator = context.createOscillator();
     const gain = context.createGain();
@@ -3308,8 +3363,14 @@ async function playAlertSound(
     gain.gain.exponentialRampToValueAtTime(0.001, start + length - 0.01);
     oscillator.start(start);
     oscillator.stop(start + length);
+    finishAt = Math.max(finishAt, index * step + length);
   });
-  setTimeout(() => context.close().catch(() => {}), 1500);
+  if (waitForCompletion) {
+    await new Promise(resolve => setTimeout(resolve, Math.ceil(finishAt * 1000) + 30));
+    await context.close().catch(() => {});
+  } else {
+    setTimeout(() => context.close().catch(() => {}), 1500);
+  }
 }
 
 function TierMode({
@@ -3408,6 +3469,8 @@ function Settings({ mode }) {
   const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [toonationStatus, setToonationStatus] = useState({ state:"disabled", text:"투네이션 수신 꺼짐" });
+  const [youtubeStatus, setYoutubeStatus] = useState({ state:"disabled", text:"유튜브 채팅 수신 꺼짐" });
+  const [youtubeDonorLinks, setYoutubeDonorLinks] = useState([]);
   const [saved, setSaved] = useState("");
   const [previewRun, setPreviewRun] = useState(0);
   const [openTiers, setOpenTiers] = useState({});
@@ -3449,10 +3512,17 @@ function Settings({ mode }) {
   useEffect(() => {
     if (mode !== "alert" || !settingsLoaded) return;
     let active = true;
-    const loadStatus = () => api("/api/toonation/status", { cache:"no-store" }).then((value) => active && setToonationStatus(value)).catch(() => {});
+    const loadStatus = () => Promise.all([
+      api("/api/toonation/status", { cache:"no-store" }).then((value) => active && setToonationStatus(value)).catch(() => {}),
+      api("/api/youtube/status", { cache:"no-store" }).then((value) => active && setYoutubeStatus(value)).catch(() => {}),
+    ]);
     loadStatus();
     const timer = setInterval(loadStatus, 10000);
     return () => { active = false; clearInterval(timer); };
+  }, [mode, settingsLoaded]);
+  const loadYoutubeDonorLinks = () => api("/api/youtube/donor-links", { cache:"no-store" }).then(setYoutubeDonorLinks).catch(() => {});
+  useEffect(() => {
+    if (mode === "alert" && settingsLoaded) loadYoutubeDonorLinks();
   }, [mode, settingsLoaded]);
   const isDirty =
     settingsLoaded &&
@@ -3817,6 +3887,70 @@ function Settings({ mode }) {
                     <button type="button" className="secondary-button" onClick={async()=>{
                       const result=await api("/api/toonation/reconnect",{method:"POST",body:"{}"});
                       setToonationStatus(result.status);
+                    }}>다시 연결</button>
+                  </div>
+                </AlertSettingSection>
+                <AlertSettingSection
+                  id="youtube-chat"
+                  title="유튜브 후원 채팅"
+                  description="계좌 입금 후 !후원 명령어의 메시지를 TTS로 재생"
+                  open={Boolean(openAlertSections.youtubeChat)}
+                  onToggle={() => toggleAlertSection("youtubeChat")}
+                >
+                  <label className="toggle-label">
+                    유튜브 후원 채팅 수신
+                    <input type="checkbox" checked={settings.youtubeChatEnabled} onChange={(e) => update("youtubeChatEnabled", e.target.checked)} />
+                    <i />
+                  </label>
+                  <label>
+                    YouTube Data API 키
+                    <input type="password" value={settings.youtubeApiKey} placeholder="AIza..." autoComplete="off" onChange={(e) => update("youtubeApiKey", e.target.value)} />
+                  </label>
+                  <div className="toonation-audio-guide">
+                    <b>API 키 발급 방법</b>
+                    <ol>
+                      <li><a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noreferrer">YouTube Data API v3 페이지</a>에서 프로젝트를 선택하고 API를 사용 설정</li>
+                      <li><a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer">Google Cloud 사용자 인증 정보</a>에서 <strong>사용자 인증 정보 만들기 → API 키</strong> 선택</li>
+                      <li>API 제한을 <strong>YouTube Data API v3</strong>로 지정한 뒤 생성된 키를 위에 붙여넣기</li>
+                    </ol>
+                    <small>API 키는 계정 설정에 저장되며 OBS 공개 주소로 전달되지 않습니다.</small>
+                  </div>
+                  <label>
+                    라이브 방송 URL 또는 영상 ID
+                    <input value={settings.youtubeVideoId} placeholder="https://www.youtube.com/watch?v=..." onChange={(e) => update("youtubeVideoId", e.target.value)} />
+                  </label>
+                  <label>
+                    입금 전후 채팅 검색 범위 (각각 초)
+                    <input type="number" min="10" max="120" step="5" value={settings.youtubeMatchWindowSeconds} onChange={(e) => update("youtubeMatchWindowSeconds", Number(e.target.value))} />
+                  </label>
+                  <label>
+                    후원 채팅 최대 길이 (글자)
+                    <input type="number" min="20" max="500" step="10" value={settings.youtubeMessageMaxLength} onChange={(e) => update("youtubeMessageMaxLength", Number(e.target.value))} />
+                  </label>
+                  <label>
+                    채팅 TTS 최소 입금액 (원)
+                    <input type="number" min="0" max="100000000" step="1000" value={settings.youtubeChatMinimumAmount} onChange={(e) => update("youtubeChatMinimumAmount", Number(e.target.value))} />
+                  </label>
+                  <p className="alert-setting-help">
+                    실제 입금 전후에 <code>!후원등록 입금자명</code>을 입력하면 유튜브 채널 ID와 입금자명이 연결됩니다. 입금자명이 바뀌면 새 이름으로 다시 입금하고 같은 명령을 입력해 직접 변경할 수 있습니다. 이후에는 해당 채널이 입금 전후 30초 안에 작성한 첫 미사용 일반 채팅을 자동으로 찾아 효과음 후 읽습니다.
+                  </p>
+                  <div className="youtube-link-manager">
+                    <b>등록된 유튜브 후원자</b>
+                    {!youtubeDonorLinks.length ? <p className="alert-setting-help">아직 등록된 연결이 없습니다.</p> : youtubeDonorLinks.map((link) => (
+                      <article key={link.id}>
+                        <div><strong>{link.youtubeName || "이름 없는 채널"}</strong><small>{link.youtubeChannelId}</small></div>
+                        <span>↔ {link.donorName}</span>
+                        <button type="button" onClick={async()=>{const donorName=prompt("변경할 입금자명을 입력하세요.",link.donorName);if(!donorName||donorName===link.donorName)return;try{await api(`/api/youtube/donor-links/${link.id}`,{method:"PUT",body:JSON.stringify({donorName})});await loadYoutubeDonorLinks();setSaved("유튜브 후원자 연결을 수정했습니다.");}catch(error){setSaved(error.message);}}}>수정</button>
+                        <button type="button" className="delete" onClick={async()=>{if(!confirm(`${link.youtubeName || link.youtubeChannelId} 연결을 삭제할까요?`))return;try{await api(`/api/youtube/donor-links/${link.id}`,{method:"DELETE"});await loadYoutubeDonorLinks();setSaved("유튜브 후원자 연결을 삭제했습니다.");}catch(error){setSaved(error.message);}}}>삭제</button>
+                      </article>
+                    ))}
+                  </div>
+                  <div className={`toonation-connection-status ${youtubeStatus.state}`}>
+                    <span />
+                    <b>{youtubeStatus.text}</b>
+                    <button type="button" className="secondary-button" onClick={async()=>{
+                      const result=await api("/api/youtube/reconnect",{method:"POST",body:"{}"});
+                      setYoutubeStatus(result.status);
                     }}>다시 연결</button>
                   </div>
                 </AlertSettingSection>
@@ -6007,6 +6141,7 @@ function AlertMessage({
   template,
   donorName,
   amountText,
+  message = "",
   gradeImage = "",
   gradeName = "",
   gradeSize = 56,
@@ -6023,7 +6158,7 @@ function AlertMessage({
     <div className="alert-text">
       {template.split("\n").map((line, index) => (
         <div className="alert-line" key={index}>
-          {line.split(/(\{grade\}|\{name\}|\{amount\})/g).map((part, partIndex) => {
+          {line.split(/(\{grade\}|\{name\}|\{amount\}|\{message\})/g).map((part, partIndex) => {
             if (part === "{grade}")
               return showGrade && gradeDisplayMode === "text" ? <span key={partIndex} className="alert-grade-text" style={gradeTextStyle}>{gradeName}</span> : showGrade && gradeImage ? (
                 <img
@@ -6038,6 +6173,8 @@ function AlertMessage({
               return <span key={partIndex} className="alert-token-name" style={nameColorEnabled?{color:nameColor}:undefined}>{donorName}</span>;
             if (part === "{amount}")
               return <span key={partIndex} className="alert-token-amount" style={amountColorEnabled?{color:amountColor}:undefined}>{amountText}</span>;
+            if (part === "{message}")
+              return <span key={partIndex} className="alert-token-message">{message}</span>;
             return <Fragment key={partIndex}>{part.split(/([님원])/g).map((text,textIndex)=>(text === "님" || text === "원") ? <span key={textIndex} className="alert-token-suffix" style={suffixStyle}>{text}</span> : text)}</Fragment>;
           })}
         </div>
@@ -6300,11 +6437,18 @@ function Overlay({ token, preview = false }) {
   const settingsRef = useRef(DEFAULT_SETTINGS);
   const queue = useRef([]);
   const playing = useRef(false);
+  const currentRef = useRef(null);
+  const playbackTimers = useRef([]);
+  const playbackSequence = useRef(0);
   const [exiting, setExiting] = useState(false);
   const previewSoundMuted =
     new URLSearchParams(location.search).get("sound") === "off";
   const previewMode =
     preview || new URLSearchParams(location.search).get("preview") === "1";
+
+  useEffect(() => {
+    currentRef.current = current;
+  }, [current]);
 
   useEffect(() => {
     if (!current || !previewSoundMuted) return;
@@ -6356,8 +6500,8 @@ function Overlay({ token, preview = false }) {
       events.addEventListener("donation", (event) => {
         const donation = JSON.parse(event.data);
         if (!donation.isTest) {
-          if (donation.id <= lastId.current) return;
-          lastId.current = donation.id;
+          if (!donation.isChatMessage && donation.id <= lastId.current) return;
+          lastId.current = Math.max(lastId.current, Number(donation.id) || 0);
         }
         if (
           donation.amount < Number(settingsRef.current.alertMinimumAmount || 0)
@@ -6365,6 +6509,10 @@ function Overlay({ token, preview = false }) {
           return;
         queue.current.push(donation);
         play();
+      });
+      events.addEventListener("control", (event) => {
+        const control = JSON.parse(event.data);
+        if (control.action === "stop-current-chat") stopCurrentChat();
       });
     });
     return () => {
@@ -6377,38 +6525,75 @@ function Overlay({ token, preview = false }) {
     if (playing.current || !queue.current.length) return;
     playing.current = true;
     const donation = queue.current.shift();
+    const sequence = ++playbackSequence.current;
+    currentRef.current = donation;
     setExiting(false);
     setCurrent(donation);
     const appearance = alertAppearance(settingsRef.current, donation.amount);
-    const spokenText = appearance.messageTemplate
+    const messageTemplate = donation.message
+      ? `${appearance.messageTemplate}\n{message}`
+      : appearance.messageTemplate;
+    const spokenText = donation.message || messageTemplate
       .replaceAll("{name}", donation.donorName)
-      .replaceAll("{amount}", formatWon(donation.amount));
+      .replaceAll("{amount}", formatWon(donation.amount))
+      .replaceAll("{message}", "");
     const usesToonationOriginalAudio = donation.bank === "toonation" && settingsRef.current.toonationAlertMode === "custom-original-audio";
     if (!previewSoundMuted && !usesToonationOriginalAudio) {
-      playAlertSound(
-        settingsRef.current,
-        appearance.soundPreset,
-        appearance.soundVolume,
-        appearance.customSoundData,
-      );
-      playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
+      if (donation.message) {
+        void (async () => {
+          await playAlertSound(
+            settingsRef.current,
+            appearance.soundPreset,
+            appearance.soundVolume,
+            appearance.customSoundData,
+            true,
+          );
+          if (playbackSequence.current !== sequence) return;
+          await playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
+        })();
+      } else {
+        playAlertSound(
+          settingsRef.current,
+          appearance.soundPreset,
+          appearance.soundVolume,
+          appearance.customSoundData,
+        );
+        playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
+      }
     }
     if (previewMode) return;
     const duration = Math.max(1000, appearance.durationMs);
-    setTimeout(() => setExiting(true), Math.max(200, duration - 500));
-    setTimeout(() => {
+    playbackTimers.current = [
+      setTimeout(() => setExiting(true), Math.max(200, duration - 500)),
+      setTimeout(() => {
       setCurrent(null);
+      currentRef.current = null;
       setExiting(false);
       playing.current = false;
+      playbackTimers.current = [];
       setTimeout(play, 350);
-    }, duration);
+      }, duration),
+    ];
+  }
+
+  function stopCurrentChat() {
+    if (!currentRef.current?.message) return;
+    playbackSequence.current += 1;
+    for (const timer of playbackTimers.current) clearTimeout(timer);
+    playbackTimers.current = [];
+    stopActiveAlertSpeech();
+    currentRef.current = null;
+    setCurrent(null);
+    setExiting(false);
+    playing.current = false;
+    setTimeout(play, 100);
   }
 
   if (!current) return <div className="overlay-stage" />;
   const appearance = alertAppearance(settings, current.amount);
-  const text = appearance.messageTemplate
-    .replaceAll("{name}", current.donorName)
-    .replaceAll("{amount}", formatWon(current.amount));
+  const outputTemplate = current.message
+    ? `${appearance.messageTemplate}\n{message}`
+    : appearance.messageTemplate;
   const crewGrade = (settings.crewGrades || []).find(
     (grade) => grade.id === current.crewGradeId,
   );
@@ -6419,9 +6604,10 @@ function Overlay({ token, preview = false }) {
         style={appearance.style}
       >
         <AlertMessage
-          template={appearance.messageTemplate}
+          template={outputTemplate}
           donorName={current.donorName}
           amountText={formatWon(current.amount)}
+          message={current.message || ""}
           gradeImage={crewGrade?.imageData || ""}
           gradeName={crewGrade?.name || ""}
           gradeSize={settings.crewGradeImageSize}

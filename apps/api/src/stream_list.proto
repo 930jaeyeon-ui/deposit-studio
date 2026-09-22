@@ -1,0 +1,53 @@
+syntax = "proto2";
+
+package youtube.api.v3;
+
+service V3DataLiveChatMessageService {
+  rpc StreamList(LiveChatMessageListRequest) returns (stream LiveChatMessageListResponse) {}
+}
+
+message LiveChatMessageListRequest {
+  optional string live_chat_id = 1;
+  optional string page_token = 99;
+  repeated string part = 100;
+}
+
+message LiveChatMessageListResponse {
+  optional string next_page_token = 100602;
+  repeated LiveChatMessage items = 1007;
+}
+
+message LiveChatMessage {
+  optional string id = 101;
+  optional LiveChatMessageSnippet snippet = 2;
+  optional LiveChatMessageAuthorDetails author_details = 3;
+}
+
+message LiveChatMessageAuthorDetails {
+  optional string channel_id = 10101;
+  optional string display_name = 103;
+}
+
+message LiveChatMessageSnippet {
+  enum Type {
+    INVALID_TYPE = 0;
+    TEXT_MESSAGE_EVENT = 1;
+    TOMBSTONE = 2;
+    FAN_FUNDING_EVENT = 3;
+    CHAT_ENDED_EVENT = 4;
+    SPONSOR_ONLY_MODE_STARTED_EVENT = 5;
+    SPONSOR_ONLY_MODE_ENDED_EVENT = 6;
+    NEW_SPONSOR_EVENT = 7;
+    USER_BANNED_EVENT = 10;
+    SUPER_CHAT_EVENT = 15;
+    SUPER_STICKER_EVENT = 16;
+    MEMBER_MILESTONE_CHAT_EVENT = 17;
+    MEMBERSHIP_GIFTING_EVENT = 18;
+    GIFT_MEMBERSHIP_RECEIVED_EVENT = 19;
+    POLL_EVENT = 20;
+    GIFT_EVENT = 21;
+  }
+  optional Type type = 1;
+  optional string published_at = 4;
+  optional string display_message = 16;
+}

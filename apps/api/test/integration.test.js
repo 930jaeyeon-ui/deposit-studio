@@ -7,7 +7,7 @@ import { join } from 'node:path';
 test('전체 API E2E 흐름', { timeout:30000 }, async () => {
   const directory = mkdtempSync(join(tmpdir(),'n9-signal-e2e-'));
   process.env.TURSO_DATABASE_URL = `file:${join(directory,'test.db')}`;
-  const [{ app },{ initializeDatabase, db }] = await Promise.all([import('../src/app.js'),import('../src/db.js')]);
+  const [{ app, handleYouTubeDonationCommand, queueBankDonationAlert },{ initializeDatabase, db, activeSession }] = await Promise.all([import('../src/app.js'),import('../src/db.js')]);
   await initializeDatabase();
   const server = await new Promise(resolve => { const value=app.listen(0,'127.0.0.1',()=>resolve(value)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -55,6 +55,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       ...result.data,
       minimumDonationAmount:1000,
       alertMinimumAmount:1000,
+      youtubeApiKey:'test-private-youtube-key',
       durationMs:999999,
       fontSize:1,
       fontWeight:9999,
@@ -161,11 +162,57 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal((await request(`/api/my/deposits/${older.id}/status`,{method:'PUT',cookie:memberCookie,body:{status:'included',note:''}})).response.status,200);
 
     assert.equal((await request('/api/widgets',{cookie:memberCookie})).response.status,200);
+    const memberRow = await db.execute(`SELECT id FROM users WHERE login_id = 'hh01'`);
+    const memberId = Number(memberRow.rows[0].id);
+    const youtubeSettings = { ...(await request('/api/settings',{cookie:memberCookie})).data, youtubeChatEnabled:true, youtubeMatchWindowSeconds:30, youtubeMessageMaxLength:200, youtubeChatMinimumAmount:0 };
+    await db.execute({ sql:'UPDATE user_settings SET value = ? WHERE user_id = ?', args:[JSON.stringify(youtubeSettings),memberId] });
+    const currentSession = await activeSession();
+    const registrationDeposit = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, '등록후원자', 10000, 'bank.test')`, args:[currentSession.id,memberId] });
+    await handleYouTubeDonationCommand(memberId,{ text:'!후원등록 등록후원자',chatId:'register-chat-1',channelId:'registered-channel',youtubeName:'등록 시청자' });
+    let linked = await db.execute({ sql:'SELECT donor_name donorName FROM youtube_donor_links WHERE recipient_user_id = ? AND youtube_channel_id = ?', args:[memberId,'registered-channel'] });
+    assert.equal(linked.rows[0].donorName,'등록후원자');
+    const automaticDeposit = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, '등록후원자', 20000, 'bank.test')`, args:[currentSession.id,memberId] });
+    await queueBankDonationAlert(Number(automaticDeposit.lastInsertRowid),memberId,youtubeSettings);
+    await handleYouTubeDonationCommand(memberId,{ text:'자동으로 읽을 첫 채팅',chatId:'normal-chat-1',channelId:'registered-channel',youtubeName:'등록 시청자' });
+    await handleYouTubeDonationCommand(memberId,{ text:'같은 입금에서 읽히면 안 되는 두 번째 채팅',chatId:'normal-chat-2',channelId:'registered-channel',youtubeName:'등록 시청자' });
+    const matchedDonation = await db.execute({ sql:'SELECT message, youtube_chat_id youtubeChatId FROM donations WHERE id = ?', args:[automaticDeposit.lastInsertRowid] });
+    assert.equal(matchedDonation.rows[0].message,'자동으로 읽을 첫 채팅');
+    assert.equal(matchedDonation.rows[0].youtubeChatId,'normal-chat-1');
+    const unusedSecondChat = await db.execute({ sql:'SELECT matched_at matchedAt FROM youtube_chat_messages WHERE recipient_user_id = ? AND chat_id = ?', args:[memberId,'normal-chat-2'] });
+    assert.equal(unusedSecondChat.rows[0].matchedAt,null);
+    await handleYouTubeDonationCommand(memberId,{ text:'!후원등록 등록후원자',chatId:'register-chat-duplicate',channelId:'other-channel',youtubeName:'다른 시청자' });
+    linked = await db.execute({ sql:`SELECT youtube_channel_id channelId FROM youtube_donor_links WHERE recipient_user_id = ? AND donor_normalized = '등록후원자'`, args:[memberId] });
+    assert.equal(linked.rows.length,1);
+    assert.equal(linked.rows[0].channelId,'registered-channel');
+    const changedNameDeposit = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, '변경후원자', 30000, 'bank.test')`, args:[currentSession.id,memberId] });
+    await handleYouTubeDonationCommand(memberId,{ text:'!후원등록 변경후원자',chatId:'register-chat-change',channelId:'registered-channel',youtubeName:'등록 시청자' });
+    linked = await db.execute({ sql:'SELECT donor_name donorName FROM youtube_donor_links WHERE recipient_user_id = ? AND youtube_channel_id = ?', args:[memberId,'registered-channel'] });
+    assert.equal(linked.rows[0].donorName,'변경후원자');
+    await db.execute({ sql:'DELETE FROM youtube_chat_messages WHERE recipient_user_id = ?', args:[memberId] });
+    await db.execute({ sql:'DELETE FROM youtube_donor_links WHERE recipient_user_id = ?', args:[memberId] });
+    await db.execute({ sql:'DELETE FROM donations WHERE id IN (?, ?, ?)', args:[registrationDeposit.lastInsertRowid,automaticDeposit.lastInsertRowid,changedNameDeposit.lastInsertRowid] });
+    youtubeSettings.youtubeChatEnabled=false;
+    await db.execute({ sql:'UPDATE user_settings SET value = ? WHERE user_id = ?', args:[JSON.stringify(youtubeSettings),memberId] });
+    await db.execute({ sql:`INSERT INTO youtube_donor_links (recipient_user_id, youtube_channel_id, youtube_name, donor_name, donor_normalized) VALUES (?, ?, ?, ?, ?)`, args:[memberId,'channel-e2e-1','E2E 시청자','홍길동','홍길동'] });
+    await assert.rejects(
+      db.execute({ sql:`INSERT INTO youtube_donor_links (recipient_user_id, youtube_channel_id, youtube_name, donor_name, donor_normalized) VALUES (?, ?, ?, ?, ?)`, args:[memberId,'channel-e2e-2','중복 시청자','홍 길동','홍길동'] }),
+      /UNIQUE/
+    );
+    result = await request('/api/youtube/donor-links',{cookie:memberCookie});
+    assert.equal(result.data.length,1);
+    const donorLinkId = result.data[0].id;
+    assert.equal((await request(`/api/youtube/donor-links/${donorLinkId}`,{method:'PUT',cookie:memberCookie,body:{donorName:'길동이'}})).response.status,200);
+    result = await request('/api/youtube/donor-links',{cookie:memberCookie});
+    assert.equal(result.data[0].donorName,'길동이');
+    assert.equal((await request(`/api/youtube/donor-links/${donorLinkId}`,{method:'DELETE',cookie:memberCookie})).response.status,200);
+    assert.equal((await request('/api/youtube/donor-links',{cookie:memberCookie})).data.length,0);
     const sources = await request('/api/obs/sources',{cookie:memberCookie});
     result = await request(`/api${sources.data.alertPath}/bootstrap`);
     assert.equal(result.response.status,200);
     assert.equal('toonationWidgetUrl' in result.data.settings,false);
-    const lastId = Number(result.data.lastDonationId)-2;
+    assert.equal(result.data.settings.youtubeApiKey,undefined);
+    const overlayLastDonationId = Number(result.data.lastDonationId);
+    const lastId = overlayLastDonationId-2;
     result = await request(`/api/donations?after=${Math.max(0,lastId)}`);
     assert.equal(result.data.filter(item=>['홍길동','길동이'].includes(item.donorName)).length,2);
     assert.equal((await request('/api/overlay/preview',{cookie:memberCookie})).response.status,200);
@@ -175,6 +222,19 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(previewSession.response.status,200);
     assert.equal('toonationWidgetUrl' in previewSession.data.settings,false);
     assert.equal((await request('/api/overlay/preview-session/not-a-token')).response.status,404);
+
+    const overlayController = new AbortController();
+    const overlayResponse = await fetch(`${base}/api${sources.data.alertPath}/events?after=${overlayLastDonationId}`,{signal:overlayController.signal});
+    const overlayReader = overlayResponse.body.getReader();
+    const overlayDecoder = new TextDecoder();
+    let overlayText='';
+    while (!overlayText.includes('event: bootstrap')) overlayText += overlayDecoder.decode((await overlayReader.read()).value,{stream:true});
+    const liveNotification = await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:notification('실시간후원자님이 7,777원을 입금했습니다.')});
+    assert.equal(liveNotification.response.status,201);
+    while (!overlayText.includes('event: donation')) overlayText += overlayDecoder.decode((await overlayReader.read()).value,{stream:true});
+    overlayController.abort();
+    assert.match(overlayText,/"donorName":"실시간후원자"/);
+    assert.match(overlayText,/"amount":7777/);
 
     const controller = new AbortController();
     const sseResponse = await fetch(`${base}/api/my/phone-test/events`,{headers:{Cookie:memberCookie},signal:controller.signal});
