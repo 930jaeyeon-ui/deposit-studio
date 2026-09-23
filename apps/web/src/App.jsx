@@ -6554,6 +6554,9 @@ function AlertMessage({
 
 function AlertPreviewFrame({ appearance, donorName, amountText }) {
   const fullCanvasBackground = appearance.backgroundImageArea === "canvas" && appearance.style.backgroundImage !== "none";
+  const alertStyle = fullCanvasBackground
+    ? { ...appearance.style, backgroundColor: "transparent" }
+    : appearance.style;
   const message = (
     <AlertMessage
       template={appearance.messageTemplate}
@@ -6577,7 +6580,7 @@ function AlertPreviewFrame({ appearance, donorName, amountText }) {
       <div className="alert-preview-canvas dark-mosaic">
         <div
           className={`alert ${fullCanvasBackground ? "alert-full-canvas" : appearance.animation}`}
-          style={appearance.style}
+          style={alertStyle}
         >
           {fullCanvasBackground ? <div className={`alert alert-foreground ${appearance.animation}`}>{message}</div> : message}
         </div>
@@ -7030,6 +7033,9 @@ function Overlay({ token, preview = false }) {
     (grade) => grade.id === current.crewGradeId,
   );
   const fullCanvasBackground = appearance.backgroundImageArea === "canvas" && appearance.style.backgroundImage !== "none";
+  const alertStyle = fullCanvasBackground
+    ? { ...appearance.style, backgroundColor: "transparent" }
+    : appearance.style;
   const message = (
     <AlertMessage
       template={outputTemplate}
@@ -7053,7 +7059,7 @@ function Overlay({ token, preview = false }) {
     <AlertOutputCanvas className="overlay-stage">
       <div
         className={`alert ${fullCanvasBackground ? "alert-full-canvas" : exiting ? appearance.exitAnimation : appearance.animation}`}
-        style={appearance.style}
+        style={alertStyle}
       >
         {fullCanvasBackground ? <div className={`alert alert-foreground ${exiting ? appearance.exitAnimation : appearance.animation}`}>{message}</div> : message}
       </div>
