@@ -646,7 +646,7 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 /* Text shadow is controlled only by the alert text setting. */
 .alert{filter:none}
 .alert.alert-full-canvas{width:100%;height:100%;display:grid;place-items:center}
-.alert.alert-foreground{width:auto;height:auto;padding:0;border-radius:0;background:transparent}
+.alert.alert-foreground{width:auto;height:auto;padding:0;border-radius:0;background:transparent;text-align:inherit;line-height:inherit}
 .ranking-inline-color-setting{display:grid!important;grid-template-columns:minmax(92px,.55fr) minmax(0,1fr);align-items:center;gap:12px}.ranking-inline-color-setting>.inline-color-control{margin-top:0}
 .ranking-suffix-setting{display:grid!important;grid-template-columns:minmax(92px,.55fr) minmax(0,1fr);align-items:center;gap:12px}.ranking-suffix-control{display:grid;grid-template-columns:minmax(90px,120px) 64px minmax(105px,1fr);align-items:stretch;gap:7px}.ranking-suffix-control>input{margin-top:0!important}.ranking-suffix-control>input[type=color]{box-sizing:border-box;width:64px;height:38px;min-height:38px;padding:4px;border:1px solid var(--n9-border);border-radius:8px;background:var(--n9-card)}.ranking-suffix-control>.color-code-input{height:38px;min-height:38px}.donor-name-suffix,.donor-amount-suffix{white-space:pre}.donor-amount-suffix{margin-left:.06em}@media(max-width:760px){.ranking-suffix-setting{grid-template-columns:1fr}.ranking-suffix-control{grid-template-columns:minmax(80px,110px) 52px minmax(95px,1fr)}.ranking-suffix-control>input[type=color]{width:52px}}
 
