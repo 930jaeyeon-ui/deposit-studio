@@ -6512,7 +6512,7 @@ function AlertMessage({
     <div className="alert-text">
       {template.split("\n").map((line, index) => (
         <div className="alert-line" key={index}>
-          {line.split(/(\{grade\}|\{name\}|\{amount\}|\{message\})/g).map((part, partIndex) => {
+          {line.split(/(\{grade\}|\{name\}|\{amount\}|\{message\})/g).map((part, partIndex, parts) => {
             if (part === "{grade}")
               return showGrade && gradeDisplayMode === "text" ? <span key={partIndex} className="alert-grade-text" style={gradeTextStyle}>{gradeName}</span> : showGrade && gradeImage ? (
                 <img
@@ -6529,7 +6529,22 @@ function AlertMessage({
               return <span key={partIndex} className="alert-token-amount" style={amountColorEnabled?{color:amountColor}:undefined}>{amountText}</span>;
             if (part === "{message}")
               return <span key={partIndex} className="alert-token-message">{message}</span>;
-            return <Fragment key={partIndex}>{part.split(/([님원])/g).map((text,textIndex)=>(text === "님" || text === "원") ? <span key={textIndex} className="alert-token-suffix" style={suffixStyle}>{text}</span> : text)}</Fragment>;
+            const expectedSuffix = parts[partIndex - 1] === "{name}"
+              ? "님"
+              : parts[partIndex - 1] === "{amount}"
+                ? "원"
+                : "";
+            const suffixMatch = expectedSuffix
+              ? part.match(new RegExp(`^(\\s*)(${expectedSuffix})`))
+              : null;
+            if (!suffixMatch) return <Fragment key={partIndex}>{part}</Fragment>;
+            return (
+              <Fragment key={partIndex}>
+                {suffixMatch[1]}
+                <span className="alert-token-suffix" style={suffixStyle}>{suffixMatch[2]}</span>
+                {part.slice(suffixMatch[0].length)}
+              </Fragment>
+            );
           })}
         </div>
       ))}
