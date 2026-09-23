@@ -23,6 +23,40 @@ const pendingBankAlertTimers = new Map();
 const toonationManager = new ToonationManager(handleToonationDonation);
 const youtubeChatManager = new YouTubeChatManager(handleYouTubeDonationCommand);
 
+function escapeJsonStringControlCharacters(source) {
+  let result = '';
+  let insideString = false;
+  let escaped = false;
+  for (const character of String(source || '')) {
+    if (!insideString) {
+      result += character;
+      if (character === '"') insideString = true;
+      continue;
+    }
+    if (escaped) {
+      result += character;
+      escaped = false;
+      continue;
+    }
+    if (character === '\\') {
+      result += character;
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      result += character;
+      insideString = false;
+      continue;
+    }
+    const code = character.codePointAt(0);
+    if (code < 0x20) {
+      const escapes = { 8:'\\b', 9:'\\t', 10:'\\n', 12:'\\f', 13:'\\r' };
+      result += escapes[code] || `\\u${code.toString(16).padStart(4,'0')}`;
+    } else result += character;
+  }
+  return result;
+}
+
 function allowTtsRequest(key, limit = 60) {
   const now = Date.now();
   const recent = (ttsRateWindows.get(key) || []).filter((time) => now - time < 60000);
@@ -141,8 +175,10 @@ app.use((req, res, next) => {
       try { return JSON.stringify(value ?? null).slice(0, limit); }
       catch { return JSON.stringify({ error:'직렬화할 수 없는 값입니다.' }); }
     };
-    const requestBody = req.body !== undefined
-      ? req.body
+    const requestBody = req.notificationJsonRecovered
+      ? { parsedBody:req.body, rawBody:req.rawNotificationBody || '', parseError:req.notificationParseError, recovered:true }
+      : req.body !== undefined
+        ? req.body
       : { rawBody:req.rawNotificationBody || '', parseError:req.notificationParseError || null };
     db.execute({ sql:`INSERT INTO api_request_logs
       (method, path, request_headers, request_body, response_status, response_body, remote_address, recipient_user_id, duration_ms)
@@ -169,6 +205,13 @@ app.use(express.json({
 app.use((error, req, res, next) => {
   if (req.method !== 'POST' || req.path !== '/api/notifications' || error?.type !== 'entity.parse.failed') return next(error);
   req.notificationParseError = String(error.message || 'JSON 파싱 실패').slice(0,500);
+  try {
+    req.body = JSON.parse(escapeJsonStringControlCharacters(req.rawNotificationBody));
+    req.notificationJsonRecovered = true;
+    return next();
+  } catch {
+    // Keep the original parse error because it points to the malformed request position.
+  }
   return res.status(400).json({
     error:'요청 JSON 형식이 올바르지 않습니다.',
     detail:req.notificationParseError
