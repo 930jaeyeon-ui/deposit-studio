@@ -647,6 +647,7 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 .alert{filter:none}
 .alert.alert-full-canvas{width:100%;height:100%;display:grid;place-items:center}
 .alert.alert-foreground{width:auto;height:auto;padding:0;border-radius:0;background:transparent}
+.ranking-inline-color-setting{display:grid!important;grid-template-columns:minmax(92px,.55fr) minmax(0,1fr);align-items:center;gap:12px}.ranking-inline-color-setting>.inline-color-control{margin-top:0}
 
 /* One canonical 600 × 800 ranking canvas is shared by editor preview, full preview and OBS. */
 .ranking-output-frame{position:relative;width:100vw;height:100vh;overflow:hidden;background:transparent}

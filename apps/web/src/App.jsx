@@ -5954,16 +5954,18 @@ function Settings({ mode }) {
                           <option value="last">가장 오른쪽 열</option>
                         </select>
                       </label>
-                      <label>
+                      <label className="ranking-inline-color-setting">
                         제목 색상
-                        <input
-                          type="color"
-                          value={colorPickerValue(settings.rankingTitleColor)}
-                          onChange={(e) =>
-                            update("rankingTitleColor", e.target.value)
-                          }
-                        />
-                        <input className="color-code-input" value={settings.rankingTitleColor} onChange={(e)=>update("rankingTitleColor",e.target.value)}/>
+                        <span className="inline-color-control">
+                          <input
+                            type="color"
+                            value={colorPickerValue(settings.rankingTitleColor)}
+                            onChange={(e) =>
+                              update("rankingTitleColor", e.target.value)
+                            }
+                          />
+                          <input className="color-code-input" value={settings.rankingTitleColor} onChange={(e)=>update("rankingTitleColor",e.target.value)}/>
+                        </span>
                       </label>
                     </>
                   )}
@@ -6101,27 +6103,31 @@ function Settings({ mode }) {
                       }
                     />
                   </label>
-                  <label>
+                  <label className="ranking-inline-color-setting">
                     닉네임 색상
-                    <input
-                      type="color"
-                      value={colorPickerValue(settings.rankingNameColor)}
-                      onChange={(e) =>
-                        update("rankingNameColor", e.target.value)
-                      }
-                    />
-                    <input className="color-code-input" value={settings.rankingNameColor} onChange={(e)=>update("rankingNameColor",e.target.value)}/>
+                    <span className="inline-color-control">
+                      <input
+                        type="color"
+                        value={colorPickerValue(settings.rankingNameColor)}
+                        onChange={(e) =>
+                          update("rankingNameColor", e.target.value)
+                        }
+                      />
+                      <input className="color-code-input" value={settings.rankingNameColor} onChange={(e)=>update("rankingNameColor",e.target.value)}/>
+                    </span>
                   </label>
-                  <label>
+                  <label className="ranking-inline-color-setting">
                     금액 색상
-                    <input
-                      type="color"
-                      value={colorPickerValue(settings.rankingAmountColor)}
-                      onChange={(e) =>
-                        update("rankingAmountColor", e.target.value)
-                      }
-                    />
-                    <input className="color-code-input" value={settings.rankingAmountColor} onChange={(e)=>update("rankingAmountColor",e.target.value)}/>
+                    <span className="inline-color-control">
+                      <input
+                        type="color"
+                        value={colorPickerValue(settings.rankingAmountColor)}
+                        onChange={(e) =>
+                          update("rankingAmountColor", e.target.value)
+                        }
+                      />
+                      <input className="color-code-input" value={settings.rankingAmountColor} onChange={(e)=>update("rankingAmountColor",e.target.value)}/>
+                    </span>
                   </label>
                 </AlertSettingSection>
                 <AlertSettingSection
