@@ -128,7 +128,6 @@ app.use((req, res, next) => {
   if (req.method === 'OPTIONS') return res.sendStatus(204);
   next();
 });
-app.use(express.json({ limit: '75mb' }));
 app.use((req, res, next) => {
   if (req.method !== 'POST' || req.path !== '/api/notifications') return next();
   const startedAt = Date.now();
@@ -142,9 +141,12 @@ app.use((req, res, next) => {
       try { return JSON.stringify(value ?? null).slice(0, limit); }
       catch { return JSON.stringify({ error:'직렬화할 수 없는 값입니다.' }); }
     };
+    const requestBody = req.body !== undefined
+      ? req.body
+      : { rawBody:req.rawNotificationBody || '', parseError:req.notificationParseError || null };
     db.execute({ sql:`INSERT INTO api_request_logs
       (method, path, request_headers, request_body, response_status, response_body, remote_address, recipient_user_id, duration_ms)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args:[req.method,req.originalUrl,serialize(headers,10000),serialize(req.body,20000),res.statusCode,serialize(responseBody,20000),String(req.ip||req.socket.remoteAddress||'').slice(0,100),req.notificationUserId||null,Date.now()-startedAt] })
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, args:[req.method,req.originalUrl,serialize(headers,10000),serialize(requestBody,20000),res.statusCode,serialize(responseBody,20000),String(req.ip||req.socket.remoteAddress||'').slice(0,100),req.notificationUserId||null,Date.now()-startedAt] })
       .then(() => db.execute(`DELETE FROM api_request_logs WHERE id NOT IN (SELECT id FROM api_request_logs ORDER BY id DESC LIMIT 1000)`))
       .catch(error => console.error('API 로그 저장 실패:', error.message));
     if (req.notificationUserId) publishPhoneTest(req.notificationUserId, {
@@ -155,6 +157,22 @@ app.use((req, res, next) => {
     });
   });
   next();
+});
+app.use(express.json({
+  limit:'75mb',
+  verify:(req, _res, buffer) => {
+    if (req.method === 'POST' && req.path === '/api/notifications') {
+      req.rawNotificationBody = buffer.toString('utf8').slice(0,20000);
+    }
+  }
+}));
+app.use((error, req, res, next) => {
+  if (req.method !== 'POST' || req.path !== '/api/notifications' || error?.type !== 'entity.parse.failed') return next(error);
+  req.notificationParseError = String(error.message || 'JSON 파싱 실패').slice(0,500);
+  return res.status(400).json({
+    error:'요청 JSON 형식이 올바르지 않습니다.',
+    detail:req.notificationParseError
+  });
 });
 app.get('/api/health', (_req, res) => res.json({ ok:true, ttsConfigured:elevenLabsConfigured(), typecastConfigured:typecastConfigured() }));
 

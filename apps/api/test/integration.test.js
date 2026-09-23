@@ -259,10 +259,25 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.match(sseText,/com\.n9\.e2e\.bank\.updated/);
     assert.match(sseText,/"status":201/);
 
+    const malformedResponse = await fetch(`${base}/api/notifications`,{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', Authorization:basic('hh01','Init1234!!') },
+      body:'{"packageName":"com.n9.e2e.bank.updated","title":"입금","content":"첫 줄\n둘째 줄"}'
+    });
+    assert.equal(malformedResponse.status,400);
+    const malformedBody = await malformedResponse.json();
+    assert.equal(malformedBody.error,'요청 JSON 형식이 올바르지 않습니다.');
+    await new Promise(resolve=>setTimeout(resolve,50));
+
     result = await request('/api/api-logs?page=1&pageSize=10',{cookie:superCookie});
     assert.ok(result.data.total>=5);
     assert.equal(result.data.pageSize,10);
     assert.ok(result.data.items.some(item=>item.requestHeaders.authorization==='[REDACTED]'));
+    const malformedLog = result.data.items.find(item=>item.responseStatus===400);
+    assert.ok(malformedLog);
+    assert.match(malformedLog.requestBody.rawBody,/첫 줄/);
+    assert.match(malformedLog.requestBody.parseError,/JSON/);
+    assert.equal(malformedLog.responseBody.error,'요청 JSON 형식이 올바르지 않습니다.');
     assert.equal((await request('/api/api-logs',{method:'DELETE',cookie:superCookie})).response.status,200);
     assert.equal((await request('/api/api-logs?page=1&pageSize=10',{cookie:superCookie})).data.total,0);
 
