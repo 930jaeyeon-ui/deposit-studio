@@ -47,6 +47,19 @@ chown -R opc:opc /var/www/deposit-studio
 /usr/local/bin/caddy validate --config /etc/caddy/Caddyfile
 systemctl daemon-reload
 systemctl disable --now deposit-studio-web 2>/dev/null || true
+# The Always Free 1 GB web shape cannot safely run Oracle Linux's periodic
+# metadata refresh: dnf can consume the whole VM (including swap) and leave
+# the guest OS alive but unresponsive. Deployments install no packages here,
+# so keep the automatic cache timer disabled and run dnf manually if needed.
+systemctl disable --now dnf-makecache.timer 2>/dev/null || true
+systemctl mask dnf-makecache.timer
+cat >/etc/sysctl.d/99-auto-reboot-on-oom.conf <<'EOF'
+# This web tier is stateless. Recover automatically if a future global OOM
+# occurs instead of remaining unresponsive while OCI reports it as running.
+vm.panic_on_oom = 1
+kernel.panic = 10
+EOF
+sysctl --system >/dev/null
 systemctl enable caddy
 systemctl restart caddy
 if command -v firewall-cmd >/dev/null; then
