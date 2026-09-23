@@ -1496,9 +1496,9 @@ function LiveDepositPopup() {
           <button className={youtubeControl.enabled ? "youtube-on" : "youtube-off"} onClick={toggleYoutubeChat} disabled={youtubeSaving} title={youtubeControl.text}>
             {youtubeSaving ? "변경 중…" : youtubeControl.enabled ? "채팅 TTS 끄기" : "채팅 TTS 켜기"}
           </button>
+          <button className="stop-chat" onClick={async()=>{try{const result=await api("/api/overlay/control",{method:"POST",body:JSON.stringify({action:"stop-current-chat"})});setMessage(result.delivered?"현재 후원 채팅 화면과 TTS를 강제 종료했습니다.":"연결된 OBS 알림 화면이 없습니다.");}catch(error){setMessage(error.message);}}}>현재 채팅 강제 종료</button>
         </section>
         <section className="live-action-group alert-actions"><h2>후원 알림</h2>
-          <button className="stop-chat" onClick={async()=>{try{const result=await api("/api/overlay/control",{method:"POST",body:JSON.stringify({action:"stop-current-chat"})});setMessage(result.delivered?"현재 후원 채팅 화면과 TTS를 강제 종료했습니다.":"연결된 OBS 알림 화면이 없습니다.");}catch(error){setMessage(error.message);}}}>현재 채팅 강제 종료</button>
           <button className="run" onClick={async()=>{if(!selected)return;await setSelectedStatus("included");await replay();}} disabled={!selected||selected.status==="included"||savingId}>반영 후 알림 실행</button>
           <button className="rerun" onClick={replay} disabled={!selected||selected.status!=="included"||savingId}>알림만 재실행</button>
         </section>
