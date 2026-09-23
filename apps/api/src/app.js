@@ -367,7 +367,7 @@ function cleanSettings(input) {
   settings.rankingTitleSize = Math.max(14,Math.min(72,Number(settings.rankingTitleSize)||24));
   settings.rankingTitleAlign = ['left','center','right'].includes(settings.rankingTitleAlign)?settings.rankingTitleAlign:'left';
   settings.rankingTitleColumn = settings.rankingTitleColumn === 'last' ? 'last' : 'first';
-  for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
+  for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor','rankingNameSuffixColor','rankingAmountSuffixColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
   settings.rankingColumns = Math.max(1,Math.min(5,Math.floor(Number(settings.rankingColumns)||1)));
   settings.rankingRowsPerColumn = Math.max(1,Math.min(20,Math.floor(Number(settings.rankingRowsPerColumn)||10)));
   settings.rankingAnimation = ['none','fade','slide-up','slide-left','zoom','stagger'].includes(settings.rankingAnimation)?settings.rankingAnimation:'fade';

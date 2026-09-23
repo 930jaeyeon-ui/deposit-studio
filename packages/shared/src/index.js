@@ -102,6 +102,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingCustomMarker: 'circle',
   rankingNameSuffix: '',
   rankingAmountSuffix: '원',
+  rankingNameSuffixColor: '#ffffff',
+  rankingAmountSuffixColor: '#b9dcff',
   rankingShowTitle: true,
   rankingTitleSize: 24,
   rankingTitleAlign: 'left',

@@ -6083,25 +6083,41 @@ function Settings({ mode }) {
                     />
                     <span>{settings.rankingColumnGap}px</span>
                   </label>
-                  <label>
+                  <label className="ranking-suffix-setting">
                     닉네임 뒤 문구
-                    <input
-                      placeholder="예: 님, 씨"
-                      value={settings.rankingNameSuffix}
-                      onChange={(e) =>
-                        update("rankingNameSuffix", e.target.value)
-                      }
-                    />
+                    <span className="ranking-suffix-control">
+                      <input
+                        className="ranking-suffix-text"
+                        placeholder="예: 님, 씨"
+                        value={settings.rankingNameSuffix}
+                        onChange={(e) => update("rankingNameSuffix", e.target.value)}
+                      />
+                      <input
+                        type="color"
+                        aria-label="닉네임 뒤 문구 색상"
+                        value={colorPickerValue(settings.rankingNameSuffixColor || settings.rankingNameColor)}
+                        onChange={(e) => update("rankingNameSuffixColor", e.target.value)}
+                      />
+                      <input className="color-code-input" value={settings.rankingNameSuffixColor || settings.rankingNameColor} maxLength="7" aria-label="닉네임 뒤 문구 색상 HEX 코드" onChange={(e)=>update("rankingNameSuffixColor",e.target.value)}/>
+                    </span>
                   </label>
-                  <label>
+                  <label className="ranking-suffix-setting">
                     금액 뒤 문구
-                    <input
-                      placeholder="예: 원, 달러"
-                      value={settings.rankingAmountSuffix}
-                      onChange={(e) =>
-                        update("rankingAmountSuffix", e.target.value)
-                      }
-                    />
+                    <span className="ranking-suffix-control">
+                      <input
+                        className="ranking-suffix-text"
+                        placeholder="예: 원, 달러"
+                        value={settings.rankingAmountSuffix}
+                        onChange={(e) => update("rankingAmountSuffix", e.target.value)}
+                      />
+                      <input
+                        type="color"
+                        aria-label="금액 뒤 문구 색상"
+                        value={colorPickerValue(settings.rankingAmountSuffixColor || settings.rankingAmountColor)}
+                        onChange={(e) => update("rankingAmountSuffixColor", e.target.value)}
+                      />
+                      <input className="color-code-input" value={settings.rankingAmountSuffixColor || settings.rankingAmountColor} maxLength="7" aria-label="금액 뒤 문구 색상 HEX 코드" onChange={(e)=>update("rankingAmountSuffixColor",e.target.value)}/>
+                    </span>
                   </label>
                   <label className="ranking-inline-color-setting">
                     닉네임 색상
@@ -6763,7 +6779,7 @@ function RankingCard({ items, settings, onEdit }) {
                     )}
                     <span className="donor-name">
                       {item.donorName}
-                      {settings.rankingNameSuffix}
+                      {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: settings.rankingNameSuffixColor || settings.rankingNameColor }}>{settings.rankingNameSuffix}</span>}
                     </span>
                     {settings.rankingShowCount && <small>{item.count}회</small>}
                   </b>
@@ -6772,7 +6788,7 @@ function RankingCard({ items, settings, onEdit }) {
                     style={{ textAlign: settings.rankingAmountAlign }}
                   >
                     {formatWon(item.amount)}
-                    {settings.rankingAmountSuffix}
+                    {settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: settings.rankingAmountSuffixColor || settings.rankingAmountColor }}>{settings.rankingAmountSuffix}</span>}
                   </span>
                 </div>
               );
