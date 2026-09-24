@@ -68,6 +68,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   crewGrades: [],
   minimumDonationAmount: MINIMUM_DONATION_AMOUNT,
   alertMinimumAmount: MINIMUM_DONATION_AMOUNT,
+  alertOverlayEnabled: true,
+  rankingOverlayEnabled: true,
   toonationEnabled: false,
   toonationWidgetUrl: '',
   toonationAlertMode: 'official',

@@ -314,6 +314,8 @@ function cleanSettings(input) {
   const settings = { ...DEFAULT_SETTINGS, ...input };
   settings.minimumDonationAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.minimumDonationAmount) || 0)));
   settings.alertMinimumAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.alertMinimumAmount) || 0)));
+  settings.alertOverlayEnabled = settings.alertOverlayEnabled !== false;
+  settings.rankingOverlayEnabled = settings.rankingOverlayEnabled !== false;
   settings.toonationEnabled = Boolean(settings.toonationEnabled);
   settings.toonationWidgetUrl = String(settings.toonationWidgetUrl || '').trim().slice(0,1000);
   const legacyToonationMode = settings.toonationUseOwnAlert ? 'custom' : 'official';

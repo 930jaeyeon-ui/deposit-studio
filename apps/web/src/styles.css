@@ -665,6 +665,7 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 .interactive-ranking-root:hover .ranking-interact-trigger,.ranking-interact-trigger:focus-visible{opacity:1;pointer-events:auto;transform:none}
 .widget-row[role=button]{cursor:pointer}
 .widget-row[role=button]:hover{outline:2px solid #78b8ff;outline-offset:2px}
+.overlay-enabled-toggle{grid-column:1/-1;margin:0 0 4px;padding:16px 18px;border:1px solid var(--n9-border);border-radius:12px;background:var(--n9-card)}.overlay-enabled-toggle>span{display:grid;gap:4px;float:none}.overlay-enabled-toggle b{color:var(--n9-text);font-size:13px}.overlay-enabled-toggle small{color:var(--n9-muted);font-size:10px}.overlay-enabled-toggle>i{flex:none}
 .widget-card:is(.ranking-density-compact,.ranking-density-dense) .widget-row{margin-top:var(--ranking-gap);padding:var(--ranking-row-padding) 2px;border-radius:3px}
 .widget-card .widget-row{gap:var(--ranking-item-gap,30px)}
 .widget-card:is(.ranking-columns-2,.ranking-columns-3) .widget-row:is(.row-left,.row-center,.row-right) b{min-width:0;max-width:calc(100% - 96px);flex:0 1 auto;overflow:hidden}

@@ -1389,7 +1389,7 @@ function LiveDepositPopup() {
     const loadYoutube = () => api("/api/youtube/status", { cache:"no-store" }).then(setYoutubeControl).catch(() => {});
     loadYoutube();
     const youtubeTimer = setInterval(loadYoutube, 10000);
-    let fallbackTimer = null;
+    const refreshTimer = setInterval(load, 5000);
     const stream = new EventSource(apiUrl("/api/my/deposits/events"), { withCredentials:true });
     stream.addEventListener("change", load);
     stream.onopen = () => {
@@ -3986,6 +3986,18 @@ function Settings({ mode }) {
             className={`controls alert-controls ${isAlert ? "" : "ranking-controls"}`}
             onSubmit={save}
           >
+            <label className="toggle-label overlay-enabled-toggle">
+              <span>
+                <b>{isAlert ? "후원 알림 사용" : "후원 순위표 사용"}</b>
+                <small>OBS 주소와 배치 위치는 그대로 유지됩니다.</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={isAlert ? settings.alertOverlayEnabled !== false : settings.rankingOverlayEnabled !== false}
+                onChange={(event) => update(isAlert ? "alertOverlayEnabled" : "rankingOverlayEnabled", event.target.checked)}
+              />
+              <i />
+            </label>
             {isAlert ? (
               <>
                 <AlertSettingSection
@@ -6883,18 +6895,13 @@ function Widget({ token }) {
       : "/api/my/deposits/events";
     const stream = new EventSource(apiUrl(eventPath), { withCredentials:true });
     stream.addEventListener("change", load);
-    stream.onopen = () => {
-      if (fallbackTimer) clearInterval(fallbackTimer);
-      fallbackTimer = null;
-    };
-    stream.onerror = () => {
-      if (!fallbackTimer) fallbackTimer = setInterval(load, 15000);
-    };
     return () => {
       stream.close();
-      if (fallbackTimer) clearInterval(fallbackTimer);
+      clearInterval(refreshTimer);
     };
   }, [token]);
+  if (data.settings.rankingOverlayEnabled === false)
+    return <div className="ranking-root" />;
   return (
     <div className="ranking-root">
       <RankingOutputCanvas>
@@ -6944,10 +6951,24 @@ function Overlay({ token, preview = false }) {
         ? `/api/overlay/preview-session/${encodeURIComponent(new URLSearchParams(location.search).get("previewToken"))}`
         : "/api/overlay/preview"
       : `/api/overlay/${encodeURIComponent(token)}/bootstrap`;
-    api(bootstrapPath).then(async ({ settings: value, lastDonationId, previewDonation }) => {
-      if (stopped) return;
+    const applySettings = (value) => {
       setSettings(value);
       settingsRef.current = value;
+      if (value.alertOverlayEnabled === false) {
+        queue.current = [];
+        playbackSequence.current += 1;
+        for (const timer of playbackTimers.current) clearTimeout(timer);
+        playbackTimers.current = [];
+        stopActiveAlertSpeech();
+        currentRef.current = null;
+        setCurrent(null);
+        setExiting(false);
+        playing.current = false;
+      }
+    };
+    api(bootstrapPath).then(async ({ settings: value, lastDonationId, previewDonation }) => {
+      if (stopped) return;
+      applySettings(value);
       if (previewMode) {
         if (value.ttsEnabled)
           await waitForSpeechVoices(value.ttsVoiceURI || "");
@@ -6964,13 +6985,11 @@ function Overlay({ token, preview = false }) {
       );
       events.addEventListener("bootstrap", (event) => {
         const snapshot = JSON.parse(event.data);
-        setSettings(snapshot.settings);
-        settingsRef.current = snapshot.settings;
+        applySettings(snapshot.settings);
       });
       events.addEventListener("settings", (event) => {
         const nextSettings = JSON.parse(event.data);
-        setSettings(nextSettings);
-        settingsRef.current = nextSettings;
+        applySettings(nextSettings);
       });
       events.addEventListener("donation", (event) => {
         const donation = JSON.parse(event.data);
@@ -6978,6 +6997,7 @@ function Overlay({ token, preview = false }) {
           if (!donation.isChatMessage && donation.id <= lastId.current) return;
           lastId.current = Math.max(lastId.current, Number(donation.id) || 0);
         }
+        if (settingsRef.current.alertOverlayEnabled === false) return;
         if (
           donation.amount < Number(settingsRef.current.alertMinimumAmount || 0)
         )
@@ -6990,13 +7010,23 @@ function Overlay({ token, preview = false }) {
         if (control.action === "stop-current-chat") stopCurrentChat();
       });
     });
+    const refreshTimer = previewMode ? null : setInterval(() => {
+      api(bootstrapPath)
+        .then(({ settings: value }) => { if (!stopped) applySettings(value); })
+        .catch(() => {});
+    }, 5000);
     return () => {
       stopped = true;
       events?.close();
+      if (refreshTimer) clearInterval(refreshTimer);
     };
   }, [token, preview]);
 
   function play() {
+    if (settingsRef.current.alertOverlayEnabled === false) {
+      queue.current = [];
+      return;
+    }
     if (playing.current || !queue.current.length) return;
     playing.current = true;
     const donation = queue.current.shift();
@@ -7069,7 +7099,7 @@ function Overlay({ token, preview = false }) {
     setTimeout(play, 100);
   }
 
-  if (!current) return <div className="overlay-stage" />;
+  if (settings.alertOverlayEnabled === false || !current) return <div className="overlay-stage" />;
   const appearance = alertAppearance(settings, current.amount);
   const outputTemplate = current.message
     ? `${appearance.messageTemplate}\n{message}`
