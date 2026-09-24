@@ -2536,7 +2536,8 @@ function ObsSetup() {
           <ol>
             <li>OBS에서 소스 추가 → 브라우저를 선택합니다.</li>
             <li>위의 내 계정 전용 주소를 복사해 URL에 붙여 넣습니다.</li>
-            <li>권장 크기를 입력하고 사용자 지정 CSS는 비워둡니다.</li>
+            <li>각 카드에 표시된 권장 크기를 입력하고 사용자 지정 CSS는 비워둡니다.</li>
+            <li>후원 알림은 1920 × 1080, 순위표는 1200 × 800입니다.</li>
             <li>
               후원 알림 설정을 저장하면 내 OBS 오버레이에 바로 반영됩니다.
             </li>
@@ -2986,9 +2987,9 @@ const rankingStyles = (first, second, third, rest) => [
 ];
 const RANKING_THEME_PRESETS = {
   midnight: {
-    rankingFontFamily: '"Noto Sans KR", sans-serif', rankingFontSize: 30, rankingFontWeight: 700,
+    rankingFontFamily: '"Noto Sans KR", sans-serif', rankingFontSize: 48, rankingFontWeight: 700,
     rankingUseLineHeight: true, rankingLineHeight: 1.2, rankingLetterSpacing: -1, rankingRowGap: 10, rankingColumnGap: 24,
-    rankingTitleSize: 24, rankingTitleAlign: "left", rankingTitleColor: "#ffffff", rankingNameColor: "#ffffff", rankingAmountColor: "#b9dcff",
+    rankingTitleSize: 36, rankingTitleAlign: "left", rankingTitleColor: "#ffffff", rankingNameColor: "#ffffff", rankingAmountColor: "#b9dcff",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "fade", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#ffe58a", badge: "#8a6414", size: 118, weight: 900 }, { color: "#e2edfa", badge: "#60758b", size: 109, weight: 800 },
@@ -2996,9 +2997,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   clean: {
-    rankingFontFamily: '"Gothic A1", sans-serif', rankingFontSize: 27, rankingFontWeight: 600,
+    rankingFontFamily: '"Gothic A1", sans-serif', rankingFontSize: 44, rankingFontWeight: 600,
     rankingUseLineHeight: true, rankingLineHeight: 1.3, rankingLetterSpacing: -0.5, rankingRowGap: 7, rankingColumnGap: 28,
-    rankingTitleSize: 21, rankingTitleAlign: "left", rankingTitleColor: "#27425e", rankingNameColor: "#315574", rankingAmountColor: "#376e9f",
+    rankingTitleSize: 34, rankingTitleAlign: "left", rankingTitleColor: "#27425e", rankingNameColor: "#315574", rankingAmountColor: "#376e9f",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "slide-up", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#173b5f", badge: "#b9d7ef", size: 112, weight: 900 }, { color: "#315574", badge: "#d8e5ef", size: 106, weight: 800 },
@@ -3006,9 +3007,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   neon: {
-    rankingFontFamily: '"Gasoek One", sans-serif', rankingFontSize: 29, rankingFontWeight: 400,
+    rankingFontFamily: '"Gasoek One", sans-serif', rankingFontSize: 46, rankingFontWeight: 400,
     rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: 0, rankingRowGap: 13, rankingColumnGap: 30,
-    rankingTitleSize: 27, rankingTitleAlign: "center", rankingTitleColor: "#ff72ef", rankingNameColor: "#70ffe7", rankingAmountColor: "#ff8ff2",
+    rankingTitleSize: 40, rankingTitleAlign: "center", rankingTitleColor: "#ff72ef", rankingNameColor: "#70ffe7", rankingAmountColor: "#ff8ff2",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "zoom", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#fff36d", badge: "#ff34dc", size: 125, weight: 900 }, { color: "#7ffff0", badge: "#793fff", size: 114, weight: 800 },
@@ -3016,9 +3017,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   gold: {
-    rankingFontFamily: '"Noto Serif KR", serif', rankingFontSize: 31, rankingFontWeight: 700,
+    rankingFontFamily: '"Noto Serif KR", serif', rankingFontSize: 48, rankingFontWeight: 700,
     rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: -0.5, rankingRowGap: 12, rankingColumnGap: 26,
-    rankingTitleSize: 29, rankingTitleAlign: "center", rankingTitleColor: "#ffd76a", rankingNameColor: "#fff1bf", rankingAmountColor: "#ffd76a",
+    rankingTitleSize: 44, rankingTitleAlign: "center", rankingTitleColor: "#ffd76a", rankingNameColor: "#fff1bf", rankingAmountColor: "#ffd76a",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "stagger", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#fff3a8", badge: "#c99628", size: 130, weight: 900 }, { color: "#f0f2f5", badge: "#9ca6af", size: 117, weight: 800 },
@@ -3026,9 +3027,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   rose: {
-    rankingFontFamily: '"Hahmlet", serif', rankingFontSize: 29, rankingFontWeight: 700,
+    rankingFontFamily: '"Hahmlet", serif', rankingFontSize: 46, rankingFontWeight: 700,
     rankingUseLineHeight: true, rankingLineHeight: 1.3, rankingLetterSpacing: -0.5, rankingRowGap: 9, rankingColumnGap: 24,
-    rankingTitleSize: 26, rankingTitleAlign: "left", rankingTitleColor: "#ff9cbd", rankingNameColor: "#ffe8f0", rankingAmountColor: "#ff9cbd",
+    rankingTitleSize: 39, rankingTitleAlign: "left", rankingTitleColor: "#ff9cbd", rankingNameColor: "#ffe8f0", rankingAmountColor: "#ff9cbd",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "slide-left", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#fff0c9", badge: "#c13f70", size: 120, weight: 900 }, { color: "#ffe3ee", badge: "#963457", size: 111, weight: 800 },
@@ -3036,9 +3037,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   ocean: {
-    rankingFontFamily: '"Gowun Dodum", sans-serif', rankingFontSize: 29, rankingFontWeight: 700,
+    rankingFontFamily: '"Gowun Dodum", sans-serif', rankingFontSize: 46, rankingFontWeight: 700,
     rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: 0, rankingRowGap: 11, rankingColumnGap: 30,
-    rankingTitleSize: 25, rankingTitleAlign: "left", rankingTitleColor: "#6bd9ff", rankingNameColor: "#d9f6ff", rankingAmountColor: "#6bd9ff",
+    rankingTitleSize: 38, rankingTitleAlign: "left", rankingTitleColor: "#6bd9ff", rankingNameColor: "#d9f6ff", rankingAmountColor: "#6bd9ff",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "slide-up", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#ffffff", badge: "#00a7d8", size: 122, weight: 900 }, { color: "#b8efff", badge: "#167da4", size: 112, weight: 800 },
@@ -3046,9 +3047,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   forest: {
-    rankingFontFamily: '"Gowun Batang", serif', rankingFontSize: 29, rankingFontWeight: 700,
+    rankingFontFamily: '"Gowun Batang", serif', rankingFontSize: 46, rankingFontWeight: 700,
     rankingUseLineHeight: true, rankingLineHeight: 1.32, rankingLetterSpacing: 0, rankingRowGap: 10, rankingColumnGap: 28,
-    rankingTitleSize: 25, rankingTitleAlign: "left", rankingTitleColor: "#87e7b0", rankingNameColor: "#dcf7e7", rankingAmountColor: "#87e7b0",
+    rankingTitleSize: 38, rankingTitleAlign: "left", rankingTitleColor: "#87e7b0", rankingNameColor: "#dcf7e7", rankingAmountColor: "#87e7b0",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "fade", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#efffb0", badge: "#3b875e", size: 119, weight: 900 }, { color: "#d7f5e3", badge: "#317655", size: 110, weight: 800 },
@@ -3056,9 +3057,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   lavender: {
-    rankingFontFamily: '"Jua", sans-serif', rankingFontSize: 30, rankingFontWeight: 400,
+    rankingFontFamily: '"Jua", sans-serif', rankingFontSize: 48, rankingFontWeight: 400,
     rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: 0, rankingRowGap: 11, rankingColumnGap: 26,
-    rankingTitleSize: 27, rankingTitleAlign: "center", rankingTitleColor: "#dccbff", rankingNameColor: "#eee7ff", rankingAmountColor: "#cbb2ff",
+    rankingTitleSize: 40, rankingTitleAlign: "center", rankingTitleColor: "#dccbff", rankingNameColor: "#eee7ff", rankingAmountColor: "#cbb2ff",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "zoom", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#fff4ad", badge: "#9877d8", size: 123, weight: 900 }, { color: "#eee7ff", badge: "#8061bd", size: 113, weight: 800 },
@@ -3066,9 +3067,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   mono: {
-    rankingFontFamily: '"Nanum Gothic Coding", monospace', rankingFontSize: 27, rankingFontWeight: 700,
+    rankingFontFamily: '"Nanum Gothic Coding", monospace', rankingFontSize: 44, rankingFontWeight: 700,
     rankingUseLineHeight: true, rankingLineHeight: 1.2, rankingLetterSpacing: 1, rankingRowGap: 6, rankingColumnGap: 20,
-    rankingTitleSize: 20, rankingTitleAlign: "left", rankingTitleColor: "#ffffff", rankingNameColor: "#f1f1f1", rankingAmountColor: "#c8c8c8",
+    rankingTitleSize: 32, rankingTitleAlign: "left", rankingTitleColor: "#ffffff", rankingNameColor: "#f1f1f1", rankingAmountColor: "#c8c8c8",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "none", rankingBackgroundEnabled: true,
     rankingRankStyles: rankingStyles(
       { color: "#ffffff", badge: "#777777", size: 114, weight: 900 }, { color: "#e0e0e0", badge: "#5e5e5e", size: 108, weight: 800 },
@@ -3076,9 +3077,9 @@ const RANKING_THEME_PRESETS = {
     ),
   },
   transparent: {
-    rankingFontFamily: '"Noto Sans KR", sans-serif', rankingFontSize: 28, rankingFontWeight: 700,
+    rankingFontFamily: '"Noto Sans KR", sans-serif', rankingFontSize: 46, rankingFontWeight: 700,
     rankingUseLineHeight: true, rankingLineHeight: 1.2, rankingLetterSpacing: -0.5, rankingRowGap: 5, rankingColumnGap: 20,
-    rankingTitleSize: 22, rankingTitleAlign: "right", rankingTitleColor: "#ffffff", rankingNameColor: "#ffffff", rankingAmountColor: "#dbeaff",
+    rankingTitleSize: 34, rankingTitleAlign: "right", rankingTitleColor: "#ffffff", rankingNameColor: "#ffffff", rankingAmountColor: "#dbeaff",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "fade", rankingBackgroundEnabled: false,
     rankingRankStyles: rankingStyles(
       { color: "#ffe080", badge: "#ffffff", size: 116, weight: 900 }, { color: "#e8eef5", badge: "#ffffff", size: 108, weight: 800 },
@@ -3607,7 +3608,7 @@ function Settings({ mode }) {
   const [youtubeStatus, setYoutubeStatus] = useState({ state:"disabled", text:"유튜브 채팅 수신 꺼짐" });
   const [saved, setSaved] = useState("");
   const [previewRun, setPreviewRun] = useState(0);
-  const [rankingPreviewCount, setRankingPreviewCount] = useState(60);
+  const [rankingPreviewCount, setRankingPreviewCount] = useState(10);
   const [openTiers, setOpenTiers] = useState({});
   const [openAlertSections, setOpenAlertSections] = useState({});
   const [leaveRequest, setLeaveRequest] = useState(null);
@@ -3647,14 +3648,24 @@ function Settings({ mode }) {
     setSettingsLoadError("");
     api("/api/settings").then((value) => {
       if(!active)return;
-      setSettings(value);
-      setSavedSettings(value);
+      const loadedSettings = mode === "ranking"
+        ? {
+            ...value,
+            rankingColumns: Math.max(1, Math.min(3, Number(value.rankingColumns) || 1)),
+            rankingRowsPerColumn: Math.max(
+              1,
+              Math.min(30, Number(value.rankingRowsPerColumn) || 10),
+            ),
+          }
+        : value;
+      setSettings(loadedSettings);
+      setSavedSettings(loadedSettings);
       setSettingsLoaded(true);
     }).catch((error)=>{
       if(active)setSettingsLoadError(error.message||"설정을 불러오지 못했습니다.");
     });
     return()=>{active=false;};
-  }, [settingsLoadAttempt]);
+  }, [mode, settingsLoadAttempt]);
   useEffect(() => {
     if (mode !== "alert" || !settingsLoaded) return;
     let active = true;
@@ -5994,7 +6005,7 @@ function Settings({ mode }) {
                     글자 크기
                     <input
                       type="range"
-                      min="16"
+                      min="24"
                       max="72"
                       value={settings.rankingFontSize}
                       onChange={(e) =>
@@ -6168,28 +6179,35 @@ function Settings({ mode }) {
                     </select>
                   </label>
                   <label>
-                    열 수 (1~5)
+                    열 수 (1~3)
                     <input
                       type="number"
                       min="1"
-                      max="5"
+                      max="3"
                       value={settings.rankingColumns}
-                      onChange={(e) =>
-                        update("rankingColumns", Math.max(1, Math.min(5, Number(e.target.value))))
-                      }
+                      onChange={(e) => {
+                        const columns = Math.max(1, Math.min(3, Number(e.target.value)));
+                        setSettings((current) => ({
+                          ...current,
+                          rankingColumns: columns,
+                          rankingRowsPerColumn: Math.min(current.rankingRowsPerColumn, 30),
+                        }));
+                      }}
                     />
+                    <small>한 열에 30명을 먼저 채우고, 31명부터 2열, 61명부터 3열을 사용합니다.</small>
                   </label>
                   <label>
-                    한 열의 인원 (1~20)
+                    한 열의 인원 (1~30)
                     <input
                       type="number"
                       min="1"
-                      max="20"
+                      max="30"
                       value={settings.rankingRowsPerColumn}
                       onChange={(e) =>
-                        update("rankingRowsPerColumn", Math.max(1, Math.min(20, Number(e.target.value))))
+                        update("rankingRowsPerColumn", Math.max(1, Math.min(30, Number(e.target.value))))
                       }
                     />
+                    <small>전체 표시 인원은 열 수 × 한 열의 인원입니다.</small>
                   </label>
                   <label>
                     등장 효과
@@ -6358,7 +6376,7 @@ function Settings({ mode }) {
                 )}
                 {!isAlert && (
                   <div className="ranking-preview-count" aria-label="미리보기 후원자 수">
-                    {[20, 40, 60, 80, 100].map((count) => (
+                    {[10, 15, 16, 30, 60, 90].map((count) => (
                       <button
                         key={count}
                         type="button"
@@ -6460,8 +6478,8 @@ function Settings({ mode }) {
 
 const ALERT_OUTPUT_WIDTH = 1920;
 const ALERT_OUTPUT_HEIGHT = 1080;
-const RANKING_OUTPUT_WIDTH = 1920;
-const RANKING_OUTPUT_HEIGHT = 1080;
+const RANKING_OUTPUT_WIDTH = 1200;
+const RANKING_OUTPUT_HEIGHT = 800;
 
 function AlertOutputCanvas({ children, className = "" }) {
   const frameRef = useRef(null);
@@ -6647,8 +6665,8 @@ function RankingPreview({ settings, count = 60 }) {
         items={sample}
         settings={{
           ...settings,
-          rankingColumns: 5,
-          rankingRowsPerColumn: 20,
+          rankingColumns: Math.max(1, Math.min(3, settings.rankingColumns || 1)),
+          rankingRowsPerColumn: 30,
         }}
       />
     </RankingOutputCanvas>
@@ -6656,8 +6674,15 @@ function RankingPreview({ settings, count = 60 }) {
 }
 
 function RankingCard({ items, settings, onEdit }) {
-  const rows = Math.max(1, Math.min(20, settings.rankingRowsPerColumn || 10));
-  const maxColumns = Math.max(1, Math.min(5, settings.rankingColumns || 1));
+  const maxColumns = Math.max(1, Math.min(3, settings.rankingColumns || 1));
+  const capacityRows = Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
+  const visible = items.slice(0, capacityRows * maxColumns);
+  const columns = Array.from(
+    { length: Math.min(maxColumns, Math.ceil(visible.length / capacityRows) || 1) },
+    (_, column) => visible.slice(column * capacityRows, (column + 1) * capacityRows),
+  );
+  const actualRows = Math.max(1, ...columns.map((column) => column.length));
+  const sizingRows = visible.length <= 15 ? 15 : Math.max(16, actualRows);
   const estimatedLineHeight = settings.rankingUseLineHeight
     ? settings.rankingLineHeight
     : 1.2;
@@ -6666,12 +6691,22 @@ function RankingCard({ items, settings, onEdit }) {
     lavender: 18,
     transparent: 4,
   }[settings.rankingTheme] ?? 10;
+  const effectiveRowGap = sizingRows > 20
+    ? Math.min(settings.rankingRowGap, 1)
+    : sizingRows >= 15 || maxColumns >= 2
+      ? Math.min(settings.rankingRowGap, 3)
+      : settings.rankingRowGap;
+  const effectiveRowPadding = sizingRows > 20
+    ? 1
+    : sizingRows >= 15
+      ? 2
+      : themeRowVerticalPadding / 2;
   const configuredRankStyles =
     settings.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles;
   const topRankScaleOverhead = settings.rankingRankHighlightEnabled === false
     ? 0
     : configuredRankStyles
-        .slice(0, Math.min(3, rows))
+        .slice(0, Math.min(3, actualRows))
         .reduce(
           (total, rankStyle) =>
             total +
@@ -6681,29 +6716,36 @@ function RankingCard({ items, settings, onEdit }) {
             ),
           0,
         );
-  const availableRowsHeight = RANKING_OUTPUT_HEIGHT - 180;
-  const fixedRowsHeight =
-    rows * (settings.rankingRowGap + themeRowVerticalPadding);
+  const titleHeight = settings.rankingShowTitle
+    ? settings.rankingTitleSize + 28
+    : 0;
+  const availableRowsHeight = RANKING_OUTPUT_HEIGHT - 76 - titleHeight;
+  const fixedRowsHeight = sizingRows * (effectiveRowGap + effectiveRowPadding * 2);
   const safeFontSize = Math.max(
     12,
     Math.floor(
       (availableRowsHeight - fixedRowsHeight) /
-        (estimatedLineHeight * (rows + topRankScaleOverhead)),
+        (estimatedLineHeight * (sizingRows + topRankScaleOverhead)),
     ),
   );
-  const effectiveFontSize = Math.min(settings.rankingFontSize, safeFontSize);
-  const visible = items.slice(0, rows * maxColumns);
+  const columnFontLimit = maxColumns >= 2 ? 22 : 72;
+  const countFontLimit = visible.length <= 15
+    ? columnFontLimit
+    : visible.length <= 30
+      ? (maxColumns >= 2 ? 20 : 36)
+      : visible.length <= 60
+        ? 18
+        : 16;
+  const effectiveFontSize = Math.min(settings.rankingFontSize, safeFontSize, countFontLimit);
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
-  const columns = Array.from(
-    { length: Math.min(maxColumns, Math.ceil(visible.length / rows) || 1) },
-    (_, column) => visible.slice(column * rows, (column + 1) * rows),
-  );
   const firstGridColumn = maxColumns - columns.length + 1;
   const cardStyle = {
     fontFamily: settings.rankingFontFamily,
     "--ranking-size": `${effectiveFontSize}px`,
-    "--ranking-gap": `${settings.rankingRowGap}px`,
-    "--column-gap": `${settings.rankingColumnGap}px`,
+    "--ranking-gap": `${effectiveRowGap}px`,
+    "--ranking-row-padding": `${effectiveRowPadding}px`,
+    "--ranking-item-gap": `${maxColumns >= 2 ? 8 : 30}px`,
+    "--column-gap": `${maxColumns >= 2 ? Math.min(settings.rankingColumnGap, 12) : settings.rankingColumnGap}px`,
     "--line-height": settings.rankingUseLineHeight
       ? settings.rankingLineHeight
       : "normal",
@@ -6720,7 +6762,7 @@ function RankingCard({ items, settings, onEdit }) {
     : firstGridColumn;
   return (
     <div
-      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} ranking-enter-${settings.rankingAnimation}`}
+      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} ranking-columns-${maxColumns} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
       style={cardStyle}
     >
       {settings.rankingShowTitle && (
@@ -6737,6 +6779,9 @@ function RankingCard({ items, settings, onEdit }) {
             style={{
               gridColumn: titleGridColumn,
               textAlign: settings.rankingTitleAlign,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
             }}
           >
             {settings.rankingTitle || "오늘의 후원"}
@@ -6754,7 +6799,7 @@ function RankingCard({ items, settings, onEdit }) {
             style={{ gridColumn: firstGridColumn + columnIndex }}
           >
             {column.map((item, rowIndex) => {
-              const index = columnIndex * rows + rowIndex;
+              const index = columnIndex * capacityRows + rowIndex;
               const savedRankStyles = settings.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles;
               const rankStyle = index < 3
                 ? savedRankStyles[index]

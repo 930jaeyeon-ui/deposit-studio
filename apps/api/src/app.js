@@ -405,7 +405,10 @@ function cleanSettings(input) {
   })) : [];
   settings.rankingLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   settings.rankingFontFamily = String(settings.rankingFontFamily || DEFAULT_SETTINGS.rankingFontFamily).slice(0,120);
-  settings.rankingFontSize = Math.max(16, Math.min(72, Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize)));
+  const legacyRankingCanvas = Number(input?.rankingCanvasVersion || 1) < 2;
+  const requestedRankingFontSize = Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize);
+  settings.rankingFontSize = Math.max(16, Math.min(72, legacyRankingCanvas && requestedRankingFontSize <= 32 ? Math.round(requestedRankingFontSize * 1.6) : requestedRankingFontSize));
+  settings.rankingCanvasVersion = 2;
   settings.rankingFontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.rankingFontWeight) || 700)));
   settings.rankingUseLineHeight = Boolean(settings.rankingUseLineHeight);
   settings.rankingLineHeight = Math.max(.8, Math.min(2, Number(settings.rankingLineHeight) || 1.2));
@@ -425,12 +428,13 @@ function cleanSettings(input) {
   settings.rankingNameSuffix = String(settings.rankingNameSuffix || '').slice(0,12);
   settings.rankingAmountSuffix = String(settings.rankingAmountSuffix || '').slice(0,12);
   settings.rankingShowTitle = settings.rankingShowTitle !== false;
-  settings.rankingTitleSize = Math.max(14,Math.min(72,Number(settings.rankingTitleSize)||24));
+  const requestedRankingTitleSize = Number(settings.rankingTitleSize) || DEFAULT_SETTINGS.rankingTitleSize;
+  settings.rankingTitleSize = Math.max(14,Math.min(72,legacyRankingCanvas && requestedRankingTitleSize <= 29 ? Math.round(requestedRankingTitleSize * 1.5) : requestedRankingTitleSize));
   settings.rankingTitleAlign = ['left','center','right'].includes(settings.rankingTitleAlign)?settings.rankingTitleAlign:'left';
   settings.rankingTitleColumn = settings.rankingTitleColumn === 'last' ? 'last' : 'first';
   for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor','rankingNameSuffixColor','rankingAmountSuffixColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
-  settings.rankingColumns = Math.max(1,Math.min(5,Math.floor(Number(settings.rankingColumns)||1)));
-  settings.rankingRowsPerColumn = Math.max(1,Math.min(20,Math.floor(Number(settings.rankingRowsPerColumn)||10)));
+  settings.rankingColumns = Math.max(1,Math.min(3,Math.floor(Number(settings.rankingColumns)||1)));
+  settings.rankingRowsPerColumn = Math.max(1,Math.min(30,Math.floor(Number(settings.rankingRowsPerColumn)||DEFAULT_SETTINGS.rankingRowsPerColumn)));
   settings.rankingAnimation = ['none','fade','slide-up','slide-left','zoom','stagger'].includes(settings.rankingAnimation)?settings.rankingAnimation:'fade';
   settings.rankingRankHighlightEnabled = settings.rankingRankHighlightEnabled !== false;
   settings.rankingRankStyles = Array.from({length:4},(_,index)=>{const source=Array.isArray(settings.rankingRankStyles)?settings.rankingRankStyles[index]||{}:{};const fallback=DEFAULT_SETTINGS.rankingRankStyles[index];return {color:String(source.color||fallback.color).slice(0,20),amountColor:String(source.amountColor||settings.rankingAmountColor||fallback.amountColor||DEFAULT_SETTINGS.rankingAmountColor).slice(0,20),badge:String(source.badge||fallback.badge).slice(0,20),size:Math.max(70,Math.min(160,Number(source.size)||fallback.size)),weight:Math.max(100,Math.min(900,Number(source.weight)||fallback.weight))};});

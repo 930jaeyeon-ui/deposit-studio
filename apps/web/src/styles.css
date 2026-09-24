@@ -650,13 +650,13 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 .ranking-inline-color-setting{display:grid!important;grid-template-columns:minmax(92px,.55fr) minmax(0,1fr);align-items:center;gap:12px}.ranking-inline-color-setting>.inline-color-control{margin-top:0}
 .ranking-suffix-setting{display:grid!important;grid-template-columns:minmax(92px,.55fr) minmax(0,1fr);align-items:center;gap:12px}.ranking-suffix-control{display:grid;grid-template-columns:minmax(90px,120px) 64px minmax(105px,1fr);align-items:stretch;gap:7px}.ranking-suffix-control>input{margin-top:0!important}.ranking-suffix-control>input[type=color]{box-sizing:border-box;width:64px;height:38px;min-height:38px;padding:4px;border:1px solid var(--n9-border);border-radius:8px;background:var(--n9-card)}.ranking-suffix-control>.color-code-input{height:38px;min-height:38px}.donor-name-suffix,.donor-amount-suffix{white-space:pre}.donor-amount-suffix{margin-left:.06em}@media(max-width:760px){.ranking-suffix-setting{grid-template-columns:1fr}.ranking-suffix-control{grid-template-columns:minmax(80px,110px) 52px minmax(95px,1fr)}.ranking-suffix-control>input[type=color]{width:52px}}
 
-/* One canonical 600 × 800 ranking canvas is shared by editor preview, full preview and OBS. */
+/* One canonical 1200 × 800 ranking canvas is shared by editor preview, full preview and OBS. */
 .ranking-output-frame{position:relative;width:100vw;height:100vh;overflow:hidden;background:transparent}
 .ranking-output-canvas{position:absolute;top:50%;left:50%;transform-origin:center}
 .ranking-output-content{width:100%;height:100%;padding:20px}
 .ranking-output-content>.widget-card{width:100%;max-width:none}
-.ranking-output-frame.ranking-preview{width:100%;height:auto;min-height:0;aspect-ratio:16/9;margin-top:10px;padding:0;border:1px solid #657284;border-radius:14px;overflow:hidden}
-.ranking-output-frame.ranking-preview>.ranking-output-canvas{width:1920px}
+.ranking-output-frame.ranking-preview{width:min(100%,1200px);height:auto;min-height:0;aspect-ratio:3/2;margin:10px auto 0;padding:0;border:1px solid #657284;border-radius:14px;overflow:hidden}
+.ranking-output-frame.ranking-preview>.ranking-output-canvas{width:1200px}
 @media(max-width:600px){.ranking-output-frame.ranking-preview{min-height:0;padding:0}}
 
 /* OBS browser source stays clean; controls appear only while the source is being interacted with. */
@@ -665,6 +665,10 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 .interactive-ranking-root:hover .ranking-interact-trigger,.ranking-interact-trigger:focus-visible{opacity:1;pointer-events:auto;transform:none}
 .widget-row[role=button]{cursor:pointer}
 .widget-row[role=button]:hover{outline:2px solid #78b8ff;outline-offset:2px}
+.widget-card:is(.ranking-density-compact,.ranking-density-dense) .widget-row{margin-top:var(--ranking-gap);padding:var(--ranking-row-padding) 2px;border-radius:3px}
+.widget-card .widget-row{gap:var(--ranking-item-gap,30px)}
+.widget-card:is(.ranking-columns-2,.ranking-columns-3) .widget-row:is(.row-left,.row-center,.row-right) b{min-width:0;max-width:calc(100% - 96px);flex:0 1 auto;overflow:hidden}
+.widget-card:is(.ranking-columns-2,.ranking-columns-3) .widget-row .donor-amount{flex:none}
 .ranking-interact-backdrop{position:fixed;inset:0;z-index:40;display:grid;place-items:center;background:#07101dcc}
 .ranking-interact-editor{width:min(420px,calc(100vw - 32px));padding:24px;border:1px solid #3d5d82;border-radius:16px;background:#111d2d;color:#fff;box-shadow:0 24px 70px #0009}
 .ranking-interact-editor strong{display:block;font-size:20px}.ranking-interact-editor p{margin:7px 0 18px;color:#a8bad0;font-size:12px}
