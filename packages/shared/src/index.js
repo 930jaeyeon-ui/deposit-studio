@@ -55,6 +55,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   ttsRate: 1,
   ttsPitch: 0,
   ttsVolume: 100,
+  ttsWordReplacements: [],
+  crewTtsWordReplacements: [],
   amountTiers: [],
   crewGradeEnabled: false,
   crewGradeMinimumAmount: 1000000,
@@ -140,4 +142,57 @@ export function normalizeDonation(input) {
 
 export function formatWon(amount) {
   return new Intl.NumberFormat('ko-KR').format(amount);
+}
+
+export function validateAmountTiers(tiers) {
+  if (!Array.isArray(tiers)) return;
+  if (tiers.length > 12) throw new Error('금액 구간은 최대 12개까지 등록할 수 있습니다.');
+  const ranges = tiers.map((tier, index) => {
+    const min = Number(tier?.minAmount);
+    const max = tier?.maxAmount == null || tier.maxAmount === '' ? null : Number(tier.maxAmount);
+    if (!Number.isSafeInteger(min) || min < 0 || min > 100000000) {
+      throw new Error(`${index + 1}번째 금액 구간의 최소 금액을 0원 이상 1억원 이하의 정수로 입력해주세요.`);
+    }
+    if (max != null && (!Number.isSafeInteger(max) || max < 0 || max > 100000000)) {
+      throw new Error(`${index + 1}번째 금액 구간의 최대 금액을 0원 이상 1억원 이하의 정수로 입력해주세요.`);
+    }
+    if (max != null && max < min) {
+      throw new Error(`${index + 1}번째 금액 구간의 최대 금액은 최소 금액보다 크거나 같아야 합니다.`);
+    }
+    return { min, max, index };
+  }).sort((a, b) => a.min - b.min || a.index - b.index);
+  for (let index = 1; index < ranges.length; index += 1) {
+    const previous = ranges[index - 1];
+    const current = ranges[index];
+    if (previous.max == null || current.min <= previous.max) {
+      throw new Error('금액 구간이 서로 겹치지 않게 입력해주세요. 경계 금액도 한 구간에만 포함되어야 합니다.');
+    }
+  }
+}
+
+export function normalizeTtsWordReplacements(items) {
+  if (!Array.isArray(items)) return [];
+  if (items.length > 100) throw new Error('금지 단어는 최대 100개까지 등록할 수 있습니다.');
+  const seen = new Set();
+  return items.map((item, index) => {
+    const source = String(item?.source || '').trim();
+    const replacement = String(item?.replacement || '').trim();
+    if (!source || !replacement) throw new Error(`${index + 1}번째 금지 단어와 바뀌는 단어를 모두 입력해주세요.`);
+    if (source.length > 50 || replacement.length > 100) throw new Error('금지 단어는 50자, 바뀌는 단어는 100자 이하로 입력해주세요.');
+    const key = source.toLocaleLowerCase('ko-KR');
+    if (seen.has(key)) throw new Error(`‘${source}’ 금지 단어가 중복 등록되어 있습니다.`);
+    seen.add(key);
+    return { source, replacement };
+  });
+}
+
+export function applyTtsWordReplacements(text, items) {
+  const replacements = normalizeTtsWordReplacements(items);
+  if (!replacements.length) return String(text || '');
+  const bySource = new Map(replacements.map((item) => [item.source.toLocaleLowerCase('ko-KR'), item.replacement]));
+  const pattern = replacements
+    .map((item) => item.source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .sort((a, b) => b.length - a.length)
+    .join('|');
+  return String(text || '').replace(new RegExp(pattern, 'giu'), (match) => bySource.get(match.toLocaleLowerCase('ko-KR')) || match);
 }

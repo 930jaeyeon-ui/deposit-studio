@@ -7,10 +7,10 @@ import {
   useState,
 } from "react";
 import Chart from "react-apexcharts";
-import { DEFAULT_SETTINGS, formatWon } from "@deposit-studio/shared";
+import { applyTtsWordReplacements, DEFAULT_SETTINGS, formatWon, validateAmountTiers } from "@deposit-studio/shared";
 
 const ROLE_LABELS = {
-  super: "슈퍼 계정",
+  super: "관리자",
   admin: "관리자",
   member: "일반 계정",
 };
@@ -181,7 +181,9 @@ export function App() {
   }, []);
   const overlayMatch = location.pathname.match(/^\/overlay\/([a-f0-9]{48})$/);
   const rankingMatch = location.pathname.match(/^\/ranking\/([a-f0-9]{48})$/);
+  const fullRankingMatch = location.pathname.match(/^\/ranking-full\/([a-f0-9]{48})$/);
   if (overlayMatch) return <Overlay token={overlayMatch[1]} />;
+  if (fullRankingMatch) return <Widget token={fullRankingMatch[1]} full />;
   if (rankingMatch) return <Widget token={rankingMatch[1]} />;
   if (location.pathname === "/overlay")
     return new URLSearchParams(location.search).get("preview") === "1" ? (
@@ -191,6 +193,7 @@ export function App() {
     );
   if (location.pathname === "/recent") return <Widget />;
   if (location.pathname === "/ranking") return <Widget type="ranking" />;
+  if (location.pathname === "/ranking-full") return <Widget type="ranking" full />;
   return <AuthenticatedApp />;
 }
 
@@ -223,7 +226,6 @@ function AuthenticatedApp() {
 
 function AuthenticatedRoutes() {
   const { user } = useAuth();
-  const canManage = ["super", "admin"].includes(user.role);
   const isSuper = user.role === "super";
   if (location.pathname === "/" || location.pathname === "/my-dashboard")
     return <MyDashboard />;
@@ -231,10 +233,11 @@ function AuthenticatedRoutes() {
   if (location.pathname === "/deposits") return <DepositHistory />;
   if (location.pathname === "/deposits/live") return <LiveDepositPopup />;
   if (location.pathname === "/settings/youtube-donors") return <YoutubeDonorLinksPopup />;
+  if (location.pathname === "/settings/tts-words") return <TtsWordReplacements />;
   if (location.pathname === "/phone-test") return isSuper ? <PhoneTestPage /> : <AccessDenied />;
   if (location.pathname === "/admin/notification-rules") return isSuper ? <NotificationRules /> : <AccessDenied />;
-  if (location.pathname === "/admin/api-logs") return canManage ? <ApiLogs /> : <AccessDenied />;
-  if (location.pathname === "/admin/users") return <AdminAccounts />;
+  if (location.pathname === "/admin/api-logs") return isSuper ? <ApiLogs /> : <AccessDenied />;
+  if (location.pathname === "/admin/users") return isSuper ? <AdminAccounts /> : <AccessDenied />;
   if (location.pathname === "/obs") return <ObsSetup />;
   if (location.pathname === "/settings/ranking")
     return <Settings mode="ranking" />;
@@ -317,7 +320,7 @@ function AccessDenied() {
       <div className="shell">
         <section className="panel access-denied">
           <h1>접근 권한이 없습니다</h1>
-          <p>이 화면은 관리자 계정만 사용할 수 있습니다.</p>
+          <p>이 화면을 사용할 수 있는 관리 권한이 없습니다.</p>
         </section>
       </div>
     </PageLayout>
@@ -332,6 +335,7 @@ const PAGE_INFO = {
   "/settings/alert": ["내 방송", "후원 알림 설정"],
   "/settings": ["내 방송", "후원 알림 설정"],
   "/settings/ranking": ["내 방송", "후원 순위표 설정"],
+  "/settings/tts-words": ["방송 관리", "금지 단어 설정"],
   "/obs": ["내 방송", "OBS 연결"],
   "/phone-test": ["내 방송", "휴대폰 연동 테스트"],
   "/admin/users": ["관리", "계정 관리"],
@@ -611,7 +615,7 @@ function PageLayout({ children }) {
       : path === "/settings"
         ? "/settings/alert"
         : path;
-  const canManage = ["super", "admin"].includes(user.role);
+  const isSuper = user.role === "super";
   const openLiveManager = () => {
     const popup = window.open(
       "/deposits/live",
@@ -630,6 +634,7 @@ function PageLayout({ children }) {
     "/deposits": "₩",
     "/settings/alert": "◉",
     "/settings/ranking": "≡",
+    "/settings/tts-words": "Aa",
     "/obs": "↗",
     "/phone-test": "⌁",
     "/admin/users": "♙",
@@ -681,13 +686,19 @@ function PageLayout({ children }) {
             label="후원 순위표 설정"
             hint="순위 · 테마 · 표시 인원"
           />
+          <span className="nav-label nav-group">방송 관리</span>
+          <Link
+            href="/settings/tts-words"
+            label="금지 단어 설정"
+            hint="TTS에서 안전한 단어로 변경"
+          />
           <Link
             href="/obs"
             label="OBS 연결"
             hint="송출 주소 · 해상도 · 미리보기"
           />
           {user.role === "super" && <Link href="/phone-test" label="휴대폰 연동 테스트" hint="실시간 API 수신 확인" />}
-          {canManage && (
+          {isSuper && (
             <>
               <span className="nav-label nav-group">관리</span>
               <Link
@@ -695,7 +706,7 @@ function PageLayout({ children }) {
                 label="계정 관리"
                 hint="크루 멤버와 권한"
               />
-              {user.role === "super" && <Link href="/admin/notification-rules" label="알림 파싱 규칙" hint="앱 패키지별 정규식" />}
+              <Link href="/admin/notification-rules" label="알림 파싱 규칙" hint="앱 패키지별 정규식" />
               <Link href="/admin/api-logs" label="API 로그" hint="요청과 응답 기록" />
             </>
           )}
@@ -2124,7 +2135,7 @@ function AdminAccounts() {
     loginId: "",
     role: "member",
   });
-  const canManage = ["super", "admin"].includes(user.role);
+  const canManage = user.role === "super";
   const load = () =>
     api("/api/users")
       .then(setAccounts)
@@ -2273,7 +2284,7 @@ function AdminAccounts() {
           {isSuper && (
             <article>
               <b>{accounts.filter((item) => item.role === "super").length}</b>
-              <span>슈퍼 계정</span>
+              <span>관리자 계정</span>
             </article>
           )}
           <article>
@@ -2436,6 +2447,42 @@ function ApiLogs() {
   </section></div></PageLayout>;
 }
 
+function WordReplacementEditor({ title, description, items, onChange, onSave, saving, readOnly = false }) {
+  const add = () => onChange([...items, { source:"", replacement:"" }]);
+  const change = (index, key, value) => onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, [key]:value } : item));
+  const remove = (index) => onChange(items.filter((_, itemIndex) => itemIndex !== index));
+  return <section className="panel tts-word-panel">
+    <div className="section-heading"><div><h2>{title}</h2><p>{description}</p></div>{!readOnly&&<button type="button" className="secondary-button" onClick={add} disabled={items.length>=100}>+ 단어 추가</button>}</div>
+    <div className="tts-word-list">
+      {items.map((item,index)=><article key={index}>
+        <label>금지 단어<input value={item.source} disabled={readOnly} maxLength="50" placeholder="예: 섹스" onChange={event=>change(index,"source",event.target.value)}/></label>
+        <span aria-hidden="true">→</span>
+        <label>바뀌는 단어<input value={item.replacement} disabled={readOnly} maxLength="100" placeholder="예: 예뻐" onChange={event=>change(index,"replacement",event.target.value)}/></label>
+        {!readOnly&&<button type="button" className="danger" onClick={()=>remove(index)}>삭제</button>}
+      </article>)}
+      {!items.length&&<p className="empty">등록된 단어가 없습니다.</p>}
+    </div>
+    {!readOnly&&<button type="button" className="primary-button tts-word-save" disabled={saving} onClick={onSave}>{saving?"저장 중...":"저장"}</button>}
+  </section>;
+}
+
+function TtsWordReplacements() {
+  const [data,setData]=useState({personal:[],crew:[],canManageCrew:false});
+  const [personal,setPersonal]=useState([]),[crew,setCrew]=useState([]);
+  const [sample,setSample]=useState("섹스라는 단어를 안전하게 읽어봅니다."),[message,setMessage]=useState(""),[saving,setSaving]=useState("");
+  const load=()=>api("/api/tts-word-replacements").then(value=>{setData(value);setPersonal(value.personal||[]);setCrew(value.crew||[]);}).catch(error=>setMessage(error.message));
+  useEffect(()=>{load();},[]);
+  const save=async(type)=>{setSaving(type);setMessage("");try{const value=await api(type==="crew"?"/api/crew/tts-word-replacements":"/api/tts-word-replacements",{method:"PUT",body:JSON.stringify({items:type==="crew"?crew:personal})});setData(value);setPersonal(value.personal||[]);setCrew(value.crew||[]);setMessage(type==="crew"?"크루 공통 금지 단어를 저장했습니다.":"내 금지 단어를 저장했습니다.");}catch(error){setMessage(error.message);}finally{setSaving("");}};
+  let preview;
+  try { preview=applyTtsWordReplacements(applyTtsWordReplacements(sample,crew),personal); } catch { preview=sample; }
+  return <PageLayout><div className="shell tts-words-page"><header><div><span className="eyebrow">SAFE TTS</span><h1>금지 단어 설정</h1><p className="page-description">후원 알림을 음성으로 읽기 직전에 지정한 표현을 안전한 단어로 자동 변경합니다.</p></div></header>
+    {message&&<p className="notice">{message}</p>}
+    <section className="panel tts-word-preview"><h2>치환 결과 미리보기</h2><label>읽을 문장<textarea value={sample} onChange={event=>setSample(event.target.value)} rows="2"/></label><div><small>TTS가 읽는 문장</small><strong>{preview||"문장을 입력해주세요."}</strong></div><p>화면에 표시되는 후원 문구는 바뀌지 않고, 음성으로 읽는 내용만 변경됩니다.</p></section>
+    <WordReplacementEditor title="크루 공통 목록" description={data.canManageCrew?"여기에 등록한 규칙은 모든 스트리머에게 공통 적용됩니다.":"크루 공통 규칙이며 내 계정에도 자동 적용됩니다."} items={crew} onChange={setCrew} onSave={()=>save("crew")} saving={saving==="crew"} readOnly={!data.canManageCrew}/>
+    <WordReplacementEditor title="내 추가 목록" description="내 방송에만 적용할 별명, 비속어, 잘못 읽는 표현을 추가하세요." items={personal} onChange={setPersonal} onSave={()=>save("personal")} saving={saving==="personal"}/>
+  </div></PageLayout>;
+}
+
 function ObsSetup() {
   const [copied, setCopied] = useState("");
   const [paths, setPaths] = useState(null);
@@ -2457,10 +2504,18 @@ function ObsSetup() {
         },
         {
           key: "ranking",
-          title: "후원 순위표",
-          description: "방송 화면에 계속 표시하는 누적 후원 순위",
+          title: "후원 순위표 · 기존 구성",
+          description: "현재 방송 구성에 사용하는 기존 누적 후원 순위",
           path: paths.rankingPath,
           previewPath: "/ranking",
+          size: `${RANKING_OUTPUT_WIDTH} × ${RANKING_OUTPUT_HEIGHT}`,
+        },
+        {
+          key: "ranking-full",
+          title: "후원 순위표 · 전체화면",
+          description: "오늘 후원자를 빠짐없이 표시하며 한 열에 최대 50명씩 자동 분할",
+          path: paths.fullRankingPath,
+          previewPath: "/ranking-full",
           size: `${RANKING_OUTPUT_WIDTH} × ${RANKING_OUTPUT_HEIGHT}`,
         },
       ]
@@ -2492,7 +2547,7 @@ function ObsSetup() {
           {sources.map((source) => (
             <article className="panel obs-card" key={source.key}>
               <span className="section-kicker">
-                {source.key === "alert" ? "ALERT SOURCE" : "RANKING SOURCE"}
+                {source.key === "alert" ? "ALERT SOURCE" : source.key === "ranking-full" ? "FULL RANKING SOURCE" : "RANKING SOURCE"}
               </span>
               <h2>{source.title}</h2>
               <p>{source.description}</p>
@@ -3609,6 +3664,16 @@ function Settings({ mode }) {
   const [saved, setSaved] = useState("");
   const [previewRun, setPreviewRun] = useState(0);
   const [rankingPreviewCount, setRankingPreviewCount] = useState(10);
+  const rankingPreviewRows = Math.max(1, Math.min(30, Number(settings.rankingRowsPerColumn) || 10));
+  const rankingPreviewColumns = Math.max(1, Math.min(3, Number(settings.rankingColumns) || 1));
+  const rankingPreviewCounts = [...new Set([
+    10,
+    15,
+    16,
+    rankingPreviewRows,
+    rankingPreviewRows + 1,
+    rankingPreviewRows * rankingPreviewColumns,
+  ])].filter((count) => count <= rankingPreviewRows * rankingPreviewColumns).sort((a, b) => a - b);
   const [openTiers, setOpenTiers] = useState({});
   const [openAlertSections, setOpenAlertSections] = useState({});
   const [leaveRequest, setLeaveRequest] = useState(null);
@@ -3708,6 +3773,7 @@ function Settings({ mode }) {
     setPreviewRun((current) => current + 1);
   };
   async function persistSettings() {
+    validateAmountTiers(settings.amountTiers);
     const next = await api("/api/settings", {
       method: "PUT",
       body: JSON.stringify(settings),
@@ -3827,14 +3893,43 @@ function Settings({ mode }) {
     });
   };
   const addTier = () => {
+    const currentTiers = settings.amountTiers || [];
+    if (currentTiers.length >= 12) {
+      setSaved("금액 구간은 최대 12개까지 등록할 수 있습니다.");
+      return;
+    }
+    const sortedTiers = [...currentTiers].sort(
+      (a, b) => Number(a.minAmount || 0) - Number(b.minAmount || 0),
+    );
+    const lastTier = sortedTiers.at(-1);
+    let minAmount = 100000;
+    let nextTiers = currentTiers;
+    if (lastTier) {
+      if (lastTier.maxAmount == null) {
+        minAmount = Number(lastTier.minAmount || 0) + 100000;
+        if (minAmount > 100000000) {
+          setSaved("마지막 구간 뒤에 새 구간을 추가할 수 없습니다. 기존 구간의 금액을 먼저 조정해주세요.");
+          return;
+        }
+        nextTiers = currentTiers.map((tier) =>
+          tier.id === lastTier.id ? { ...tier, maxAmount: minAmount - 1 } : tier,
+        );
+      } else {
+        minAmount = Number(lastTier.maxAmount) + 1;
+      }
+    }
+    if (minAmount > 100000000) {
+      setSaved("금액 구간은 1억원 이하에서만 등록할 수 있습니다.");
+      return;
+    }
     const id = crypto.randomUUID();
     update("amountTiers", [
-      ...(settings.amountTiers || []),
+      ...nextTiers,
       {
         id,
         draft: true,
         name: `${(settings.amountTiers || []).length + 1}구간`,
-        minAmount: 100000,
+        minAmount,
         maxAmount: null,
         enabled: true,
         messageMode: "inherit",
@@ -3873,13 +3968,15 @@ function Settings({ mode }) {
     setOpenAlertSections((current) => ({ ...current, tiers: true }));
     setOpenTiers((current) => ({ ...current, [id]: true }));
   };
-  const changeTier = (id, key, value) =>
-    update(
-      "amountTiers",
-      (settings.amountTiers || []).map((tier) =>
+  const changeTier = (id, key, value) => {
+    setSettings((current) => ({
+      ...current,
+      amountTiers: (current.amountTiers || []).map((tier) =>
         tier.id === id ? { ...tier, [key]: value } : tier,
       ),
-    );
+    }));
+    setPreviewRun((current) => current + 1);
+  };
   const removeTier = (id) => {
     update(
       "amountTiers",
@@ -5004,6 +5101,8 @@ function Settings({ mode }) {
                       type="button"
                       className="alert-section-action"
                       onClick={addTier}
+                      disabled={(settings.amountTiers || []).length >= 12}
+                      title={(settings.amountTiers || []).length >= 12 ? "금액 구간은 최대 12개까지 등록할 수 있습니다." : ""}
                     >
                       + 구간 추가
                     </button>
@@ -5029,6 +5128,13 @@ function Settings({ mode }) {
                         "ttsMode",
                       ].filter((key) => tier[key] === "custom").length;
                       const isOpen = Boolean(openTiers[tier.id]);
+                      const selectedTierTypecastVoice = typecastVoices.find(
+                        (voice) => voice.id === tier.ttsTypecastVoiceId,
+                      );
+                      const tierPreviewAmount = Math.max(
+                        1,
+                        Math.min(100000000, Number(tier.minAmount) || 0),
+                      );
                       return (
                         <article
                           className={
@@ -5609,14 +5715,12 @@ function Settings({ mode }) {
                                                   changeTier(tier.id, "ttsTypecastEmotion", e.target.value)
                                                 }
                                               >
-                                                <option value="smart">스마트 감정</option>
-                                                <option value="normal">보통</option>
-                                                <option value="happy">기쁨</option>
-                                                <option value="sad">슬픔</option>
-                                                <option value="angry">화남</option>
-                                                <option value="whisper">속삭임</option>
-                                                <option value="toneup">밝은 톤</option>
-                                                <option value="tonedown">차분한 톤</option>
+                                                <option value="smart">{TYPECAST_EMOTION_LABELS.smart}</option>
+                                                {(selectedTierTypecastVoice?.emotions || []).map((emotion) => (
+                                                  <option value={emotion} key={emotion}>
+                                                    {TYPECAST_EMOTION_LABELS[emotion] || emotion}
+                                                  </option>
+                                                ))}
                                               </select>
                                             </label>
                                           </>
@@ -5724,7 +5828,7 @@ function Settings({ mode }) {
                                                   ...settings,
                                                   amountTiers: [tier],
                                                 },
-                                                tier.minAmount || 50000,
+                                                tierPreviewAmount,
                                               ),
                                               (tier.messageMode === "custom"
                                                 ? tier.messageTemplate
@@ -5734,7 +5838,7 @@ function Settings({ mode }) {
                                                 .replaceAll(
                                                   "{amount}",
                                                   formatWon(
-                                                    tier.minAmount || 50000,
+                                                    tierPreviewAmount,
                                                   ),
                                                 ),
                                             )
@@ -6388,7 +6492,7 @@ function Settings({ mode }) {
                 )}
                 {!isAlert && (
                   <div className="ranking-preview-count" aria-label="미리보기 후원자 수">
-                    {[10, 15, 16, 30, 60, 90].map((count) => (
+                    {rankingPreviewCounts.map((count) => (
                       <button
                         key={count}
                         type="button"
@@ -6673,23 +6777,16 @@ function RankingPreview({ settings, count = 60 }) {
   }));
   return (
     <RankingOutputCanvas preview>
-      <RankingCard
-        items={sample}
-        settings={{
-          ...settings,
-          rankingColumns: Math.max(1, Math.min(3, settings.rankingColumns || 1)),
-          rankingRowsPerColumn: 30,
-        }}
-      />
+      <RankingCard items={sample} settings={settings} />
     </RankingOutputCanvas>
   );
 }
 
-function RankingCard({ items, settings, onEdit }) {
-  const maxColumns = Math.max(1, Math.min(3, settings.rankingColumns || 1));
-  const layoutColumns = 3;
-  const capacityRows = Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
-  const visible = items.slice(0, capacityRows * maxColumns);
+function RankingCard({ items, settings, onEdit, full = false }) {
+  const capacityRows = full ? 50 : Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
+  const maxColumns = full ? Math.max(1, Math.ceil(items.length / capacityRows)) : Math.max(1, Math.min(3, settings.rankingColumns || 1));
+  const layoutColumns = full ? maxColumns : 3;
+  const visible = full ? items : items.slice(0, capacityRows * maxColumns);
   const columns = Array.from(
     { length: Math.min(maxColumns, Math.ceil(visible.length / capacityRows) || 1) },
     (_, column) => visible.slice(column * capacityRows, (column + 1) * capacityRows),
@@ -6869,13 +6966,13 @@ function RankingCard({ items, settings, onEdit }) {
   );
 }
 
-function Widget({ token }) {
+function Widget({ token, full = false }) {
   useTransparentDocument();
   const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
   useEffect(() => {
     const load = () =>
       token
-        ? api(`/api/widgets/${encodeURIComponent(token)}`).then((value) =>
+        ? api(`/api/widgets/${encodeURIComponent(token)}${full ? "/full" : ""}`).then((value) =>
             setData({ ranking: value.ranking, settings: value.settings }),
           )
         : Promise.all([api("/api/widgets"), api("/api/settings")]).then(
@@ -6889,17 +6986,26 @@ function Widget({ token }) {
       : "/api/my/deposits/events";
     const stream = new EventSource(apiUrl(eventPath), { withCredentials:true });
     stream.addEventListener("change", load);
+    stream.addEventListener("ready", load);
+    stream.onopen = () => {
+      load();
+      if (fallbackTimer) clearInterval(fallbackTimer);
+      fallbackTimer = null;
+    };
+    stream.onerror = () => {
+      if (!fallbackTimer) fallbackTimer = setInterval(load, 5000);
+    };
     return () => {
       stream.close();
-      clearInterval(refreshTimer);
+      if (fallbackTimer) clearInterval(fallbackTimer);
     };
-  }, [token]);
+  }, [token, full]);
   if (data.settings.rankingOverlayEnabled === false)
     return <div className="ranking-root" />;
   return (
     <div className="ranking-root">
       <RankingOutputCanvas>
-        <RankingCard items={data.ranking} settings={data.settings} />
+        <RankingCard items={data.ranking} settings={data.settings} full={full} />
       </RankingOutputCanvas>
     </div>
   );

@@ -41,6 +41,18 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal((await request('/api/users',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/notification-rules',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/api-logs',{cookie:memberCookie})).response.status,403);
+    const memberUser = await db.execute(`SELECT id FROM users WHERE login_id = 'hh01'`);
+    const memberUserId = Number(memberUser.rows[0].id);
+    await db.execute({ sql:'UPDATE users SET role = ? WHERE id = ?', args:['admin',memberUserId] });
+    assert.equal((await request('/api/users',{cookie:memberCookie})).response.status,403);
+    assert.equal((await request('/api/users',{method:'POST',cookie:memberCookie,body:{loginId:'forbidden-admin-create',displayName:'차단 확인',role:'member'}})).response.status,403);
+    assert.equal((await request('/api/api-logs',{cookie:memberCookie})).response.status,403);
+    assert.equal((await request('/api/api-logs',{method:'DELETE',cookie:memberCookie})).response.status,403);
+    const adminCrewWords = await request('/api/crew/tts-word-replacements',{method:'PUT',cookie:memberCookie,body:{items:[{source:'금지',replacement:'안전'}]}});
+    assert.equal(adminCrewWords.response.status,200);
+    assert.equal(adminCrewWords.data.canManageCrew,true);
+    assert.equal(adminCrewWords.data.crew[0].replacement,'안전');
+    await db.execute({ sql:'UPDATE users SET role = ? WHERE id = ?', args:['member',memberUserId] });
 
     result = await request('/api/profile',{method:'PUT',cookie:memberCookie,body:{displayName:'E2E 멤버',avatar:null}});
     assert.equal(result.data.displayName,'E2E 멤버');
@@ -81,7 +93,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
         { id:'invalid',name:'잘못된 파일',data:'data:text/plain;base64,Zm9v' },
       ],
       amountTiers:[{
-        id:'vip',name:'VIP',minAmount:-10,maxAmount:999999999,enabled:true,
+        id:'vip',name:'VIP',minAmount:0,maxAmount:100000000,enabled:true,
         textMode:'custom',fontSize:999,fontWeight:1,
         effectMode:'custom',durationMs:1,
         soundMode:'custom',soundVolume:500,
@@ -121,6 +133,15 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.amountTiers[0].ttsPitch,9);
     assert.equal(result.data.amountTiers[0].ttsVolume,0);
     assert.equal(result.data.crewGrades.some(grade=>grade.id==='forbidden'),false);
+    result = await request('/api/tts-word-replacements',{method:'PUT',cookie:memberCookie,body:{items:[{source:'섹스',replacement:'예뻐'}]}});
+    assert.equal(result.data.personal[0].replacement,'예뻐');
+    assert.equal(result.data.canManageCrew,false);
+    assert.equal((await request('/api/tts-word-replacements',{cookie:memberCookie})).data.personal[0].source,'섹스');
+    result = await request('/api/crew/tts-word-replacements',{method:'PUT',cookie:superCookie,body:{items:[{source:'욕설',replacement:'좋은 말'}]}});
+    assert.equal(result.data.crew[0].replacement,'좋은 말');
+    assert.equal((await request('/api/tts-word-replacements',{cookie:memberCookie})).data.crew[0].source,'욕설');
+    assert.equal((await request('/api/settings',{method:'PUT',cookie:memberCookie,body:{...result.data,amountTiers:[{minAmount:100000,maxAmount:99999}]}})).response.status,400);
+    assert.equal((await request('/api/settings',{method:'PUT',cookie:memberCookie,body:{...result.data,amountTiers:[{minAmount:0,maxAmount:100000},{minAmount:100000,maxAmount:null}]}})).response.status,400);
     assert.equal((await request('/api/toonation/status',{cookie:memberCookie})).data.state,'disabled');
     assert.equal((await request('/api/toonation/reconnect',{method:'POST',cookie:memberCookie,body:{}})).response.status,200);
     assert.equal((await request('/api/my/deposits/test-alert',{method:'POST',cookie:memberCookie,body:{}})).data.ok,true);
@@ -220,6 +241,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal((await request(`/api/youtube/donor-links/${donorLinkId}`,{method:'DELETE',cookie:memberCookie})).response.status,200);
     assert.equal((await request('/api/youtube/donor-links',{cookie:memberCookie})).data.length,0);
     const sources = await request('/api/obs/sources',{cookie:memberCookie});
+    assert.match(sources.data.fullRankingPath,/^\/ranking-full\/[a-f0-9]{48}$/);
     result = await request(`/api${sources.data.alertPath}/bootstrap`);
     assert.equal(result.response.status,200);
     assert.equal('toonationWidgetUrl' in result.data.settings,false);
@@ -228,6 +250,9 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     const lastId = overlayLastDonationId-2;
     result = await request(`/api/donations?after=${Math.max(0,lastId)}`);
     assert.equal(result.data.filter(item=>['홍길동','길동이'].includes(item.donorName)).length,2);
+    result = await request(`/api/widgets/${sources.data.fullRankingPath.split('/').at(-1)}/full`);
+    assert.equal(result.response.status,200);
+    assert.ok(result.data.ranking.length>=1);
     assert.equal((await request('/api/overlay/preview',{cookie:memberCookie})).response.status,200);
     result = await request('/api/overlay/preview-session',{method:'POST',cookie:memberCookie,body:{}});
     assert.equal(result.response.status,200);

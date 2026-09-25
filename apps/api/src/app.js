@@ -1,6 +1,6 @@
 import express from 'express';
 import { randomBytes } from 'node:crypto';
-import { DEFAULT_SETTINGS, normalizeDonation } from '@deposit-studio/shared';
+import { applyTtsWordReplacements, DEFAULT_SETTINGS, normalizeDonation, normalizeTtsWordReplacements, validateAmountTiers } from '@deposit-studio/shared';
 import { activeSession, db } from './db.js';
 import { createSession, currentUser, destroySession, hashPassword, requireAuth, requireManager, requireSuper, verifyPassword } from './auth.js';
 import { parseNotification, validateRuleInput } from './notification-parser.js';
@@ -140,6 +140,11 @@ function overlaySettings(settings) {
   return safe;
 }
 
+function ttsText(settings, text) {
+  const crewSafe = applyTtsWordReplacements(text, settings?.crewTtsWordReplacements);
+  return applyTtsWordReplacements(crewSafe, settings?.ttsWordReplacements);
+}
+
 async function donationWithCrewGrade(donation, userId, settings) {
   if (!settings?.crewGradeEnabled) return { ...donation, crewGradeId:null };
   const total = await db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) total FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${effectiveDonorName} = ? AND d.status = 'included'`, args:[donation.donorName] });
@@ -244,10 +249,12 @@ app.post('/api/tts/preview', requireAuth, async (req, res) => {
     if (!allowTtsRequest(`preview:${req.user.id}`, 20)) {
       return res.status(429).json({ error:'미리듣기 요청이 너무 많습니다. 잠시 후 다시 시도해주세요.' });
     }
+    const settings = await getUserSettings(req.user.id);
+    const text = ttsText(settings, req.body?.text);
     const provider = req.body?.provider === 'typecast' ? 'typecast' : 'elevenlabs';
     const audio = provider === 'typecast'
-      ? await createTypecastSpeech({ text:req.body?.text, voiceId:req.body?.voiceId, rate:req.body?.rate, pitch:req.body?.pitch, emotion:req.body?.emotion })
-      : await createElevenSpeech({ text:req.body?.text, voiceId:req.body?.voiceId, model:req.body?.model, rate:req.body?.rate });
+      ? await createTypecastSpeech({ text, voiceId:req.body?.voiceId, rate:req.body?.rate, pitch:req.body?.pitch, emotion:req.body?.emotion })
+      : await createElevenSpeech({ text, voiceId:req.body?.voiceId, model:req.body?.model, rate:req.body?.rate });
     res.set({ 'Content-Type':'audio/mpeg', 'Cache-Control':'no-store' });
     res.send(audio);
   } catch (error) {
@@ -273,9 +280,10 @@ app.post('/api/overlay/:token/tts', async (req, res) => {
     if (!allowedVoiceIds.has(requestedVoiceId)) {
       return res.status(400).json({ error:'저장되지 않은 TTS 음성입니다.' });
     }
+    const text = ttsText(settings, req.body?.text);
     const audio = provider === 'typecast'
-      ? await createTypecastSpeech({ text:req.body?.text, voiceId:requestedVoiceId, rate:req.body?.rate, pitch:req.body?.pitch, emotion:req.body?.emotion })
-      : await createElevenSpeech({ text:req.body?.text, voiceId:requestedVoiceId, model:req.body?.model, rate:req.body?.rate });
+      ? await createTypecastSpeech({ text, voiceId:requestedVoiceId, rate:req.body?.rate, pitch:req.body?.pitch, emotion:req.body?.emotion })
+      : await createElevenSpeech({ text, voiceId:requestedVoiceId, model:req.body?.model, rate:req.body?.rate });
     res.set({ 'Content-Type':'audio/mpeg', 'Cache-Control':'no-store' });
     res.send(audio);
   } catch (error) {
@@ -293,14 +301,27 @@ async function getUserSettings(userId) {
   }
   if (!result.rows[0].value) await db.execute({ sql:'INSERT INTO user_settings (user_id, value) VALUES (?, ?)', args:[userId,JSON.stringify(DEFAULT_SETTINGS)] });
   const settings=cleanSettings(result.rows[0].value?JSON.parse(result.rows[0].value):DEFAULT_SETTINGS);
-  if(result.rows[0].role!=='super') settings.crewGrades=await getSharedCrewGrades();
+  if(result.rows[0].role!=='super') {
+    const shared = await getSharedCrewSettings();
+    settings.crewGrades=shared.crewGrades;
+    settings.crewTtsWordReplacements=shared.crewTtsWordReplacements;
+  }
   return settings;
 }
 
-async function getSharedCrewGrades() {
+async function getSharedCrewSettings() {
   const result=await db.execute(`SELECT s.value FROM users u JOIN user_settings s ON s.user_id = u.id WHERE u.role = 'super' AND u.is_active = 1 ORDER BY u.id LIMIT 1`);
-  if(!result.rows.length)return [];
-  try{return cleanSettings(JSON.parse(result.rows[0].value)).crewGrades;}catch{return [];}
+  if(!result.rows.length)return { crewGrades:[], crewTtsWordReplacements:[] };
+  try {
+    const settings=cleanSettings(JSON.parse(result.rows[0].value));
+    return { crewGrades:settings.crewGrades, crewTtsWordReplacements:settings.crewTtsWordReplacements };
+  } catch {
+    return { crewGrades:[], crewTtsWordReplacements:[] };
+  }
+}
+
+async function getSharedCrewGrades() {
+  return (await getSharedCrewSettings()).crewGrades;
 }
 
 async function getObsUser(token) {
@@ -380,6 +401,10 @@ function cleanSettings(input) {
   settings.ttsRate = Math.max(0.5, Math.min(2, Number(settings.ttsRate) || 1));
   settings.ttsPitch = Math.max(-12, Math.min(12, Number.isFinite(Number(settings.ttsPitch)) ? Number(settings.ttsPitch) : 0));
   settings.ttsVolume = Math.max(0, Math.min(100, Number.isFinite(Number(settings.ttsVolume)) ? Number(settings.ttsVolume) : DEFAULT_SETTINGS.ttsVolume));
+  try { settings.ttsWordReplacements = normalizeTtsWordReplacements(settings.ttsWordReplacements); }
+  catch { settings.ttsWordReplacements = []; }
+  try { settings.crewTtsWordReplacements = normalizeTtsWordReplacements(settings.crewTtsWordReplacements); }
+  catch { settings.crewTtsWordReplacements = []; }
   settings.crewGradeEnabled = Boolean(settings.crewGradeEnabled);
   settings.crewGradeDisplayMode=settings.crewGradeDisplayMode==='text'?'text':'image';
   settings.crewGradeTextColor=String(settings.crewGradeTextColor||DEFAULT_SETTINGS.crewGradeTextColor).slice(0,20);
@@ -722,13 +747,12 @@ app.put('/api/profile/password', requireAuth, async (req, res) => {
   res.json({ ok:true });
 });
 
-app.get('/api/users', requireAuth, requireManager, async (req, res) => {
-  const superFilter = req.user.role === 'super' ? '' : `WHERE role <> 'super'`;
-  const result = await db.execute(`SELECT id, login_id loginId, display_name displayName, role, avatar_path avatar, is_active isActive FROM users ${superFilter} ORDER BY CASE role WHEN 'super' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, id`);
+app.get('/api/users', requireAuth, requireSuper, async (_req, res) => {
+  const result = await db.execute(`SELECT id, login_id loginId, display_name displayName, role, avatar_path avatar, is_active isActive FROM users ORDER BY CASE role WHEN 'super' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, id`);
   res.json(result.rows);
 });
 
-app.post('/api/users', requireAuth, requireManager, async (req, res) => {
+app.post('/api/users', requireAuth, requireSuper, async (req, res) => {
   const loginId = String(req.body?.loginId || '').trim().toLowerCase();
   const displayName = String(req.body?.displayName || '').trim();
   const role = ['admin','member'].includes(req.body?.role) ? req.body.role : 'member';
@@ -747,7 +771,7 @@ app.post('/api/users', requireAuth, requireManager, async (req, res) => {
   }
 });
 
-app.put('/api/users/:id/status', requireAuth, requireManager, async (req, res) => {
+app.put('/api/users/:id/status', requireAuth, requireSuper, async (req, res) => {
   const targetId = Number(req.params.id);
   const active = Boolean(req.body?.active);
   const result = await db.execute({ sql:'SELECT id, role FROM users WHERE id = ?', args:[targetId] });
@@ -760,7 +784,7 @@ app.put('/api/users/:id/status', requireAuth, requireManager, async (req, res) =
   res.json({ ok:true, active });
 });
 
-app.post('/api/users/:id/reset-password', requireAuth, requireManager, async (req, res) => {
+app.post('/api/users/:id/reset-password', requireAuth, requireSuper, async (req, res) => {
   const targetId = Number(req.params.id);
   const result = await db.execute({ sql:'SELECT id, role FROM users WHERE id = ?', args:[targetId] });
   const target = result.rows[0];
@@ -971,7 +995,7 @@ app.put('/api/my/deposits/:id/status', requireAuth, async (req, res) => {
   res.json({ ok:true, status });
 });
 
-app.get('/api/api-logs', requireAuth, requireManager, async (req, res) => {
+app.get('/api/api-logs', requireAuth, requireSuper, async (req, res) => {
   const page = Math.max(1, Number.parseInt(req.query.page,10) || 1);
   const pageSize = Math.min(100, Math.max(10, Number.parseInt(req.query.pageSize,10) || 50));
   const offset = (page-1)*pageSize;
@@ -985,7 +1009,7 @@ app.get('/api/api-logs', requireAuth, requireManager, async (req, res) => {
   res.json({ items, total, page, pageSize, totalPages:Math.max(1,Math.ceil(total/pageSize)) });
 });
 
-app.delete('/api/api-logs', requireAuth, requireManager, async (_req, res) => {
+app.delete('/api/api-logs', requireAuth, requireSuper, async (_req, res) => {
   await db.execute('DELETE FROM api_request_logs');
   res.json({ ok:true });
 });
@@ -1096,7 +1120,7 @@ app.get('/api/my/deposits/events', requireAuth, (req, res) => {
   openDataChangeStream(req, res, req.user.id);
 });
 
-async function widgetDataForUser(userId) {
+async function widgetDataForUser(userId, { full = false } = {}) {
   const session = await activeSession();
   const state=await db.execute({sql:'SELECT broadcast_started_at broadcastStartedAt, broadcast_start_donation_id broadcastStartDonationId FROM users WHERE id=?',args:[userId]});
   const displayAfter=state.rows[0]?.broadcastStartedAt||session.display_after;
@@ -1105,7 +1129,7 @@ async function widgetDataForUser(userId) {
   const startValue=useStartId?Number(state.rows[0].broadcastStartDonationId):displayAfter;
   const [donations, ranking, adjustments] = await Promise.all([
     db.execute({ sql:`SELECT d.id, ${effectiveDonorName} donorName, d.amount, datetime(d.received_at, '+9 hours') receivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND ${startClause} AND d.status = 'included' ORDER BY d.id DESC LIMIT 20`, args:[userId,startValue] }),
-    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count, MAX(d.received_at) lastReceivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND ${startClause} AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, lastReceivedAt DESC LIMIT 60`, args:[userId,startValue] }),
+    db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count, MAX(d.received_at) lastReceivedAt FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND ${startClause} AND d.status = 'included' GROUP BY ${effectiveDonorName} ORDER BY amount DESC, lastReceivedAt DESC ${full ? '' : 'LIMIT 60'}`, args:[userId,startValue] }),
     db.execute({ sql:'SELECT donor_name donorName, amount FROM ranking_adjustments WHERE session_id = ? AND recipient_user_id = ?', args:[session.id,userId] })
   ]);
   const merged = new Map(ranking.rows.map(row => [row.donorName, { ...row, amount:Number(row.amount), count:Number(row.count) }]));
@@ -1114,7 +1138,8 @@ async function widgetDataForUser(userId) {
     current.amount += Number(row.amount);
     merged.set(row.donorName, current);
   }
-  const visibleRanking = [...merged.values()].filter(row => row.amount > 0).sort((a,b) => b.amount - a.amount || String(b.lastReceivedAt||'').localeCompare(String(a.lastReceivedAt||'')) || a.donorName.localeCompare(b.donorName, 'ko')).slice(0,60);
+  const sortedRanking = [...merged.values()].filter(row => row.amount > 0).sort((a,b) => b.amount - a.amount || String(b.lastReceivedAt||'').localeCompare(String(a.lastReceivedAt||'')) || a.donorName.localeCompare(b.donorName, 'ko'));
+  const visibleRanking = full ? sortedRanking : sortedRanking.slice(0,60);
   return { donations:donations.rows, ranking:visibleRanking };
 }
 
@@ -1122,7 +1147,7 @@ app.get('/api/obs/sources', requireAuth, async (req, res) => {
   const result = await db.execute({ sql:'SELECT obs_token obsToken FROM users WHERE id = ? LIMIT 1', args:[req.user.id] });
   const obsToken = result.rows[0]?.obsToken;
   if (!obsToken) return res.status(500).json({ error:'OBS 전용 주소를 준비하지 못했습니다.' });
-  res.json({ alertPath:`/overlay/${obsToken}`, rankingPath:`/ranking/${obsToken}` });
+  res.json({ alertPath:`/overlay/${obsToken}`, rankingPath:`/ranking/${obsToken}`, fullRankingPath:`/ranking-full/${obsToken}` });
 });
 
 app.post('/api/my/broadcast/start', requireAuth, async (req,res)=>{
@@ -1315,6 +1340,56 @@ app.get('/api/settings', requireAuth, async (req, res) => {
   res.json(await settingsWithCrewPreview(req.user));
 });
 
+app.get('/api/widgets/:token/full', async (req, res) => {
+  const user = await getObsUser(req.params.token);
+  if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
+  res.json({ ...(await widgetDataForUser(user.id, { full:true })), settings:overlaySettings(await getUserSettings(user.id)) });
+});
+
+app.get('/api/tts-word-replacements', requireAuth, async (req, res) => {
+  const settings = await getUserSettings(req.user.id);
+  res.json({
+    personal:settings.ttsWordReplacements,
+    crew:settings.crewTtsWordReplacements,
+    canManageCrew:['super','admin'].includes(req.user.role),
+  });
+});
+
+app.put('/api/tts-word-replacements', requireAuth, async (req, res) => {
+  try {
+    const personal = normalizeTtsWordReplacements(req.body?.items);
+    const settings = await getUserSettings(req.user.id);
+    settings.ttsWordReplacements = personal;
+    if (req.user.role !== 'super') {
+      settings.crewGrades = [];
+      settings.crewTtsWordReplacements = [];
+    }
+    await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
+    const saved = await getUserSettings(req.user.id);
+    publishOverlaySettings(saved, req.user.id);
+    res.json({ personal:saved.ttsWordReplacements, crew:saved.crewTtsWordReplacements, canManageCrew:['super','admin'].includes(req.user.role) });
+  } catch (error) {
+    res.status(400).json({ error:error.message });
+  }
+});
+
+app.put('/api/crew/tts-word-replacements', requireAuth, requireManager, async (req, res) => {
+  try {
+    const crew = normalizeTtsWordReplacements(req.body?.items);
+    const owner = await db.execute(`SELECT u.id, s.value FROM users u LEFT JOIN user_settings s ON s.user_id = u.id WHERE u.role = 'super' AND u.is_active = 1 ORDER BY u.id LIMIT 1`);
+    if (!owner.rows.length) return res.status(503).json({ error:'크루 공통 설정을 저장할 슈퍼 계정을 찾을 수 없습니다.' });
+    const sharedSettings = cleanSettings(owner.rows[0].value ? JSON.parse(owner.rows[0].value) : DEFAULT_SETTINGS);
+    sharedSettings.crewTtsWordReplacements = crew;
+    await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[owner.rows[0].id,JSON.stringify(sharedSettings)] });
+    const users = await db.execute(`SELECT id FROM users WHERE is_active = 1`);
+    for (const user of users.rows) publishOverlaySettings(await getUserSettings(user.id), user.id);
+    const requesterSettings = await getUserSettings(req.user.id);
+    res.json({ personal:requesterSettings.ttsWordReplacements, crew, canManageCrew:true });
+  } catch (error) {
+    res.status(400).json({ error:error.message });
+  }
+});
+
 app.get('/api/toonation/status', requireAuth, async (req, res) => {
   res.json(toonationManager.status(req.user.id));
 });
@@ -1336,7 +1411,10 @@ app.put('/api/youtube/enabled', requireAuth, async (req, res) => {
   if (enabled && !settings.youtubeApiKey) return res.status(400).json({ error:'먼저 후원 알림 설정에서 YouTube Data API 키를 입력해주세요.' });
   if (enabled && !youtubeVideoId(settings.youtubeVideoId)) return res.status(400).json({ error:'먼저 후원 알림 설정에서 유튜브 라이브 주소를 입력해주세요.' });
   settings.youtubeChatEnabled = enabled;
-  if(req.user.role!=='super') settings.crewGrades=[];
+  if(req.user.role!=='super') {
+    settings.crewGrades=[];
+    settings.crewTtsWordReplacements=[];
+  }
   await db.execute({
     sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
@@ -1426,6 +1504,11 @@ app.delete('/api/youtube/donor-links/:id', requireAuth, async (req, res) => {
 });
 
 app.put('/api/settings', requireAuth, async (req, res) => {
+  try {
+    validateAmountTiers(req.body?.amountTiers);
+  } catch (error) {
+    return res.status(400).json({ error:error.message });
+  }
   if(req.user.role==='super'&&Array.isArray(req.body?.crewGrades)){
     const ranges=req.body.crewGrades.map(grade=>({min:Number(grade.minAmount)||0,max:grade.maxAmount==null||grade.maxAmount===''?null:Number(grade.maxAmount)})).sort((a,b)=>a.min-b.min);
     if(ranges.some(range=>range.max!=null&&range.max<range.min))return res.status(400).json({error:'크루 등급의 최대 누적 금액은 최소 누적 금액보다 크거나 같아야 합니다.'});
@@ -1441,11 +1524,18 @@ app.put('/api/settings', requireAuth, async (req, res) => {
   if (settings.youtubeChatEnabled && !settings.youtubeApiKey) {
     return res.status(400).json({ error:'YouTube Data API 키를 입력해주세요.' });
   }
-  if(req.user.role!=='super')settings.crewGrades=[];
+  if(req.user.role!=='super') {
+    settings.crewGrades=[];
+    settings.crewTtsWordReplacements=[];
+  }
   await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
   toonationManager.configure(req.user.id, settings);
   youtubeChatManager.configure(req.user.id, settings);
-  if(req.user.role!=='super')settings.crewGrades=await getSharedCrewGrades();
+  if(req.user.role!=='super') {
+    const shared=await getSharedCrewSettings();
+    settings.crewGrades=shared.crewGrades;
+    settings.crewTtsWordReplacements=shared.crewTtsWordReplacements;
+  }
   const savedSettings = await settingsWithCrewPreview(req.user);
   publishOverlaySettings(savedSettings, req.user.id);
   publishDataChange(req.user.id, 'settings-updated');
