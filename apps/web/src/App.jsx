@@ -6741,15 +6741,8 @@ function RankingCard({ items, settings, onEdit }) {
         (estimatedLineHeight * (sizingRows + topRankScaleOverhead)),
     ),
   );
-  const columnFontLimit = 22;
-  const countFontLimit = visible.length <= 15
-    ? columnFontLimit
-    : visible.length <= 30
-      ? (maxColumns >= 2 ? 20 : 36)
-      : visible.length <= 60
-        ? 18
-        : 16;
-  const effectiveFontSize = Math.min(settings.rankingFontSize, safeFontSize, countFontLimit);
+  const columnFontLimit = sizingRows <= 15 ? 38 : 36;
+  const effectiveFontSize = Math.min(settings.rankingFontSize, safeFontSize, columnFontLimit);
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   const firstGridColumn = layoutColumns - columns.length + 1;
   const cardStyle = {
