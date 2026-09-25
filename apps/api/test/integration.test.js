@@ -249,15 +249,17 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.match(overlayText,/"donorName":"실시간후원자"/);
     assert.match(overlayText,/"amount":7777/);
 
+    const deniedPhoneTest = await fetch(`${base}/api/my/phone-test/events`,{headers:{Cookie:memberCookie}});
+    assert.equal(deniedPhoneTest.status,403);
     const controller = new AbortController();
-    const sseResponse = await fetch(`${base}/api/my/phone-test/events`,{headers:{Cookie:memberCookie},signal:controller.signal});
+    const sseResponse = await fetch(`${base}/api/my/phone-test/events`,{headers:{Cookie:superCookie},signal:controller.signal});
+    assert.equal(sseResponse.status,200);
     const reader = sseResponse.body.getReader();
     const decoder = new TextDecoder();
     let sseText='';
-    while (!sseText.includes('event: snapshot')) sseText += decoder.decode((await reader.read()).value,{stream:true});
+    while (!sseText.includes('event: ready')) sseText += decoder.decode((await reader.read()).value,{stream:true});
     controller.abort();
-    assert.match(sseText,/com\.n9\.e2e\.bank\.updated/);
-    assert.match(sseText,/"status":201/);
+    assert.match(sseText,/"connected":true/);
 
     const malformedResponse = await fetch(`${base}/api/notifications`,{
       method:'POST',
