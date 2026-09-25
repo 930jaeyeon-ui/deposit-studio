@@ -671,7 +671,7 @@ app.get('/api/auth/me', async (req, res) => {
   res.json(user);
 });
 
-app.get('/api/my/phone-test/events', requireAuth, async (req, res) => {
+app.get('/api/my/phone-test/events', requireAuth, requireSuper, async (req, res) => {
   res.set({ 'Content-Type':'text/event-stream', 'Cache-Control':'no-cache, no-transform', Connection:'keep-alive', 'X-Accel-Buffering':'no' });
   res.flushHeaders();
   const userId = Number(req.user.id);

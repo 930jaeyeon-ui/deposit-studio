@@ -231,7 +231,7 @@ function AuthenticatedRoutes() {
   if (location.pathname === "/deposits") return <DepositHistory />;
   if (location.pathname === "/deposits/live") return <LiveDepositPopup />;
   if (location.pathname === "/settings/youtube-donors") return <YoutubeDonorLinksPopup />;
-  if (location.pathname === "/phone-test") return <PhoneTestPage />;
+  if (location.pathname === "/phone-test") return isSuper ? <PhoneTestPage /> : <AccessDenied />;
   if (location.pathname === "/admin/notification-rules") return isSuper ? <NotificationRules /> : <AccessDenied />;
   if (location.pathname === "/admin/api-logs") return canManage ? <ApiLogs /> : <AccessDenied />;
   if (location.pathname === "/admin/users") return <AdminAccounts />;
@@ -686,7 +686,7 @@ function PageLayout({ children }) {
             label="OBS 연결"
             hint="송출 주소 · 해상도 · 미리보기"
           />
-          <Link href="/phone-test" label="휴대폰 연동 테스트" hint="실시간 API 수신 확인" />
+          {user.role === "super" && <Link href="/phone-test" label="휴대폰 연동 테스트" hint="실시간 API 수신 확인" />}
           {canManage && (
             <>
               <span className="nav-label nav-group">관리</span>
@@ -6687,6 +6687,7 @@ function RankingPreview({ settings, count = 60 }) {
 
 function RankingCard({ items, settings, onEdit }) {
   const maxColumns = Math.max(1, Math.min(3, settings.rankingColumns || 1));
+  const layoutColumns = 3;
   const capacityRows = Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
   const visible = items.slice(0, capacityRows * maxColumns);
   const columns = Array.from(
@@ -6740,7 +6741,7 @@ function RankingCard({ items, settings, onEdit }) {
         (estimatedLineHeight * (sizingRows + topRankScaleOverhead)),
     ),
   );
-  const columnFontLimit = maxColumns >= 2 ? 22 : 72;
+  const columnFontLimit = 22;
   const countFontLimit = visible.length <= 15
     ? columnFontLimit
     : visible.length <= 30
@@ -6750,14 +6751,14 @@ function RankingCard({ items, settings, onEdit }) {
         : 16;
   const effectiveFontSize = Math.min(settings.rankingFontSize, safeFontSize, countFontLimit);
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
-  const firstGridColumn = maxColumns - columns.length + 1;
+  const firstGridColumn = layoutColumns - columns.length + 1;
   const cardStyle = {
     fontFamily: settings.rankingFontFamily,
     "--ranking-size": `${effectiveFontSize}px`,
     "--ranking-gap": `${effectiveRowGap}px`,
     "--ranking-row-padding": `${effectiveRowPadding}px`,
-    "--ranking-item-gap": `${maxColumns >= 2 ? 8 : 30}px`,
-    "--column-gap": `${maxColumns >= 2 ? Math.min(settings.rankingColumnGap, 12) : settings.rankingColumnGap}px`,
+    "--ranking-item-gap": "8px",
+    "--column-gap": `${Math.min(settings.rankingColumnGap, 12)}px`,
     "--line-height": settings.rankingUseLineHeight
       ? settings.rankingLineHeight
       : "normal",
@@ -6774,14 +6775,14 @@ function RankingCard({ items, settings, onEdit }) {
     : firstGridColumn;
   return (
     <div
-      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} ranking-columns-${maxColumns} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
+      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} ranking-columns-${layoutColumns} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
       style={cardStyle}
     >
       {settings.rankingShowTitle && (
         <h2
           style={{
             display: "grid",
-            gridTemplateColumns: `repeat(${maxColumns},minmax(0,1fr))`,
+            gridTemplateColumns: `repeat(${layoutColumns},minmax(0,1fr))`,
             columnGap: `var(--column-gap)`,
             fontSize: settings.rankingTitleSize,
             color: settings.rankingTitleColor,
@@ -6802,7 +6803,7 @@ function RankingCard({ items, settings, onEdit }) {
       )}
       <div
         className="ranking-grid"
-        style={{ gridTemplateColumns: `repeat(${maxColumns},minmax(0,1fr))` }}
+        style={{ gridTemplateColumns: `repeat(${layoutColumns},minmax(0,1fr))` }}
       >
         {columns.map((column, columnIndex) => (
           <div
