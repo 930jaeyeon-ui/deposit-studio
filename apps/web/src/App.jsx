@@ -6223,7 +6223,7 @@ function Settings({ mode }) {
                     <input
                       type="range"
                       min="24"
-                      max="72"
+                      max="56"
                       value={settings.rankingFontSize}
                       onChange={(e) =>
                         update("rankingFontSize", Number(e.target.value))
@@ -6938,8 +6938,8 @@ function RankingPreview({ settings, count = 60 }) {
   );
 }
 
-function RankingCard({ items, settings, onEdit, full = false }) {
-  const capacityRows = full ? 50 : Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
+function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fullRowsPerColumn = 25 }) {
+  const capacityRows = full ? fullRowsPerColumn : Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
   const maxColumns = full ? Math.max(1, Math.min(2, Math.ceil(items.length / capacityRows))) : Math.max(1, Math.min(2, settings.rankingColumns || 1));
   const layoutColumns = 3;
   const visible = full ? items : items.slice(0, capacityRows * maxColumns);
@@ -6962,7 +6962,8 @@ function RankingCard({ items, settings, onEdit, full = false }) {
   // shrink it based on row count; only the explicit top-rank scale is applied.
   const effectiveFontSize = settings.rankingFontSize;
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
-  const firstGridColumn = layoutColumns - columns.length + 1;
+  const firstGridColumn = 2;
+  const singleColumnPosition = "2 / 4";
   const cardStyle = {
     fontFamily: settings.rankingFontFamily,
     "--ranking-size": `${effectiveFontSize}px`,
@@ -6982,12 +6983,14 @@ function RankingCard({ items, settings, onEdit, full = false }) {
     "--custom-row": settings.rankingCustomRowBackgroundEnabled === false ? "transparent" : settings.rankingCustomRowBackground,
     "--custom-radius": `${settings.rankingCustomRadius}px`,
   };
-  const titleGridColumn = settings.rankingTitleColumn === "last"
-    ? firstGridColumn + columns.length - 1
-    : firstGridColumn;
+  const titleGridColumn = columns.length === 1
+    ? singleColumnPosition
+    : settings.rankingTitleColumn === "last"
+      ? firstGridColumn + columns.length - 1
+      : firstGridColumn;
   return (
     <div
-      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} ranking-columns-${layoutColumns} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
+      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} ranking-columns-${layoutColumns} ranking-data-columns-${columns.length} ${full ? "ranking-full-card" : "ranking-standard-card"} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
       style={cardStyle}
     >
       {settings.rankingShowTitle && (
@@ -7026,10 +7029,10 @@ function RankingCard({ items, settings, onEdit, full = false }) {
           <div
             className="ranking-column"
             key={columnIndex}
-            style={{ gridColumn: firstGridColumn + columnIndex }}
+            style={{ gridColumn: columns.length === 1 ? singleColumnPosition : firstGridColumn + columnIndex }}
           >
             {column.map((item, rowIndex) => {
-              const index = columnIndex * capacityRows + rowIndex;
+              const index = rankOffset + columnIndex * capacityRows + rowIndex;
               const savedRankStyles = settings.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles;
               const rankStyle = index < 3
                 ? savedRankStyles[index]
@@ -7108,6 +7111,11 @@ function RankingCard({ items, settings, onEdit, full = false }) {
 function Widget({ token, full = false }) {
   useTransparentDocument();
   const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
+  const [fullRankingPage, setFullRankingPage] = useState(0);
+  const [fullRankingFading, setFullRankingFading] = useState(false);
+  const [fullRowsPerColumn, setFullRowsPerColumn] = useState(() =>
+    typeof window !== "undefined" && window.innerHeight < 800 ? 15 : 25,
+  );
   useEffect(() => {
     const load = () =>
       token
@@ -7140,12 +7148,53 @@ function Widget({ token, full = false }) {
       if (fallbackTimer) clearInterval(fallbackTimer);
     };
   }, [token, full]);
+  useEffect(() => {
+    if (!full) return undefined;
+    const updateRows = () => setFullRowsPerColumn(window.innerHeight < 800 ? 15 : 25);
+    updateRows();
+    window.addEventListener("resize", updateRows);
+    return () => window.removeEventListener("resize", updateRows);
+  }, [full]);
+  const fullRankingPageSize = fullRowsPerColumn * 2;
+  const fullRankingPageCount = Math.max(1, Math.ceil(data.ranking.length / fullRankingPageSize));
+  useEffect(() => {
+    if (!full || fullRankingPageCount <= 1) {
+      setFullRankingPage(0);
+      setFullRankingFading(false);
+      return undefined;
+    }
+    setFullRankingPage((page) => page % fullRankingPageCount);
+    let fadeTimer = null;
+    const pageTimer = setInterval(() => {
+      setFullRankingFading(true);
+      fadeTimer = setTimeout(() => {
+        setFullRankingPage((page) => (page + 1) % fullRankingPageCount);
+        setFullRankingFading(false);
+      }, 500);
+    }, 5000);
+    return () => {
+      clearInterval(pageTimer);
+      if (fadeTimer) clearTimeout(fadeTimer);
+    };
+  }, [full, fullRankingPageCount]);
   if (data.settings.rankingOverlayEnabled === false)
     return <div className="ranking-root" />;
+  const pageStart = fullRankingPage * fullRankingPageSize;
+  const rankingPageItems = full
+    ? data.ranking.slice(pageStart, pageStart + fullRankingPageSize)
+    : data.ranking;
   return (
     <div className="ranking-root">
       <RankingOutputCanvas>
-        <RankingCard items={data.ranking} settings={data.settings} full={full} />
+        <div className={full ? `full-ranking-page${fullRankingFading ? " is-fading" : ""}` : undefined}>
+          <RankingCard
+            items={rankingPageItems}
+            settings={data.settings}
+            full={full}
+            rankOffset={full ? pageStart : 0}
+            fullRowsPerColumn={fullRowsPerColumn}
+          />
+        </div>
       </RankingOutputCanvas>
     </div>
   );

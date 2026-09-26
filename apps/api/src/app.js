@@ -438,7 +438,7 @@ function cleanSettings(input) {
   settings.rankingFontFamily = String(settings.rankingFontFamily || DEFAULT_SETTINGS.rankingFontFamily).slice(0,120);
   const legacyRankingCanvas = Number(input?.rankingCanvasVersion || 1) < 2;
   const requestedRankingFontSize = Math.floor(Number(settings.rankingFontSize) || DEFAULT_SETTINGS.rankingFontSize);
-  settings.rankingFontSize = Math.max(16, Math.min(72, legacyRankingCanvas && requestedRankingFontSize <= 32 ? Math.round(requestedRankingFontSize * 1.6) : requestedRankingFontSize));
+  settings.rankingFontSize = Math.max(16, Math.min(56, legacyRankingCanvas && requestedRankingFontSize <= 32 ? Math.round(requestedRankingFontSize * 1.6) : requestedRankingFontSize));
   settings.rankingCanvasVersion = 2;
   settings.rankingFontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.rankingFontWeight) || 700)));
   for (const key of ['rankingTitleFontWeight','rankingNameFontWeight','rankingAmountFontWeight']) settings[key]=Math.max(100,Math.min(900,Math.floor(Number(settings[key])||settings.rankingFontWeight)));
