@@ -27,6 +27,32 @@ const formatKoreanWon = (value) => {
   return `${formatWon(amount)}원`;
 };
 
+// CSS text strokes are centered on the glyph edge, so a thick stroke eats into
+// small Hangul counters and makes broadcast text look uneven. Build the outline
+// from crisp, zero-blur shadows instead; every layer stays behind the glyph fill.
+function outsideTextOutline(enabled, width, color) {
+  if (!enabled || Number(width) <= 0) return "none";
+  const radius = Math.max(0.5, Math.min(8, Number(width) || 0));
+  const layers = [];
+  const step = 0.75;
+  const directions = [
+    [1, 0], [-1, 0], [0, 1], [0, -1],
+    [Math.SQRT1_2, Math.SQRT1_2],
+    [Math.SQRT1_2, -Math.SQRT1_2],
+    [-Math.SQRT1_2, Math.SQRT1_2],
+    [-Math.SQRT1_2, -Math.SQRT1_2],
+  ];
+  for (let distance = step; distance < radius; distance += step) {
+    for (const [x, y] of directions) {
+      layers.push(`${(x * distance).toFixed(2)}px ${(y * distance).toFixed(2)}px 0 ${color}`);
+    }
+  }
+  for (const [x, y] of directions) {
+    layers.push(`${(x * radius).toFixed(2)}px ${(y * radius).toFixed(2)}px 0 ${color}`);
+  }
+  return layers.join(", ");
+}
+
 function ThemeSelector() {
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem("deposit-studio-theme");
@@ -6993,10 +7019,12 @@ function RankingCard({ items, settings, onEdit, full = false }) {
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              WebkitTextStroke: settings.rankingTitleOutlineEnabled
-                ? `${settings.rankingTitleOutlineWidth}px ${settings.rankingTitleOutlineColor}`
-                : "0 transparent",
-              paintOrder: "stroke fill",
+              WebkitTextStroke: "0 transparent",
+              textShadow: outsideTextOutline(
+                settings.rankingTitleOutlineEnabled,
+                settings.rankingTitleOutlineWidth,
+                settings.rankingTitleOutlineColor,
+              ),
             }}
           >
             {settings.rankingTitle || "오늘의 후원"}
@@ -7056,10 +7084,12 @@ function RankingCard({ items, settings, onEdit, full = false }) {
                       <em>{rankMarker(settings.rankingTheme, index)}</em>
                     )}
                     <span className="donor-name" style={{
-                      WebkitTextStroke: settings.rankingNameOutlineEnabled
-                        ? `${settings.rankingNameOutlineWidth}px ${settings.rankingNameOutlineColor}`
-                        : "0 transparent",
-                      paintOrder: "stroke fill",
+                      WebkitTextStroke: "0 transparent",
+                      textShadow: outsideTextOutline(
+                        settings.rankingNameOutlineEnabled,
+                        settings.rankingNameOutlineWidth,
+                        settings.rankingNameOutlineColor,
+                      ),
                     }}>
                       {item.donorName}
                       {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: settings.rankingNameSuffixColor || settings.rankingNameColor }}>{settings.rankingNameSuffix}</span>}
@@ -7070,10 +7100,12 @@ function RankingCard({ items, settings, onEdit, full = false }) {
                     className="donor-amount"
                     style={{
                       textAlign: settings.rankingAmountAlign,
-                      WebkitTextStroke: settings.rankingAmountOutlineEnabled
-                        ? `${settings.rankingAmountOutlineWidth}px ${settings.rankingAmountOutlineColor}`
-                        : "0 transparent",
-                      paintOrder: "stroke fill",
+                      WebkitTextStroke: "0 transparent",
+                      textShadow: outsideTextOutline(
+                        settings.rankingAmountOutlineEnabled,
+                        settings.rankingAmountOutlineWidth,
+                        settings.rankingAmountOutlineColor,
+                      ),
                     }}
                   >
                     {formatWon(item.amount)}
