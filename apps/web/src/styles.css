@@ -709,7 +709,7 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 }
 
 /* Ranking readability: wide two-column layout keeps full donor names visible. */
-.widget-card .widget-row .donor-name{overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;word-break:keep-all}
+.widget-card .widget-row .donor-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal;word-break:normal}
 .widget-card .widget-row .donor-amount{font-weight:var(--amount-weight,700)}
 .ranking-output-live>.ranking-output-canvas{position:static;top:auto;left:auto;transform:none!important;transform-origin:initial}.ranking-output-live .ranking-output-content{width:100%;height:100%}.ranking-output-live .widget-card{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:geometricPrecision}.ranking-output-live .broadcast-text-outline,.ranking-output-live .broadcast-text-fill{backface-visibility:hidden}
 

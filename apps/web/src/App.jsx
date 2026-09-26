@@ -39,13 +39,16 @@ function OutlinedText({
   style,
   children,
 }) {
-  const showOutline = enabled && Number(width) > 0;
+  const showOutline = enabled && Number.parseFloat(width) > 0;
+  const outlineWidth = typeof width === "string"
+    ? width
+    : `${Math.max(0, Math.min(8, Number(width) || 0))}px`;
   return (
     <Element
       className={`broadcast-outlined-text ${className}`.trim()}
       style={{
         ...style,
-        "--broadcast-outline-width": `${Math.max(0, Math.min(8, Number(width) || 0))}px`,
+        "--broadcast-outline-width": outlineWidth,
         "--broadcast-outline-color": color,
       }}
     >
@@ -2994,6 +2997,8 @@ function Empty() {
 
 const FONT_OPTIONS = [
   // Web fonts: OBS에서 별도 설치 없이 사용할 수 있습니다.
+  ['"Pretendard Variable", Pretendard, "Noto Sans KR", sans-serif', "Pretendard Variable (웹폰트)"],
+  ['"SUIT Variable", SUIT, "Noto Sans KR", sans-serif', "SUIT Variable (웹폰트)"],
   ['"Noto Sans KR", sans-serif', "Noto Sans KR"],
   ['"Noto Serif KR", serif', "Noto Serif KR"],
   ['"Gothic A1", sans-serif', "Gothic A1"],
@@ -6989,7 +6994,7 @@ function RankingCard({ items, settings, onEdit, full = false }) {
         <h2
           style={{
             display: "grid",
-            gridTemplateColumns: ".4fr 1.3fr 1.3fr",
+            gridTemplateColumns: ".2fr 1.4fr 1.4fr",
             columnGap: `var(--column-gap)`,
             fontSize: settings.rankingTitleSize,
             fontWeight: settings.rankingTitleFontWeight ?? settings.rankingFontWeight,
@@ -6999,7 +7004,7 @@ function RankingCard({ items, settings, onEdit, full = false }) {
           <OutlinedText
             className="ranking-title-text"
             enabled={settings.rankingTitleOutlineEnabled}
-            width={settings.rankingTitleOutlineWidth}
+            width={`${settings.rankingTitleOutlineWidth / Math.max(1, settings.rankingTitleSize)}em`}
             color={settings.rankingTitleOutlineColor}
             style={{
               gridColumn: titleGridColumn,
@@ -7015,7 +7020,7 @@ function RankingCard({ items, settings, onEdit, full = false }) {
       )}
       <div
         className="ranking-grid"
-        style={{ gridTemplateColumns: ".4fr 1.3fr 1.3fr" }}
+        style={{ gridTemplateColumns: ".2fr 1.4fr 1.4fr" }}
       >
         {columns.map((column, columnIndex) => (
           <div
@@ -7070,7 +7075,7 @@ function RankingCard({ items, settings, onEdit, full = false }) {
                     <OutlinedText
                       className="donor-name"
                       enabled={settings.rankingNameOutlineEnabled}
-                      width={settings.rankingNameOutlineWidth}
+                      width={`${settings.rankingNameOutlineWidth / Math.max(1, settings.rankingFontSize)}em`}
                       color={settings.rankingNameOutlineColor}
                     >
                       {item.donorName}
@@ -7081,7 +7086,7 @@ function RankingCard({ items, settings, onEdit, full = false }) {
                   <OutlinedText
                     className="donor-amount"
                     enabled={settings.rankingAmountOutlineEnabled}
-                    width={settings.rankingAmountOutlineWidth}
+                    width={`${settings.rankingAmountOutlineWidth / Math.max(1, settings.rankingFontSize * 0.92)}em`}
                     color={settings.rankingAmountOutlineColor}
                     style={{
                       textAlign: settings.rankingAmountAlign,
