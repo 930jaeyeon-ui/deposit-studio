@@ -26,6 +26,12 @@ const formatKoreanWon = (value) => {
   if (amount >= 10000) return `${formatWon(Math.floor(amount / 10000))}만원`;
   return `${formatWon(amount)}원`;
 };
+const rankingFontStack = (fontFamily) => {
+  const selected = String(fontFamily || "")
+    .replace(/,\s*(?:sans-serif|serif|monospace)\s*$/i, "")
+    .trim();
+  return `${selected || "Gulim"}, Gulim, "굴림", "Malgun Gothic", "맑은 고딕", sans-serif`;
+};
 
 // Render the same text twice: a stroked copy behind and a clean fill above it.
 // The foreground covers the inner half of the browser stroke, leaving a smooth,
@@ -33,6 +39,7 @@ const formatKoreanWon = (value) => {
 function OutlinedText({
   as: Element = "span",
   enabled = false,
+  singlePass = false,
   width = 0,
   color = "#000000",
   className = "",
@@ -45,14 +52,14 @@ function OutlinedText({
     : `${Math.max(0, Math.min(8, Number(width) || 0))}px`;
   return (
     <Element
-      className={`broadcast-outlined-text ${className}`.trim()}
+      className={`broadcast-outlined-text ${showOutline && singlePass ? "broadcast-outline-single" : ""} ${className}`.trim()}
       style={{
         ...style,
         "--broadcast-outline-width": outlineWidth,
         "--broadcast-outline-color": color,
       }}
     >
-      {showOutline && (
+      {showOutline && !singlePass && (
         <span className="broadcast-text-outline" aria-hidden="true">
           {children}
         </span>
@@ -2585,7 +2592,7 @@ function ObsSetup() {
         {
           key: "ranking-full",
           title: "후원 순위표 · 전체화면",
-          description: "오늘 후원자를 빠짐없이 표시하며 한 열에 최대 50명씩 자동 분할",
+          description: "후원 순위표의 열 수와 표시 인원 설정을 그대로 사용하며 5초마다 다음 명단으로 전환",
           path: paths.fullRankingPath,
           previewPath: "/ranking-full",
           size: `${RANKING_OUTPUT_WIDTH} × ${RANKING_OUTPUT_HEIGHT}`,
@@ -2664,7 +2671,8 @@ function ObsSetup() {
             <li>OBS에서 소스 추가 → 브라우저를 선택합니다.</li>
             <li>위의 내 계정 전용 주소를 복사해 URL에 붙여 넣습니다.</li>
             <li>각 카드에 표시된 권장 크기를 입력하고 사용자 지정 CSS는 비워둡니다.</li>
-            <li>후원 알림은 1920 × 1080, 순위표는 1200 × 800입니다.</li>
+            <li>후원 알림은 1920 × 1080, 기존 순위표는 1200 × 800입니다.</li>
+            <li>순위표 URL은 하나이며, 800 × 600에서는 작은 화면 보정이, 1600 × 1200에서는 2배 고화질 렌더링이 자동 적용됩니다.</li>
             <li>
               후원 알림 설정을 저장하면 내 OBS 오버레이에 바로 반영됩니다.
             </li>
@@ -6878,7 +6886,7 @@ function AlertPreviewFrame({ appearance, donorName, amountText }) {
   );
 }
 
-function RankingOutputCanvas({ children, preview = false }) {
+function RankingOutputCanvas({ children, preview = false, quality = 1 }) {
   const frameRef = useRef(null);
   const [scale, setScale] = useState(1);
   useEffect(() => {
@@ -6900,7 +6908,7 @@ function RankingOutputCanvas({ children, preview = false }) {
   return (
     <div
       ref={frameRef}
-      className={`ranking-output-frame${preview ? " ranking-preview dark-mosaic" : " ranking-output-live"}`}
+      className={`ranking-output-frame${preview ? " ranking-preview dark-mosaic" : " ranking-output-live"} ranking-quality-${quality}`}
     >
       <div
         className="ranking-output-canvas"
@@ -6938,11 +6946,11 @@ function RankingPreview({ settings, count = 60 }) {
   );
 }
 
-function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fullRowsPerColumn = 25 }) {
-  const capacityRows = full ? fullRowsPerColumn : Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
-  const maxColumns = full ? Math.max(1, Math.min(2, Math.ceil(items.length / capacityRows))) : Math.max(1, Math.min(2, settings.rankingColumns || 1));
+function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, renderScale = 1 }) {
+  const capacityRows = Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
+  const maxColumns = Math.max(1, Math.min(2, settings.rankingColumns || 1));
   const layoutColumns = 3;
-  const visible = full ? items : items.slice(0, capacityRows * maxColumns);
+  const visible = items.slice(0, capacityRows * maxColumns);
   const columns = Array.from(
     { length: Math.min(maxColumns, Math.ceil(visible.length / capacityRows) || 1) },
     (_, column) => visible.slice(column * capacityRows, (column + 1) * capacityRows),
@@ -6960,17 +6968,17 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fu
   const effectiveRowPadding = themeRowVerticalPadding / 2;
   // OBS must render the exact size chosen by the streamer. Do not silently
   // shrink it based on row count; only the explicit top-rank scale is applied.
-  const effectiveFontSize = settings.rankingFontSize;
+  const effectiveFontSize = settings.rankingFontSize * renderScale;
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   const firstGridColumn = 2;
   const singleColumnPosition = "2 / 4";
   const cardStyle = {
-    fontFamily: settings.rankingFontFamily,
+    fontFamily: rankingFontStack(settings.rankingFontFamily),
     "--ranking-size": `${effectiveFontSize}px`,
-    "--ranking-gap": `${effectiveRowGap}px`,
-    "--ranking-row-padding": `${effectiveRowPadding}px`,
-    "--ranking-item-gap": "8px",
-    "--column-gap": `${Math.min(settings.rankingColumnGap, 12)}px`,
+    "--ranking-gap": `${effectiveRowGap * renderScale}px`,
+    "--ranking-row-padding": `${effectiveRowPadding * renderScale}px`,
+    "--ranking-item-gap": `${8 * renderScale}px`,
+    "--column-gap": `${Math.min(settings.rankingColumnGap, 12) * renderScale}px`,
     "--line-height": settings.rankingUseLineHeight
       ? settings.rankingLineHeight
       : "normal",
@@ -6981,7 +6989,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fu
     "--custom-bg": settings.rankingCustomBackground,
     "--custom-border": settings.rankingCustomBorderEnabled === false ? "transparent" : settings.rankingCustomBorder,
     "--custom-row": settings.rankingCustomRowBackgroundEnabled === false ? "transparent" : settings.rankingCustomRowBackground,
-    "--custom-radius": `${settings.rankingCustomRadius}px`,
+    "--custom-radius": `${settings.rankingCustomRadius * renderScale}px`,
   };
   const titleGridColumn = columns.length === 1
     ? singleColumnPosition
@@ -6999,7 +7007,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fu
             display: "grid",
             gridTemplateColumns: ".2fr 1.4fr 1.4fr",
             columnGap: `var(--column-gap)`,
-            fontSize: settings.rankingTitleSize,
+            fontSize: settings.rankingTitleSize * renderScale,
             fontWeight: settings.rankingTitleFontWeight ?? settings.rankingFontWeight,
             color: settings.rankingTitleColor,
           }}
@@ -7007,7 +7015,8 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fu
           <OutlinedText
             className="ranking-title-text"
             enabled={settings.rankingTitleOutlineEnabled}
-            width={`${settings.rankingTitleOutlineWidth / Math.max(1, settings.rankingTitleSize)}em`}
+            singlePass
+            width={`${Math.min(0.12, settings.rankingTitleOutlineWidth / Math.max(1, settings.rankingTitleSize))}em`}
             color={settings.rankingTitleOutlineColor}
             style={{
               gridColumn: titleGridColumn,
@@ -7078,7 +7087,8 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fu
                     <OutlinedText
                       className="donor-name"
                       enabled={settings.rankingNameOutlineEnabled}
-                      width={`${settings.rankingNameOutlineWidth / Math.max(1, settings.rankingFontSize)}em`}
+                      singlePass
+                      width={`${Math.min(0.12, settings.rankingNameOutlineWidth / Math.max(1, settings.rankingFontSize))}em`}
                       color={settings.rankingNameOutlineColor}
                     >
                       {item.donorName}
@@ -7089,7 +7099,8 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fu
                   <OutlinedText
                     className="donor-amount"
                     enabled={settings.rankingAmountOutlineEnabled}
-                    width={`${settings.rankingAmountOutlineWidth / Math.max(1, settings.rankingFontSize * 0.92)}em`}
+                    singlePass
+                    width={`${Math.min(0.12, settings.rankingAmountOutlineWidth / Math.max(1, settings.rankingFontSize * 0.92))}em`}
                     color={settings.rankingAmountOutlineColor}
                     style={{
                       textAlign: settings.rankingAmountAlign,
@@ -7110,12 +7121,16 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, fu
 
 function Widget({ token, full = false }) {
   useTransparentDocument();
+  const resolveRenderScale = () => {
+    if (full || typeof window === "undefined") return 1;
+    if (window.innerWidth >= 1500 && window.innerHeight >= 1100) return 2;
+    if (window.innerWidth <= 900 && window.innerHeight <= 700) return 4 / 3;
+    return 1;
+  };
+  const [renderScale, setRenderScale] = useState(resolveRenderScale);
   const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
   const [fullRankingPage, setFullRankingPage] = useState(0);
   const [fullRankingFading, setFullRankingFading] = useState(false);
-  const [fullRowsPerColumn, setFullRowsPerColumn] = useState(() =>
-    typeof window !== "undefined" && window.innerHeight < 800 ? 15 : 25,
-  );
   useEffect(() => {
     const load = () =>
       token
@@ -7149,13 +7164,17 @@ function Widget({ token, full = false }) {
     };
   }, [token, full]);
   useEffect(() => {
-    if (!full) return undefined;
-    const updateRows = () => setFullRowsPerColumn(window.innerHeight < 800 ? 15 : 25);
-    updateRows();
-    window.addEventListener("resize", updateRows);
-    return () => window.removeEventListener("resize", updateRows);
+    if (full) {
+      setRenderScale(1);
+      return undefined;
+    }
+    const updateScale = () => setRenderScale(resolveRenderScale());
+    updateScale();
+    window.addEventListener("resize", updateScale);
+    return () => window.removeEventListener("resize", updateScale);
   }, [full]);
-  const fullRankingPageSize = fullRowsPerColumn * 2;
+  const fullRankingPageSize = Math.max(1, Math.min(30, data.settings.rankingRowsPerColumn || 10))
+    * Math.max(1, Math.min(2, data.settings.rankingColumns || 1));
   const fullRankingPageCount = Math.max(1, Math.ceil(data.ranking.length / fullRankingPageSize));
   useEffect(() => {
     if (!full || fullRankingPageCount <= 1) {
@@ -7185,14 +7204,14 @@ function Widget({ token, full = false }) {
     : data.ranking;
   return (
     <div className="ranking-root">
-      <RankingOutputCanvas>
+      <RankingOutputCanvas quality={renderScale}>
         <div className={full ? `full-ranking-page${fullRankingFading ? " is-fading" : ""}` : undefined}>
           <RankingCard
             items={rankingPageItems}
             settings={data.settings}
             full={full}
             rankOffset={full ? pageStart : 0}
-            fullRowsPerColumn={fullRowsPerColumn}
+            renderScale={renderScale}
           />
         </div>
       </RankingOutputCanvas>
