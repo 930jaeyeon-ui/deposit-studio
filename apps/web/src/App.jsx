@@ -3536,7 +3536,10 @@ async function playAlertSound(
     await audio.play().catch(() => {});
     if (waitForCompletion && !audio.paused) {
       await new Promise((resolve) => {
-        const timer = setTimeout(resolve, 15000);
+        const durationMs = Number.isFinite(audio.duration)
+          ? Math.ceil(audio.duration * 1000) + 1000
+          : 60000;
+        const timer = setTimeout(resolve, Math.min(120000, durationMs));
         const finish = () => { clearTimeout(timer); resolve(); };
         audio.addEventListener("ended", finish, { once:true });
         audio.addEventListener("error", finish, { once:true });
@@ -3871,17 +3874,23 @@ function Settings({ mode }) {
       if (popup && isAlert) {
         const previewSession = await api("/api/overlay/preview-session", { method:"POST", body:"{}" });
         let played = false;
-        const playSyncedAudio = () => {
+        const playSyncedAudio = async () => {
           if (played) return;
           played = true;
-          playAlertSound(
-            settings,
-            appearance.soundPreset,
-            appearance.soundVolume,
-            appearance.customSoundData,
-          );
-          playAlertSpeech(appearance, preview);
-          removeEventListener("message", handlePreviewReady);
+          try {
+            await playAlertSound(
+              settings,
+              appearance.soundPreset,
+              appearance.soundVolume,
+              appearance.customSoundData,
+              true,
+            );
+            await playAlertSpeech(appearance, preview);
+          } catch (error) {
+            setSaved(error.message || "알림 미리듣기에 실패했습니다.");
+          } finally {
+            removeEventListener("message", handlePreviewReady);
+          }
         };
         const handlePreviewReady = (event) => {
           if (
@@ -6570,15 +6579,20 @@ function Settings({ mode }) {
                 {isAlert && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setPreviewRun((value) => value + 1);
-                      playAlertSound(
-                        settings,
-                        appearance.soundPreset,
-                        appearance.soundVolume,
-                        appearance.customSoundData,
-                      );
-                      playAlertSpeech(appearance, preview);
+                    onClick={async () => {
+                      try {
+                        setPreviewRun((value) => value + 1);
+                        await playAlertSound(
+                          settings,
+                          appearance.soundPreset,
+                          appearance.soundVolume,
+                          appearance.customSoundData,
+                          true,
+                        );
+                        await playAlertSpeech(appearance, preview);
+                      } catch (error) {
+                        setSaved(error.message || "알림 미리듣기에 실패했습니다.");
+                      }
                     }}
                   >
                     다시 재생
@@ -7283,47 +7297,39 @@ function Overlay({ token, preview = false }) {
       .replaceAll("{amount}", formatWon(donation.amount))
       .replaceAll("{message}", "");
     const usesToonationOriginalAudio = donation.bank === "toonation" && settingsRef.current.toonationAlertMode === "custom-original-audio";
-    if (!previewSoundMuted && !usesToonationOriginalAudio) {
-      if (donation.message) {
-        void (async () => {
-          try {
-            await playAlertSound(
-              settingsRef.current,
-              appearance.soundPreset,
-              appearance.soundVolume,
-              appearance.customSoundData,
-              true,
-            );
-            if (playbackSequence.current !== sequence) return;
-            await playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
-          } catch (error) {
-            console.warn("알림 음성 재생을 건너뜁니다:", error);
-          }
-        })();
-      } else {
-        playAlertSound(
+    const scheduleDismiss = () => {
+      if (previewMode || playbackSequence.current !== sequence) return;
+      const duration = Math.max(1000, appearance.durationMs);
+      playbackTimers.current = [
+        setTimeout(() => setExiting(true), Math.max(200, duration - 500)),
+        setTimeout(() => {
+          setCurrent(null);
+          currentRef.current = null;
+          setExiting(false);
+          playing.current = false;
+          playbackTimers.current = [];
+          setTimeout(play, 350);
+        }, duration),
+      ];
+    };
+    if (!previewSoundMuted && !usesToonationOriginalAudio) void (async () => {
+      try {
+        await playAlertSound(
           settingsRef.current,
           appearance.soundPreset,
           appearance.soundVolume,
           appearance.customSoundData,
+          true,
         );
-        playAlertSpeech(appearance, spokenText, { token: preview ? null : token })
-          .catch((error) => console.warn("알림 음성 재생을 건너뜁니다:", error));
+        if (playbackSequence.current !== sequence) return;
+        await playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
+      } catch (error) {
+        console.warn("알림 음성 재생을 건너뜁니다:", error);
+      } finally {
+        scheduleDismiss();
       }
-    }
-    if (previewMode) return;
-    const duration = Math.max(1000, appearance.durationMs);
-    playbackTimers.current = [
-      setTimeout(() => setExiting(true), Math.max(200, duration - 500)),
-      setTimeout(() => {
-      setCurrent(null);
-      currentRef.current = null;
-      setExiting(false);
-      playing.current = false;
-      playbackTimers.current = [];
-      setTimeout(play, 350);
-      }, duration),
-    ];
+    })();
+    else scheduleDismiss();
   }
 
   function stopCurrentChat() {
