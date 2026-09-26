@@ -133,7 +133,44 @@ async function api(path, options = {}) {
   }
 }
 
+function useBroadcastDeploymentRecovery() {
+  useEffect(() => {
+    const isBroadcastSurface =
+      /^\/(overlay|ranking|ranking-full)\//.test(location.pathname) ||
+      ["/overlay", "/ranking", "/ranking-full", "/recent", "/deposits/live"].includes(location.pathname);
+    if (!isBroadcastSurface) return undefined;
+    let stopped = false;
+    let knownRuntimeId = "";
+    const check = async () => {
+      try {
+        const response = await fetch(apiUrl(`/api/health?time=${Date.now()}`), {
+          cache: "no-store",
+          credentials: "include",
+          signal: AbortSignal.timeout(5000),
+        });
+        if (!response.ok) return;
+        const { runtimeId } = await response.json();
+        if (stopped || !runtimeId) return;
+        if (knownRuntimeId && runtimeId !== knownRuntimeId) {
+          location.reload();
+          return;
+        }
+        knownRuntimeId = runtimeId;
+      } catch {
+        // A deployment briefly takes the server offline. The next poll retries.
+      }
+    };
+    check();
+    const timer = setInterval(check, 5000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, []);
+}
+
 export function App() {
+  useBroadcastDeploymentRecovery();
   const [, setRoute] = useState(
     () => `${location.pathname}${location.search}${location.hash}`,
   );
@@ -6094,6 +6131,25 @@ function Settings({ mode }) {
                           <input className="color-code-input" value={settings.rankingTitleColor} onChange={(e)=>update("rankingTitleColor",e.target.value)}/>
                         </span>
                       </label>
+                      <label className="toggle-label">
+                        제목 테두리
+                        <input type="checkbox" checked={settings.rankingTitleOutlineEnabled} onChange={(e)=>update("rankingTitleOutlineEnabled",e.target.checked)}/>
+                        <i />
+                      </label>
+                      {settings.rankingTitleOutlineEnabled && <>
+                        <label className="ranking-inline-color-setting">
+                          제목 테두리색
+                          <span className="inline-color-control">
+                            <input type="color" value={colorPickerValue(settings.rankingTitleOutlineColor)} onChange={(e)=>update("rankingTitleOutlineColor",e.target.value)}/>
+                            <input className="color-code-input" value={settings.rankingTitleOutlineColor} onChange={(e)=>update("rankingTitleOutlineColor",e.target.value)} aria-label="제목 테두리 색상 코드"/>
+                          </span>
+                        </label>
+                        <label>
+                          제목 테두리 굵기
+                          <input type="range" min="0" max="8" step=".5" value={settings.rankingTitleOutlineWidth} onChange={(e)=>update("rankingTitleOutlineWidth",Number(e.target.value))}/>
+                          <span>{settings.rankingTitleOutlineWidth}px</span>
+                        </label>
+                      </>}
                     </>
                   )}
                 </AlertSettingSection>
@@ -6259,6 +6315,25 @@ function Settings({ mode }) {
                       <input className="color-code-input" value={settings.rankingNameColor} onChange={(e)=>update("rankingNameColor",e.target.value)}/>
                     </span>
                   </label>
+                  <label className="toggle-label">
+                    닉네임 테두리 <small>뒤 문구 포함</small>
+                    <input type="checkbox" checked={settings.rankingNameOutlineEnabled} onChange={(e)=>update("rankingNameOutlineEnabled",e.target.checked)}/>
+                    <i />
+                  </label>
+                  {settings.rankingNameOutlineEnabled && <>
+                    <label className="ranking-inline-color-setting">
+                      닉네임 테두리색
+                      <span className="inline-color-control">
+                        <input type="color" value={colorPickerValue(settings.rankingNameOutlineColor)} onChange={(e)=>update("rankingNameOutlineColor",e.target.value)}/>
+                        <input className="color-code-input" value={settings.rankingNameOutlineColor} onChange={(e)=>update("rankingNameOutlineColor",e.target.value)} aria-label="닉네임 테두리 색상 코드"/>
+                      </span>
+                    </label>
+                    <label>
+                      닉네임 테두리 굵기
+                      <input type="range" min="0" max="8" step=".5" value={settings.rankingNameOutlineWidth} onChange={(e)=>update("rankingNameOutlineWidth",Number(e.target.value))}/>
+                      <span>{settings.rankingNameOutlineWidth}px</span>
+                    </label>
+                  </>}
                   <label className="ranking-inline-color-setting">
                     금액 색상
                     <span className="inline-color-control">
@@ -6272,6 +6347,25 @@ function Settings({ mode }) {
                       <input className="color-code-input" value={settings.rankingAmountColor} onChange={(e)=>update("rankingAmountColor",e.target.value)}/>
                     </span>
                   </label>
+                  <label className="toggle-label">
+                    금액 테두리 <small>뒤 문구 포함</small>
+                    <input type="checkbox" checked={settings.rankingAmountOutlineEnabled} onChange={(e)=>update("rankingAmountOutlineEnabled",e.target.checked)}/>
+                    <i />
+                  </label>
+                  {settings.rankingAmountOutlineEnabled && <>
+                    <label className="ranking-inline-color-setting">
+                      금액 테두리색
+                      <span className="inline-color-control">
+                        <input type="color" value={colorPickerValue(settings.rankingAmountOutlineColor)} onChange={(e)=>update("rankingAmountOutlineColor",e.target.value)}/>
+                        <input className="color-code-input" value={settings.rankingAmountOutlineColor} onChange={(e)=>update("rankingAmountOutlineColor",e.target.value)} aria-label="금액 테두리 색상 코드"/>
+                      </span>
+                    </label>
+                    <label>
+                      금액 테두리 굵기
+                      <input type="range" min="0" max="8" step=".5" value={settings.rankingAmountOutlineWidth} onChange={(e)=>update("rankingAmountOutlineWidth",Number(e.target.value))}/>
+                      <span>{settings.rankingAmountOutlineWidth}px</span>
+                    </label>
+                  </>}
                 </AlertSettingSection>
                 <AlertSettingSection
                   id="ranking-layout"
@@ -6885,6 +6979,10 @@ function RankingCard({ items, settings, onEdit, full = false }) {
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              WebkitTextStroke: settings.rankingTitleOutlineEnabled
+                ? `${settings.rankingTitleOutlineWidth}px ${settings.rankingTitleOutlineColor}`
+                : "0 transparent",
+              paintOrder: "stroke fill",
             }}
           >
             {settings.rankingTitle || "오늘의 후원"}
@@ -6943,7 +7041,12 @@ function RankingCard({ items, settings, onEdit, full = false }) {
                     {settings.rankingShowRank && index < rankNumberLimit && (
                       <em>{rankMarker(settings.rankingTheme, index)}</em>
                     )}
-                    <span className="donor-name">
+                    <span className="donor-name" style={{
+                      WebkitTextStroke: settings.rankingNameOutlineEnabled
+                        ? `${settings.rankingNameOutlineWidth}px ${settings.rankingNameOutlineColor}`
+                        : "0 transparent",
+                      paintOrder: "stroke fill",
+                    }}>
                       {item.donorName}
                       {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: settings.rankingNameSuffixColor || settings.rankingNameColor }}>{settings.rankingNameSuffix}</span>}
                     </span>
@@ -6951,7 +7054,13 @@ function RankingCard({ items, settings, onEdit, full = false }) {
                   </b>
                   <span
                     className="donor-amount"
-                    style={{ textAlign: settings.rankingAmountAlign }}
+                    style={{
+                      textAlign: settings.rankingAmountAlign,
+                      WebkitTextStroke: settings.rankingAmountOutlineEnabled
+                        ? `${settings.rankingAmountOutlineWidth}px ${settings.rankingAmountOutlineColor}`
+                        : "0 transparent",
+                      paintOrder: "stroke fill",
+                    }}
                   >
                     {formatWon(item.amount)}
                     {settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: settings.rankingAmountSuffixColor || settings.rankingAmountColor }}>{settings.rankingAmountSuffix}</span>}
@@ -6979,21 +7088,22 @@ function Widget({ token, full = false }) {
             ([widgets, settings]) =>
               setData({ ranking: widgets.ranking, settings }),
           );
-    load();
+    const safelyLoad = () => load().catch(() => {});
+    safelyLoad();
     let fallbackTimer = null;
     const eventPath = token
       ? `/api/widgets/${encodeURIComponent(token)}/events`
       : "/api/my/deposits/events";
     const stream = new EventSource(apiUrl(eventPath), { withCredentials:true });
-    stream.addEventListener("change", load);
-    stream.addEventListener("ready", load);
+    stream.addEventListener("change", safelyLoad);
+    stream.addEventListener("ready", safelyLoad);
     stream.onopen = () => {
-      load();
+      safelyLoad();
       if (fallbackTimer) clearInterval(fallbackTimer);
       fallbackTimer = null;
     };
     stream.onerror = () => {
-      if (!fallbackTimer) fallbackTimer = setInterval(load, 5000);
+      if (!fallbackTimer) fallbackTimer = setInterval(safelyLoad, 5000);
     };
     return () => {
       stream.close();
@@ -7046,6 +7156,9 @@ function Overlay({ token, preview = false }) {
   useEffect(() => {
     let events;
     let stopped = false;
+    let reconnectTimer = null;
+    let connecting = false;
+    let initialized = false;
     const bootstrapPath = previewMode
       ? new URLSearchParams(location.search).get("previewToken")
         ? `/api/overlay/preview-session/${encodeURIComponent(new URLSearchParams(location.search).get("previewToken"))}`
@@ -7066,50 +7179,76 @@ function Overlay({ token, preview = false }) {
         playing.current = false;
       }
     };
-    api(bootstrapPath).then(async ({ settings: value, lastDonationId, previewDonation }) => {
-      if (stopped) return;
-      applySettings(value);
-      if (previewMode) {
-        if (value.ttsEnabled)
-          await waitForSpeechVoices(value.ttsVoiceURI || "");
-        queue.current.push(previewDonation);
-        play();
-        return;
-      }
-      lastId.current = lastDonationId;
-      events = new EventSource(
-        apiUrl(
-          `/api/overlay/${encodeURIComponent(token)}/events?after=${lastId.current}`,
-        ),
-        { withCredentials: true },
-      );
-      events.addEventListener("bootstrap", (event) => {
-        const snapshot = JSON.parse(event.data);
-        applySettings(snapshot.settings);
-      });
-      events.addEventListener("settings", (event) => {
-        const nextSettings = JSON.parse(event.data);
-        applySettings(nextSettings);
-      });
-      events.addEventListener("donation", (event) => {
-        const donation = JSON.parse(event.data);
-        if (!donation.isTest) {
-          if (!donation.isChatMessage && donation.id <= lastId.current) return;
-          lastId.current = Math.max(lastId.current, Number(donation.id) || 0);
-        }
-        if (settingsRef.current.alertOverlayEnabled === false) return;
-        if (
-          donation.amount < Number(settingsRef.current.alertMinimumAmount || 0)
-        )
+    const scheduleReconnect = () => {
+      if (stopped || reconnectTimer) return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = null;
+        connect();
+      }, 3000);
+    };
+    const connect = async () => {
+      if (stopped || connecting) return;
+      connecting = true;
+      try {
+        const { settings: value, lastDonationId, previewDonation } = await api(bootstrapPath);
+        if (stopped) return;
+        applySettings(value);
+        if (previewMode) {
+          if (value.ttsEnabled)
+            await waitForSpeechVoices(value.ttsVoiceURI || "");
+          queue.current.push(previewDonation);
+          play();
           return;
-        queue.current.push(donation);
-        play();
-      });
-      events.addEventListener("control", (event) => {
-        const control = JSON.parse(event.data);
-        if (control.action === "stop-current-chat") stopCurrentChat();
-      });
-    });
+        }
+        if (!initialized) {
+          lastId.current = lastDonationId;
+          initialized = true;
+        }
+        events?.close();
+        events = new EventSource(
+          apiUrl(
+            `/api/overlay/${encodeURIComponent(token)}/events?after=${lastId.current}`,
+          ),
+          { withCredentials: true },
+        );
+        events.addEventListener("bootstrap", (event) => {
+          const snapshot = JSON.parse(event.data);
+          applySettings(snapshot.settings);
+        });
+        events.addEventListener("settings", (event) => {
+          const nextSettings = JSON.parse(event.data);
+          applySettings(nextSettings);
+        });
+        events.addEventListener("donation", (event) => {
+          const donation = JSON.parse(event.data);
+          if (!donation.isTest) {
+            if (!donation.isChatMessage && donation.id <= lastId.current) return;
+            lastId.current = Math.max(lastId.current, Number(donation.id) || 0);
+          }
+          if (settingsRef.current.alertOverlayEnabled === false) return;
+          if (
+            donation.amount < Number(settingsRef.current.alertMinimumAmount || 0)
+          )
+            return;
+          queue.current.push(donation);
+          play();
+        });
+        events.addEventListener("control", (event) => {
+          const control = JSON.parse(event.data);
+          if (control.action === "stop-current-chat") stopCurrentChat();
+        });
+        events.onerror = () => {
+          events?.close();
+          events = null;
+          scheduleReconnect();
+        };
+      } catch {
+        scheduleReconnect();
+      } finally {
+        connecting = false;
+      }
+    };
+    connect();
     const refreshTimer = previewMode ? null : setInterval(() => {
       api(bootstrapPath)
         .then(({ settings: value }) => { if (!stopped) applySettings(value); })
@@ -7118,6 +7257,7 @@ function Overlay({ token, preview = false }) {
     return () => {
       stopped = true;
       events?.close();
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       if (refreshTimer) clearInterval(refreshTimer);
     };
   }, [token, preview]);

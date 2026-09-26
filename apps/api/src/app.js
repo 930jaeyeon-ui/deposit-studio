@@ -10,6 +10,7 @@ import { ToonationManager, toonationWidgetKey } from './toonation.js';
 import { parseDonationCommand, parseRegistrationCommand, YouTubeChatManager, youtubeVideoId } from './youtube.js';
 
 export const app = express();
+const runtimeId = process.env.RENDER_GIT_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || randomBytes(12).toString('hex');
 const phoneTestClients = new Map();
 const sendSse = (res,event,data) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 function publishPhoneTest(userId, data) {
@@ -222,7 +223,10 @@ app.use((error, req, res, next) => {
     detail:req.notificationParseError
   });
 });
-app.get('/api/health', (_req, res) => res.json({ ok:true, ttsConfigured:elevenLabsConfigured(), typecastConfigured:typecastConfigured() }));
+app.get('/api/health', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ ok:true, runtimeId, ttsConfigured:elevenLabsConfigured(), typecastConfigured:typecastConfigured() });
+});
 
 app.get('/api/tts/voices', requireAuth, async (_req, res) => {
   res.set('Cache-Control', 'no-store');
@@ -459,7 +463,9 @@ function cleanSettings(input) {
   settings.rankingTitleSize = Math.max(14,Math.min(72,legacyRankingCanvas && requestedRankingTitleSize <= 29 ? Math.round(requestedRankingTitleSize * 1.5) : requestedRankingTitleSize));
   settings.rankingTitleAlign = ['left','center','right'].includes(settings.rankingTitleAlign)?settings.rankingTitleAlign:'left';
   settings.rankingTitleColumn = settings.rankingTitleColumn === 'last' ? 'last' : 'first';
-  for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor','rankingNameSuffixColor','rankingAmountSuffixColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
+  for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor','rankingNameSuffixColor','rankingAmountSuffixColor','rankingTitleOutlineColor','rankingNameOutlineColor','rankingAmountOutlineColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
+  for (const key of ['rankingTitleOutlineEnabled','rankingNameOutlineEnabled','rankingAmountOutlineEnabled']) settings[key]=Boolean(settings[key]);
+  for (const key of ['rankingTitleOutlineWidth','rankingNameOutlineWidth','rankingAmountOutlineWidth']) settings[key]=Math.max(0,Math.min(8,Number(settings[key])||0));
   settings.rankingColumns = Math.max(1,Math.min(3,Math.floor(Number(settings.rankingColumns)||1)));
   settings.rankingRowsPerColumn = Math.max(1,Math.min(30,Math.floor(Number(settings.rankingRowsPerColumn)||DEFAULT_SETTINGS.rankingRowsPerColumn)));
   settings.rankingAnimation = ['none','fade','slide-up','slide-left','zoom','stagger'].includes(settings.rankingAnimation)?settings.rankingAnimation:'fade';

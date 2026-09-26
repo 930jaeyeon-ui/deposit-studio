@@ -27,7 +27,10 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
   }
 
   try {
-    assert.equal((await request('/api/health')).response.status,200);
+    const health = await request('/api/health');
+    assert.equal(health.response.status,200);
+    assert.match(health.data.runtimeId,/^[a-f0-9]{24,64}$/);
+    assert.match(health.response.headers.get('cache-control'),/no-store/);
     assert.equal((await request('/api/auth/me')).response.status,401);
 
     let result = await request('/api/auth/login',{method:'POST',body:{loginId:'admin',password:'Init1357!!'}});
@@ -87,6 +90,15 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       rankingCustomBorderEnabled:false,
       rankingCustomRowBackgroundEnabled:false,
       rankingTitleColumn:'last',
+      rankingTitleOutlineEnabled:true,
+      rankingTitleOutlineColor:'#112233',
+      rankingTitleOutlineWidth:99,
+      rankingNameOutlineEnabled:true,
+      rankingNameOutlineColor:'#223344',
+      rankingNameOutlineWidth:3.5,
+      rankingAmountOutlineEnabled:true,
+      rankingAmountOutlineColor:'#334455',
+      rankingAmountOutlineWidth:-2,
       backgroundImageData:'data:text/plain;base64,Zm9v',
       soundLibrary:[
         { id:'valid',name:'효과음',data:'data:audio/mp3;base64,Zm9v' },
@@ -120,6 +132,11 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.rankingCustomBorderEnabled,false);
     assert.equal(result.data.rankingCustomRowBackgroundEnabled,false);
     assert.equal(result.data.rankingTitleColumn,'last');
+    assert.equal(result.data.rankingTitleOutlineEnabled,true);
+    assert.equal(result.data.rankingTitleOutlineColor,'#112233');
+    assert.equal(result.data.rankingTitleOutlineWidth,8);
+    assert.equal(result.data.rankingNameOutlineWidth,3.5);
+    assert.equal(result.data.rankingAmountOutlineWidth,0);
     assert.equal(result.data.backgroundImageData,'');
     assert.equal(result.data.soundLibrary.length,1);
     assert.equal(result.data.amountTiers[0].minAmount,0);
