@@ -646,7 +646,7 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 @media(max-width:980px){.ranking-settings-grid>.settings-side{display:block}.ranking-settings-grid>.settings-side>.ranking-settings-preview{flex:none}}
 @media(max-width:600px){.ranking-settings-grid .alert-setting-body>.ranking-theme-picker{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .custom-color-setting{display:grid;gap:7px;color:var(--n9-muted);font-size:10px}.setting-label-row{display:flex;align-items:center;justify-content:space-between;gap:8px}.inline-setting-check{display:inline-flex;align-items:center;gap:5px;color:var(--n9-muted);font-size:9px}.inline-setting-check input{width:14px!important;min-height:14px!important;margin:0!important;accent-color:var(--n9-accent)}.custom-theme-editor input:disabled{opacity:.38}.rank-style-help{grid-column:1/-1;margin:0;padding:9px 10px;border-radius:8px;background:var(--n9-soft);color:var(--n9-muted);font-size:9px;line-height:1.5}.widget-card:not(.theme-gold):not(.theme-transparent):not(.theme-mono) .widget-row:is(.rank-1,.rank-2,.rank-3) b em{background:var(--rank-badge)}.widget-card:is(.theme-gold,.theme-transparent,.theme-mono) .widget-row:is(.rank-1,.rank-2,.rank-3) b em{color:var(--rank-badge)}
-.widget-card .widget-row{font-size:calc(var(--ranking-size,30px) * var(--rank-scale,1))}.widget-card .widget-row .donor-name{color:var(--rank-color,var(--name-color,#fff))}
+.widget-card .widget-row{font-size:var(--ranking-size,30px)}.widget-card .widget-row b{font-size:calc(1em * var(--rank-scale,1))}.widget-card .widget-row .donor-name{color:var(--rank-color,var(--name-color,#fff))}
 .alert-preview .preview-heading>.ranking-preview-count,.ranking-preview-count{display:grid;flex:none;grid-auto-flow:column;grid-auto-columns:1fr;gap:3px;width:min(100%,265px);padding:3px;border:1px solid var(--n9-border);border-radius:9px;background:var(--n9-soft)}.preview-heading .ranking-preview-count button{min-width:0;padding:6px 7px;border:0;border-radius:6px;background:transparent;color:var(--n9-muted);font-size:9px;font-weight:800;white-space:nowrap}.preview-heading .ranking-preview-count button.active{background:var(--n9-accent);color:#fff;box-shadow:0 3px 10px color-mix(in srgb,var(--n9-accent) 30%,transparent)}@media(max-width:600px){.ranking-settings-preview .preview-heading{flex-direction:column}.ranking-preview-count{align-self:stretch}.preview-heading .ranking-preview-count button{width:auto}}
 
 /* Text shadow is controlled only by the alert text setting. */
@@ -744,6 +744,6 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 }
 .full-ranking-page{width:100%;height:100%;opacity:1;transition:opacity .5s ease}
 .full-ranking-page.is-fading{opacity:0}
-.ranking-standard-card.ranking-data-columns-1 .ranking-column{width:min(100%,760px);justify-self:end}
-.ranking-quality-2 .ranking-output-content{padding:40px}.ranking-quality-2 .widget-card{padding:36px 44px;border-width:2px;border-radius:36px}.ranking-quality-2 .widget-card h2{margin-bottom:28px}.ranking-quality-2 .ranking-standard-card.ranking-data-columns-1 .ranking-column{width:min(100%,1520px)}
+.ranking-standard-card.ranking-data-columns-1 .ranking-column{width:100%;justify-self:stretch}
+.ranking-quality-2 .ranking-output-content{padding:40px}.ranking-quality-2 .widget-card{padding:36px 44px;border-width:2px;border-radius:36px}.ranking-quality-2 .widget-card h2{margin-bottom:28px}
 @media(prefers-reduced-motion:reduce){.full-ranking-page{transition:none}}

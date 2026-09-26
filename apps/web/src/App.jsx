@@ -6971,7 +6971,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
   const effectiveFontSize = settings.rankingFontSize * renderScale;
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   const firstGridColumn = 2;
-  const singleColumnPosition = "2 / 4";
+  const singleColumnPosition = "1 / 4";
   const cardStyle = {
     fontFamily: rankingFontStack(settings.rankingFontFamily),
     "--ranking-size": `${effectiveFontSize}px`,
