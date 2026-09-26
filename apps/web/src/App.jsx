@@ -27,30 +27,36 @@ const formatKoreanWon = (value) => {
   return `${formatWon(amount)}원`;
 };
 
-// CSS text strokes are centered on the glyph edge, so a thick stroke eats into
-// small Hangul counters and makes broadcast text look uneven. Build the outline
-// from crisp, zero-blur shadows instead; every layer stays behind the glyph fill.
-function outsideTextOutline(enabled, width, color) {
-  if (!enabled || Number(width) <= 0) return "none";
-  const radius = Math.max(0.5, Math.min(8, Number(width) || 0));
-  const layers = [];
-  const step = 0.75;
-  const directions = [
-    [1, 0], [-1, 0], [0, 1], [0, -1],
-    [Math.SQRT1_2, Math.SQRT1_2],
-    [Math.SQRT1_2, -Math.SQRT1_2],
-    [-Math.SQRT1_2, Math.SQRT1_2],
-    [-Math.SQRT1_2, -Math.SQRT1_2],
-  ];
-  for (let distance = step; distance < radius; distance += step) {
-    for (const [x, y] of directions) {
-      layers.push(`${(x * distance).toFixed(2)}px ${(y * distance).toFixed(2)}px 0 ${color}`);
-    }
-  }
-  for (const [x, y] of directions) {
-    layers.push(`${(x * radius).toFixed(2)}px ${(y * radius).toFixed(2)}px 0 ${color}`);
-  }
-  return layers.join(", ");
+// Render the same text twice: a stroked copy behind and a clean fill above it.
+// The foreground covers the inner half of the browser stroke, leaving a smooth,
+// outside-only outline without the lumpy corners produced by shadow offsets.
+function OutlinedText({
+  as: Element = "span",
+  enabled = false,
+  width = 0,
+  color = "#000000",
+  className = "",
+  style,
+  children,
+}) {
+  const showOutline = enabled && Number(width) > 0;
+  return (
+    <Element
+      className={`broadcast-outlined-text ${className}`.trim()}
+      style={{
+        ...style,
+        "--broadcast-outline-width": `${Math.max(0, Math.min(8, Number(width) || 0))}px`,
+        "--broadcast-outline-color": color,
+      }}
+    >
+      {showOutline && (
+        <span className="broadcast-text-outline" aria-hidden="true">
+          {children}
+        </span>
+      )}
+      <span className="broadcast-text-fill">{children}</span>
+    </Element>
+  );
 }
 
 function ThemeSelector() {
@@ -3305,6 +3311,9 @@ function alertAppearance(settings, amount = 50000) {
     amountColorEnabled: settings.amountColorEnabled,
     amountColor: settings.amountColor,
     suffixStyle: settings.suffixStyleEnabled ? { color:settings.suffixColor, fontFamily:settings.suffixFontFamily } : undefined,
+    outlineEnabled: settings.outlineEnabled !== false,
+    outlineColor: customText ? tier.outlineColor : settings.outlineColor,
+    outlineWidth: customText ? tier.outlineWidth : settings.outlineWidth,
     messageTemplate:
       tier?.messageMode === "custom" && tier.messageTemplate
         ? tier.messageTemplate
@@ -3350,10 +3359,6 @@ function alertAppearance(settings, amount = 50000) {
       textAlign: settings.textAlign,
       lineHeight: settings.lineHeight,
       letterSpacing: `${settings.letterSpacing}px`,
-      WebkitTextStroke:
-        settings.outlineEnabled === false
-          ? "0 transparent"
-          : `${customText ? tier.outlineWidth : settings.outlineWidth}px ${customText ? tier.outlineColor : settings.outlineColor}`,
       textShadow: settings.textShadow ? "0 5px 16px #000b" : "none",
       padding: settings.backgroundEnabled
         ? `${settings.backgroundPadding}px`
@@ -6825,7 +6830,7 @@ function AlertPreviewFrame({ appearance, donorName, amountText }) {
   const alertStyle = fullCanvasBackground
     ? { ...appearance.style, backgroundColor: "transparent" }
     : appearance.style;
-  const message = (
+  const messageContent = (
     <AlertMessage
       template={appearance.messageTemplate}
       donorName={donorName}
@@ -6842,6 +6847,16 @@ function AlertPreviewFrame({ appearance, donorName, amountText }) {
       amountColor={appearance.amountColor}
       suffixStyle={appearance.suffixStyle}
     />
+  );
+  const message = (
+    <OutlinedText
+      as="div"
+      enabled={appearance.outlineEnabled}
+      width={appearance.outlineWidth}
+      color={appearance.outlineColor}
+    >
+      {messageContent}
+    </OutlinedText>
   );
   return (
     <AlertOutputCanvas className="preview-stage alert-preview-frame">
@@ -7012,23 +7027,21 @@ function RankingCard({ items, settings, onEdit, full = false }) {
             color: settings.rankingTitleColor,
           }}
         >
-          <span
+          <OutlinedText
+            className="ranking-title-text"
+            enabled={settings.rankingTitleOutlineEnabled}
+            width={settings.rankingTitleOutlineWidth}
+            color={settings.rankingTitleOutlineColor}
             style={{
               gridColumn: titleGridColumn,
               textAlign: settings.rankingTitleAlign,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
-              WebkitTextStroke: "0 transparent",
-              textShadow: outsideTextOutline(
-                settings.rankingTitleOutlineEnabled,
-                settings.rankingTitleOutlineWidth,
-                settings.rankingTitleOutlineColor,
-              ),
             }}
           >
             {settings.rankingTitle || "오늘의 후원"}
-          </span>
+          </OutlinedText>
         </h2>
       )}
       <div
@@ -7083,34 +7096,29 @@ function RankingCard({ items, settings, onEdit, full = false }) {
                     {settings.rankingShowRank && index < rankNumberLimit && (
                       <em>{rankMarker(settings.rankingTheme, index)}</em>
                     )}
-                    <span className="donor-name" style={{
-                      WebkitTextStroke: "0 transparent",
-                      textShadow: outsideTextOutline(
-                        settings.rankingNameOutlineEnabled,
-                        settings.rankingNameOutlineWidth,
-                        settings.rankingNameOutlineColor,
-                      ),
-                    }}>
+                    <OutlinedText
+                      className="donor-name"
+                      enabled={settings.rankingNameOutlineEnabled}
+                      width={settings.rankingNameOutlineWidth}
+                      color={settings.rankingNameOutlineColor}
+                    >
                       {item.donorName}
                       {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: settings.rankingNameSuffixColor || settings.rankingNameColor }}>{settings.rankingNameSuffix}</span>}
-                    </span>
+                    </OutlinedText>
                     {settings.rankingShowCount && <small>{item.count}회</small>}
                   </b>
-                  <span
+                  <OutlinedText
                     className="donor-amount"
+                    enabled={settings.rankingAmountOutlineEnabled}
+                    width={settings.rankingAmountOutlineWidth}
+                    color={settings.rankingAmountOutlineColor}
                     style={{
                       textAlign: settings.rankingAmountAlign,
-                      WebkitTextStroke: "0 transparent",
-                      textShadow: outsideTextOutline(
-                        settings.rankingAmountOutlineEnabled,
-                        settings.rankingAmountOutlineWidth,
-                        settings.rankingAmountOutlineColor,
-                      ),
                     }}
                   >
                     {formatWon(item.amount)}
                     {settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: settings.rankingAmountSuffixColor || settings.rankingAmountColor }}>{settings.rankingAmountSuffix}</span>}
-                  </span>
+                  </OutlinedText>
                 </div>
               );
             })}
@@ -7389,7 +7397,7 @@ function Overlay({ token, preview = false }) {
   const alertStyle = fullCanvasBackground
     ? { ...appearance.style, backgroundColor: "transparent" }
     : appearance.style;
-  const message = (
+  const messageContent = (
     <AlertMessage
       template={outputTemplate}
       donorName={current.donorName}
@@ -7407,6 +7415,16 @@ function Overlay({ token, preview = false }) {
       amountColor={appearance.amountColor}
       suffixStyle={appearance.suffixStyle}
     />
+  );
+  const message = (
+    <OutlinedText
+      as="div"
+      enabled={appearance.outlineEnabled}
+      width={appearance.outlineWidth}
+      color={appearance.outlineColor}
+    >
+      {messageContent}
+    </OutlinedText>
   );
   return (
     <AlertOutputCanvas className="overlay-stage">
