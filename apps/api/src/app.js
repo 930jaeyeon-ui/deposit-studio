@@ -441,6 +441,7 @@ function cleanSettings(input) {
   settings.rankingFontSize = Math.max(16, Math.min(72, legacyRankingCanvas && requestedRankingFontSize <= 32 ? Math.round(requestedRankingFontSize * 1.6) : requestedRankingFontSize));
   settings.rankingCanvasVersion = 2;
   settings.rankingFontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.rankingFontWeight) || 700)));
+  for (const key of ['rankingTitleFontWeight','rankingNameFontWeight','rankingAmountFontWeight']) settings[key]=Math.max(100,Math.min(900,Math.floor(Number(settings[key])||settings.rankingFontWeight)));
   settings.rankingUseLineHeight = Boolean(settings.rankingUseLineHeight);
   settings.rankingLineHeight = Math.max(.8, Math.min(2, Number(settings.rankingLineHeight) || 1.2));
   settings.rankingLetterSpacing = Math.max(-5, Math.min(20, Number(settings.rankingLetterSpacing) || 0));
@@ -466,7 +467,7 @@ function cleanSettings(input) {
   for (const key of ['rankingTitleColor','rankingNameColor','rankingAmountColor','rankingNameSuffixColor','rankingAmountSuffixColor','rankingTitleOutlineColor','rankingNameOutlineColor','rankingAmountOutlineColor']) settings[key]=String(settings[key]||DEFAULT_SETTINGS[key]).slice(0,20);
   for (const key of ['rankingTitleOutlineEnabled','rankingNameOutlineEnabled','rankingAmountOutlineEnabled']) settings[key]=Boolean(settings[key]);
   for (const key of ['rankingTitleOutlineWidth','rankingNameOutlineWidth','rankingAmountOutlineWidth']) settings[key]=Math.max(0,Math.min(8,Number(settings[key])||0));
-  settings.rankingColumns = Math.max(1,Math.min(3,Math.floor(Number(settings.rankingColumns)||1)));
+  settings.rankingColumns = Math.max(1,Math.min(2,Math.floor(Number(settings.rankingColumns)||1)));
   settings.rankingRowsPerColumn = Math.max(1,Math.min(30,Math.floor(Number(settings.rankingRowsPerColumn)||DEFAULT_SETTINGS.rankingRowsPerColumn)));
   settings.rankingAnimation = ['none','fade','slide-up','slide-left','zoom','stagger'].includes(settings.rankingAnimation)?settings.rankingAnimation:'fade';
   settings.rankingRankHighlightEnabled = settings.rankingRankHighlightEnabled !== false;

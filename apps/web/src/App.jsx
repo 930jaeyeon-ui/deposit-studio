@@ -3736,7 +3736,7 @@ function Settings({ mode }) {
   const [previewRun, setPreviewRun] = useState(0);
   const [rankingPreviewCount, setRankingPreviewCount] = useState(10);
   const rankingPreviewRows = Math.max(1, Math.min(30, Number(settings.rankingRowsPerColumn) || 10));
-  const rankingPreviewColumns = Math.max(1, Math.min(3, Number(settings.rankingColumns) || 1));
+  const rankingPreviewColumns = Math.max(1, Math.min(2, Number(settings.rankingColumns) || 1));
   const rankingPreviewCounts = [...new Set([
     10,
     15,
@@ -3787,7 +3787,7 @@ function Settings({ mode }) {
       const loadedSettings = mode === "ranking"
         ? {
             ...value,
-            rankingColumns: Math.max(1, Math.min(3, Number(value.rankingColumns) || 1)),
+            rankingColumns: Math.max(1, Math.min(2, Number(value.rankingColumns) || 1)),
             rankingRowsPerColumn: Math.max(
               1,
               Math.min(30, Number(value.rankingRowsPerColumn) || 10),
@@ -6355,6 +6355,7 @@ function Settings({ mode }) {
                       <input className="color-code-input" value={settings.rankingNameColor} onChange={(e)=>update("rankingNameColor",e.target.value)}/>
                     </span>
                   </label>
+                  {[["rankingTitleFontWeight","제목 굵기"],["rankingNameFontWeight","닉네임 굵기"],["rankingAmountFontWeight","금액 굵기"]].map(([key,label])=><label key={key}>{label}<select value={settings[key] ?? settings.rankingFontWeight} onChange={(e)=>update(key,Number(e.target.value))}>{[300,400,500,600,700,800,900].map(value=><option key={value} value={value}>{value}</option>)}</select></label>)}
                   <label className="toggle-label">
                     닉네임 테두리 <small>뒤 문구 포함</small>
                     <input type="checkbox" checked={settings.rankingNameOutlineEnabled} onChange={(e)=>update("rankingNameOutlineEnabled",e.target.checked)}/>
@@ -6429,14 +6430,14 @@ function Settings({ mode }) {
                     </select>
                   </label>
                   <label>
-                    열 수 (1~3)
+                    열 수 (1~2)
                     <input
                       type="number"
                       min="1"
-                      max="3"
+                      max="2"
                       value={settings.rankingColumns}
                       onChange={(e) => {
-                        const columns = Math.max(1, Math.min(3, Number(e.target.value)));
+                        const columns = Math.max(1, Math.min(2, Number(e.target.value)));
                         setSettings((current) => ({
                           ...current,
                           rankingColumns: columns,
@@ -6444,7 +6445,7 @@ function Settings({ mode }) {
                         }));
                       }}
                     />
-                    <small>한 열에 30명을 먼저 채우고, 31명부터 2열, 61명부터 3열을 사용합니다.</small>
+                    <small>왼쪽 여백을 확보한 넓은 열을 사용하며, 한 열을 채운 뒤 2열로 확장합니다.</small>
                   </label>
                   <label>
                     한 열의 인원 (1~30)
@@ -6876,6 +6877,7 @@ function RankingOutputCanvas({ children, preview = false }) {
   const frameRef = useRef(null);
   const [scale, setScale] = useState(1);
   useEffect(() => {
+    if (!preview) return undefined;
     const frame = frameRef.current;
     if (!frame) return;
     const resize = () =>
@@ -6889,18 +6891,18 @@ function RankingOutputCanvas({ children, preview = false }) {
     const observer = new ResizeObserver(resize);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, []);
+  }, [preview]);
   return (
     <div
       ref={frameRef}
-      className={`ranking-output-frame${preview ? " ranking-preview dark-mosaic" : ""}`}
+      className={`ranking-output-frame${preview ? " ranking-preview dark-mosaic" : " ranking-output-live"}`}
     >
       <div
         className="ranking-output-canvas"
         style={{
-          width: RANKING_OUTPUT_WIDTH,
-          height: RANKING_OUTPUT_HEIGHT,
-          transform: `translate(-50%,-50%) scale(${scale})`,
+          width: preview ? RANKING_OUTPUT_WIDTH : "100%",
+          height: preview ? RANKING_OUTPUT_HEIGHT : "100%",
+          transform: preview ? `translate(-50%,-50%) scale(${scale})` : "none",
         }}
       >
         <div className="ranking-output-content">{children}</div>
@@ -6933,62 +6935,27 @@ function RankingPreview({ settings, count = 60 }) {
 
 function RankingCard({ items, settings, onEdit, full = false }) {
   const capacityRows = full ? 50 : Math.max(1, Math.min(30, settings.rankingRowsPerColumn || 10));
-  const maxColumns = full ? Math.max(1, Math.ceil(items.length / capacityRows)) : Math.max(1, Math.min(3, settings.rankingColumns || 1));
-  const layoutColumns = full ? maxColumns : 3;
+  const maxColumns = full ? Math.max(1, Math.min(2, Math.ceil(items.length / capacityRows))) : Math.max(1, Math.min(2, settings.rankingColumns || 1));
+  const layoutColumns = 3;
   const visible = full ? items : items.slice(0, capacityRows * maxColumns);
   const columns = Array.from(
     { length: Math.min(maxColumns, Math.ceil(visible.length / capacityRows) || 1) },
     (_, column) => visible.slice(column * capacityRows, (column + 1) * capacityRows),
   );
   const actualRows = Math.max(1, ...columns.map((column) => column.length));
-  const sizingRows = visible.length <= 15 ? 15 : Math.max(16, actualRows);
-  const estimatedLineHeight = settings.rankingUseLineHeight
-    ? settings.rankingLineHeight
-    : 1.2;
+  // Size against the rows that are actually visible. The previous 15-row
+  // floor plus a 38px hard cap made the font-size control appear ineffective.
+  const sizingRows = actualRows;
   const themeRowVerticalPadding = {
     ocean: 16,
     lavender: 18,
     transparent: 4,
   }[settings.rankingTheme] ?? 10;
-  const effectiveRowGap = sizingRows > 20
-    ? Math.min(settings.rankingRowGap, 1)
-    : sizingRows >= 15 || maxColumns >= 2
-      ? Math.min(settings.rankingRowGap, 3)
-      : settings.rankingRowGap;
-  const effectiveRowPadding = sizingRows > 20
-    ? 1
-    : sizingRows >= 15
-      ? 2
-      : themeRowVerticalPadding / 2;
-  const configuredRankStyles =
-    settings.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles;
-  const topRankScaleOverhead = settings.rankingRankHighlightEnabled === false
-    ? 0
-    : configuredRankStyles
-        .slice(0, Math.min(3, actualRows))
-        .reduce(
-          (total, rankStyle) =>
-            total +
-            Math.max(
-              0,
-              Math.max(0.7, Math.min(2.4, rankStyle.size / 100)) - 1,
-            ),
-          0,
-        );
-  const titleHeight = settings.rankingShowTitle
-    ? settings.rankingTitleSize + 28
-    : 0;
-  const availableRowsHeight = RANKING_OUTPUT_HEIGHT - 76 - titleHeight;
-  const fixedRowsHeight = sizingRows * (effectiveRowGap + effectiveRowPadding * 2);
-  const safeFontSize = Math.max(
-    12,
-    Math.floor(
-      (availableRowsHeight - fixedRowsHeight) /
-        (estimatedLineHeight * (sizingRows + topRankScaleOverhead)),
-    ),
-  );
-  const columnFontLimit = sizingRows <= 15 ? 38 : 36;
-  const effectiveFontSize = Math.min(settings.rankingFontSize, safeFontSize, columnFontLimit);
+  const effectiveRowGap = settings.rankingRowGap;
+  const effectiveRowPadding = themeRowVerticalPadding / 2;
+  // OBS must render the exact size chosen by the streamer. Do not silently
+  // shrink it based on row count; only the explicit top-rank scale is applied.
+  const effectiveFontSize = settings.rankingFontSize;
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
   const firstGridColumn = layoutColumns - columns.length + 1;
   const cardStyle = {
@@ -7004,6 +6971,7 @@ function RankingCard({ items, settings, onEdit, full = false }) {
     "--letter-spacing": `${settings.rankingLetterSpacing}px`,
     "--name-color": settings.rankingNameColor,
     "--amount-color": settings.rankingAmountColor,
+    "--amount-weight": settings.rankingAmountFontWeight ?? settings.rankingFontWeight,
     "--custom-bg": settings.rankingCustomBackground,
     "--custom-border": settings.rankingCustomBorderEnabled === false ? "transparent" : settings.rankingCustomBorder,
     "--custom-row": settings.rankingCustomRowBackgroundEnabled === false ? "transparent" : settings.rankingCustomRowBackground,
@@ -7021,9 +6989,10 @@ function RankingCard({ items, settings, onEdit, full = false }) {
         <h2
           style={{
             display: "grid",
-            gridTemplateColumns: `repeat(${layoutColumns},minmax(0,1fr))`,
+            gridTemplateColumns: ".4fr 1.3fr 1.3fr",
             columnGap: `var(--column-gap)`,
             fontSize: settings.rankingTitleSize,
+            fontWeight: settings.rankingTitleFontWeight ?? settings.rankingFontWeight,
             color: settings.rankingTitleColor,
           }}
         >
@@ -7046,7 +7015,7 @@ function RankingCard({ items, settings, onEdit, full = false }) {
       )}
       <div
         className="ranking-grid"
-        style={{ gridTemplateColumns: `repeat(${layoutColumns},minmax(0,1fr))` }}
+        style={{ gridTemplateColumns: ".4fr 1.3fr 1.3fr" }}
       >
         {columns.map((column, columnIndex) => (
           <div
@@ -7088,7 +7057,9 @@ function RankingCard({ items, settings, onEdit, full = false }) {
                     "--rank-scale": rankHighlight && index < 3
                       ? Math.max(0.7, Math.min(2.4, rankStyle.size / 100))
                       : 1,
-                    "--rank-weight": settings.rankingFontWeight,
+                    "--rank-weight": rankHighlight && index < 3
+                      ? (rankStyle.weight || settings.rankingNameFontWeight || settings.rankingFontWeight)
+                      : (settings.rankingNameFontWeight || settings.rankingFontWeight),
                     "--delay": `${index * 0.07}s`,
                   }}
                 >
