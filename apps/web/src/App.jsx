@@ -137,6 +137,10 @@ function apiUrl(path) {
 }
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const MEDIA_FILE_LIMIT_MB = 10;
+const MEDIA_FILE_LIMIT_BYTES = MEDIA_FILE_LIMIT_MB * 1024 * 1024;
+const UPLOAD_TOO_LARGE_MESSAGE =
+  `업로드 데이터가 서버 허용 용량을 초과했습니다. 사진·음성은 파일당 ${MEDIA_FILE_LIMIT_MB}MB 이하로 줄이고, 보관함의 큰 파일 수를 줄인 뒤 다시 저장해주세요.`;
 
 async function api(path, options = {}) {
   const { retries = 0, ...fetchOptions } = options;
@@ -153,6 +157,15 @@ async function api(path, options = {}) {
       try {
         data = body ? JSON.parse(body) : null;
       } catch {
+        if (!response.ok) {
+          const error = new Error(
+            response.status === 413
+              ? UPLOAD_TOO_LARGE_MESSAGE
+              : `서버 요청 처리에 실패했습니다. (HTTP ${response.status})`,
+          );
+          error.transient = [502, 503, 504].includes(response.status);
+          throw error;
+        }
         const error = new Error(
           "서버가 시작 중입니다. 잠시 후 자동으로 다시 연결합니다.",
         );
@@ -160,7 +173,11 @@ async function api(path, options = {}) {
         throw error;
       }
       if (!response.ok) {
-        const error = new Error(data?.error || "요청에 실패했습니다.");
+        const error = new Error(
+          response.status === 413
+            ? data?.error || UPLOAD_TOO_LARGE_MESSAGE
+            : data?.error || `요청에 실패했습니다. (HTTP ${response.status})`,
+        );
         error.transient = [502, 503, 504].includes(response.status);
         throw error;
       }
@@ -444,8 +461,8 @@ const PAGE_INFO = {
 async function resizeAvatar(file) {
   if (!file.type.startsWith("image/"))
     throw new Error("이미지 파일을 선택해주세요.");
-  if (file.size > 8 * 1024 * 1024)
-    throw new Error("원본 이미지는 8MB 이하만 사용할 수 있습니다.");
+  if (file.size > MEDIA_FILE_LIMIT_BYTES)
+    throw new Error(`원본 이미지는 ${MEDIA_FILE_LIMIT_MB}MB 이하만 사용할 수 있습니다.`);
   const source = await new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result);
@@ -2757,8 +2774,8 @@ function Dashboard() {
   async function loadGradeImage(id, event) {
     const file = event.target.files?.[0];
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setMessage("등급 이미지는 5MB 이하만 사용할 수 있습니다.");
+    if (file.size > MEDIA_FILE_LIMIT_BYTES) {
+      setMessage(`등급 이미지는 ${MEDIA_FILE_LIMIT_MB}MB 이하만 사용할 수 있습니다.`);
       return;
     }
     const imageData = await new Promise((resolve, reject) => {
@@ -2960,7 +2977,7 @@ function Dashboard() {
                         accept="image/png,image/jpeg,image/webp,image/gif"
                         onChange={(e) => loadGradeImage(grade.id, e)}
                       />
-                      <small>{grade.imageName || "5MB 이하"}</small>
+                      <small>{grade.imageName || `${MEDIA_FILE_LIMIT_MB}MB 이하`}</small>
                     </label>
                     <button
                       type="button"
@@ -4170,8 +4187,8 @@ function Settings({ mode }) {
   const toggleTier = (id) =>
     setOpenTiers((current) => ({ ...current, [id]: !current[id] }));
   async function readSound(file) {
-    if (file.size > 5 * 1024 * 1024)
-      throw new Error("효과음 파일은 5MB 이하만 사용할 수 있습니다.");
+    if (file.size > MEDIA_FILE_LIMIT_BYTES)
+      throw new Error(`효과음 파일은 ${MEDIA_FILE_LIMIT_MB}MB 이하만 사용할 수 있습니다.`);
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result);
@@ -4746,7 +4763,7 @@ function Settings({ mode }) {
                   </div>
                   {settings.backgroundEnabled && (
                     <>
-                      <label>배경 이미지<input type="file" accept="image/*" onChange={(event)=>{const file=event.target.files?.[0];if(!file)return;if(file.size>5*1024*1024){setSaved("배경 이미지는 5MB 이하만 사용할 수 있습니다.");return;}const reader=new FileReader();reader.onload=()=>setSettings(current=>({...current,backgroundImageData:String(reader.result),backgroundImageName:file.name,backgroundImageArea:"canvas"}));reader.readAsDataURL(file);}} />{settings.backgroundImageName&&<small>{settings.backgroundImageName} <button type="button" onClick={()=>setSettings(current=>({...current,backgroundImageData:"",backgroundImageName:""}))}>제거</button></small>}</label>
+                      <label>배경 이미지<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event)=>{const file=event.target.files?.[0];if(!file)return;if(file.size>MEDIA_FILE_LIMIT_BYTES){setSaved(`배경 이미지는 ${MEDIA_FILE_LIMIT_MB}MB 이하만 사용할 수 있습니다.`);return;}const reader=new FileReader();reader.onload=()=>setSettings(current=>({...current,backgroundImageData:String(reader.result),backgroundImageName:file.name,backgroundImageArea:"canvas"}));reader.readAsDataURL(file);}} /><small>{settings.backgroundImageName ? <>{settings.backgroundImageName} <button type="button" onClick={()=>setSettings(current=>({...current,backgroundImageData:"",backgroundImageName:""}))}>제거</button></> : `PNG, JPG, WEBP, GIF · ${MEDIA_FILE_LIMIT_MB}MB 이하`}</small></label>
                       {settings.backgroundImageData && (
                         <>
                           <label>
@@ -4935,7 +4952,7 @@ function Settings({ mode }) {
                           onChange={loadSound}
                         />
                         <small>
-                          {(settings.soundLibrary || []).length}/10개 · 5MB 이하
+                          {(settings.soundLibrary || []).length}/10개 · {MEDIA_FILE_LIMIT_MB}MB 이하
                           MP3, WAV, OGG
                         </small>
                       </label>

@@ -21,6 +21,7 @@ const dataChangeClients = new Set();
 const ttsRateWindows = new Map();
 const overlayPreviewSessions = new Map();
 const pendingBankAlertTimers = new Map();
+const MEDIA_DATA_URL_MAX_LENGTH = 14_100_000;
 const toonationManager = new ToonationManager(handleToonationDonation);
 const youtubeChatManager = new YouTubeChatManager(handleYouTubeDonationCommand);
 let externalConnectionsStarted = false;
@@ -202,7 +203,7 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({
-  limit:'75mb',
+  limit:'150mb',
   verify:(req, _res, buffer) => {
     if (req.method === 'POST' && req.path === '/api/notifications') {
       req.rawNotificationBody = buffer.toString('utf8').slice(0,20000);
@@ -210,6 +211,11 @@ app.use(express.json({
   }
 }));
 app.use((error, req, res, next) => {
+  if (error?.type === 'entity.too.large') {
+    return res.status(413).json({
+      error:'업로드 데이터가 서버 허용 용량을 초과했습니다. 사진·음성은 파일당 10MB 이하로 줄이고, 보관함의 큰 파일 수를 줄인 뒤 다시 저장해주세요.'
+    });
+  }
   if (req.method !== 'POST' || req.path !== '/api/notifications' || error?.type !== 'entity.parse.failed') return next(error);
   req.notificationParseError = String(error.message || 'JSON 파싱 실패').slice(0,500);
   try {
@@ -381,7 +387,7 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.soundPreset = ['coin','chime','pop','fanfare','bell','sparkle','success','drum','laser','magic','custom','none'].includes(settings.soundPreset) || String(settings.soundPreset).startsWith('library:') ? settings.soundPreset : 'coin';
   settings.backgroundEnabled = Boolean(settings.backgroundEnabled);
   settings.backgroundColorEnabled = settings.backgroundColorEnabled !== false;
-  settings.backgroundImageData=String(settings.backgroundImageData||'').slice(0,7000000);
+  settings.backgroundImageData=String(settings.backgroundImageData||'').slice(0,MEDIA_DATA_URL_MAX_LENGTH);
   if(settings.backgroundImageData&&!settings.backgroundImageData.startsWith('data:image/'))settings.backgroundImageData='';
   settings.backgroundImageName=String(settings.backgroundImageName||'').slice(0,100);
   settings.backgroundImageArea=settings.backgroundImageArea==='canvas' ? 'canvas' : 'alert';
@@ -418,15 +424,15 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.crewGradeTextFontFamily=String(settings.crewGradeTextFontFamily||DEFAULT_SETTINGS.crewGradeTextFontFamily).slice(0,120);
   settings.crewGradeTextSize=Math.max(16,Math.min(160,Number(settings.crewGradeTextSize)||54));
   settings.crewGradeMinimumAmount = Math.max(0, Math.min(1000000000, Number(settings.crewGradeMinimumAmount) || DEFAULT_SETTINGS.crewGradeMinimumAmount));
-  settings.crewGradeImageData = String(settings.crewGradeImageData || '').slice(0,1400000);
+  settings.crewGradeImageData = String(settings.crewGradeImageData || '').slice(0,MEDIA_DATA_URL_MAX_LENGTH);
   if (settings.crewGradeImageData && !settings.crewGradeImageData.startsWith('data:image/')) settings.crewGradeImageData = '';
   settings.crewGradeImageName = String(settings.crewGradeImageName || '').slice(0,100);
   const requestedGradeImageSize=Number(settings.crewGradeImageSize)||DEFAULT_SETTINGS.crewGradeImageSize;
   settings.crewGradeImageSize = Math.max(80, Math.min(400, requestedGradeImageSize <= 180 ? DEFAULT_SETTINGS.crewGradeImageSize : requestedGradeImageSize));
-  settings.crewGrades = Array.isArray(settings.crewGrades) ? settings.crewGrades.slice(0,20).map((grade,index)=>({id:String(grade.id||`grade-${index}`).slice(0,50),name:String(grade.name||`${index+1}등급`).slice(0,30),minAmount:Math.max(0,Math.min(1000000000,Number(grade.minAmount)||0)),maxAmount:grade.maxAmount==null||grade.maxAmount===''?null:Math.max(0,Math.min(1000000000,Number(grade.maxAmount)||0)),imageName:String(grade.imageName||'').slice(0,100),imageData:String(grade.imageData||'').slice(0,7000000)})).filter(grade=>!grade.imageData||grade.imageData.startsWith('data:image/')) : [];
-  settings.customSoundData = String(settings.customSoundData || '').slice(0,7000000);
+  settings.crewGrades = Array.isArray(settings.crewGrades) ? settings.crewGrades.slice(0,20).map((grade,index)=>({id:String(grade.id||`grade-${index}`).slice(0,50),name:String(grade.name||`${index+1}등급`).slice(0,30),minAmount:Math.max(0,Math.min(1000000000,Number(grade.minAmount)||0)),maxAmount:grade.maxAmount==null||grade.maxAmount===''?null:Math.max(0,Math.min(1000000000,Number(grade.maxAmount)||0)),imageName:String(grade.imageName||'').slice(0,100),imageData:String(grade.imageData||'').slice(0,MEDIA_DATA_URL_MAX_LENGTH)})).filter(grade=>!grade.imageData||grade.imageData.startsWith('data:image/')) : [];
+  settings.customSoundData = String(settings.customSoundData || '').slice(0,MEDIA_DATA_URL_MAX_LENGTH);
   settings.customSoundName = String(settings.customSoundName || '').slice(0,100);
-  settings.soundLibrary = Array.isArray(settings.soundLibrary) ? settings.soundLibrary.slice(0,10).map((sound,index)=>({id:String(sound.id || `sound-${index}`).slice(0,50),name:String(sound.name || `내 음원 ${index+1}`).slice(0,100),data:String(sound.data || '').slice(0,7000000)})).filter(sound=>sound.data.startsWith('data:audio/')) : [];
+  settings.soundLibrary = Array.isArray(settings.soundLibrary) ? settings.soundLibrary.slice(0,10).map((sound,index)=>({id:String(sound.id || `sound-${index}`).slice(0,50),name:String(sound.name || `내 음원 ${index+1}`).slice(0,100),data:String(sound.data || '').slice(0,MEDIA_DATA_URL_MAX_LENGTH)})).filter(sound=>sound.data.startsWith('data:audio/')) : [];
   settings.amountTiers = Array.isArray(settings.amountTiers) ? settings.amountTiers.slice(0,12).map((tier,index)=>({
     id:String(tier.id || `tier-${index}`).slice(0,40), name:String(tier.name || `${index+1}구간`).slice(0,30),
     minAmount:Math.max(0,Math.min(100000000,Number(tier.minAmount)||0)), maxAmount:tier.maxAmount==null||tier.maxAmount===''?null:Math.max(0,Math.min(100000000,Number(tier.maxAmount)||0)),
@@ -434,7 +440,7 @@ function cleanSettings(input, skipFullRanking = false) {
     messageMode:tier.messageMode === 'custom' ? 'custom' : 'inherit', messageTemplate:String(tier.messageTemplate || '').slice(0,300),
     textMode:tier.textMode === 'custom' ? 'custom' : 'inherit', fontFamily:String(tier.fontFamily || settings.fontFamily).slice(0,120), fontSize:Math.max(20,Math.min(160,Number(tier.fontSize)||settings.fontSize)), fontWeight:Math.max(100,Math.min(900,Number(tier.fontWeight)||settings.fontWeight)), textColor:String(tier.textColor || settings.textColor).slice(0,20), outlineColor:String(tier.outlineColor || settings.outlineColor).slice(0,20), outlineWidth:Math.max(0,Math.min(12,Number(tier.outlineWidth)||0)),
     effectMode:tier.effectMode === 'custom' ? 'custom' : 'inherit', animation:String(tier.animation || settings.animation).slice(0,30), exitAnimation:String(tier.exitAnimation || settings.exitAnimation).slice(0,30), durationMs:Math.max(1000,Math.min(30000,Number(tier.durationMs)||settings.durationMs)),
-    soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.soundVolume)) ? Number(tier.soundVolume) : settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,7000000),
+    soundMode:tier.soundMode === 'custom' ? 'custom' : 'inherit', soundPreset:String(tier.soundPreset || settings.soundPreset).slice(0,80), soundVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.soundVolume)) ? Number(tier.soundVolume) : settings.soundVolume)), customSoundName:String(tier.customSoundName || '').slice(0,100), customSoundData:String(tier.customSoundData || '').slice(0,MEDIA_DATA_URL_MAX_LENGTH),
     ttsMode:tier.ttsMode === 'custom' ? 'custom' : 'inherit', ttsEnabled:tier.ttsEnabled !== false, ttsProvider:'typecast', ttsVoiceURI:String(tier.ttsVoiceURI || settings.ttsVoiceURI || '').slice(0,300), ttsElevenVoiceId:String(tier.ttsElevenVoiceId || settings.ttsElevenVoiceId || '').slice(0,80), ttsElevenVoiceName:String(tier.ttsElevenVoiceName || settings.ttsElevenVoiceName || '').slice(0,120), ttsModel:tier.ttsModel === 'eleven_multilingual_v2' ? 'eleven_multilingual_v2' : 'eleven_flash_v2_5', ttsTypecastVoiceId:String(tier.ttsTypecastVoiceId || settings.ttsTypecastVoiceId || '').slice(0,120), ttsTypecastVoiceName:String(tier.ttsTypecastVoiceName || settings.ttsTypecastVoiceName || '').slice(0,120), ttsTypecastEmotion:['smart','normal','happy','sad','angry','whisper','toneup','tonedown'].includes(tier.ttsTypecastEmotion) ? tier.ttsTypecastEmotion : settings.ttsTypecastEmotion, ttsRate:Math.max(.5,Math.min(2,Number(tier.ttsRate)||settings.ttsRate)), ttsPitch:Math.max(-12,Math.min(12,Number.isFinite(Number(tier.ttsPitch)) ? Number(tier.ttsPitch) : settings.ttsPitch)), ttsVolume:Math.max(0,Math.min(100,Number.isFinite(Number(tier.ttsVolume))?Number(tier.ttsVolume):settings.ttsVolume))
   })) : [];
   settings.rankingLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
