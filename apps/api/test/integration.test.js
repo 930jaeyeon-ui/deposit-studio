@@ -99,6 +99,15 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       rankingAmountOutlineEnabled:true,
       rankingAmountOutlineColor:'#334455',
       rankingAmountOutlineWidth:-2,
+      fullRankingUseStandardSettings:false,
+      fullRankingSettings:{
+        ...result.data,
+        rankingColumns:99,
+        rankingRowsPerColumn:99,
+        rankingRowGap:-99,
+        rankingRankPlacement:'gutter',
+        rankingTitle:'전체화면 전용 제목',
+      },
       backgroundImageData:'data:text/plain;base64,Zm9v',
       soundLibrary:[
         { id:'valid',name:'효과음',data:'data:audio/mp3;base64,Zm9v' },
@@ -146,6 +155,13 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.rankingTitleOutlineWidth,8);
     assert.equal(result.data.rankingNameOutlineWidth,3.5);
     assert.equal(result.data.rankingAmountOutlineWidth,0);
+    assert.equal(result.data.fullRankingUseStandardSettings,false);
+    assert.equal(result.data.fullRankingSettings.rankingColumns,2);
+    assert.equal(result.data.fullRankingSettings.rankingRowsPerColumn,30);
+    assert.equal(result.data.fullRankingSettings.rankingRowGap,-20);
+    assert.equal(result.data.fullRankingSettings.rankingRankPlacement,'gutter');
+    assert.equal(result.data.fullRankingSettings.rankingTitle,'전체화면 전용 제목');
+    assert.equal('youtubeApiKey' in result.data.fullRankingSettings,false);
     assert.equal(result.data.backgroundImageData,'');
     assert.equal(result.data.soundLibrary.length,1);
     assert.equal(result.data.amountTiers[0].minAmount,0);

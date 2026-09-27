@@ -72,6 +72,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   alertMinimumAmount: MINIMUM_DONATION_AMOUNT,
   alertOverlayEnabled: true,
   rankingOverlayEnabled: true,
+  fullRankingUseStandardSettings: true,
+  fullRankingSettings: {},
   toonationEnabled: false,
   toonationWidgetUrl: '',
   toonationAlertMode: 'official',
@@ -132,6 +134,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingRowsPerColumn: 10,
   rankingAnimation: 'fade',
   rankingShowRank: true,
+  rankingRankPlacement: 'inline',
   rankingShowCount: false,
   rankingRankHighlightEnabled: true,
   rankingRankStyles: [

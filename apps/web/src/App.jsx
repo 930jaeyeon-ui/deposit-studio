@@ -32,6 +32,21 @@ const rankingFontStack = (fontFamily) => {
     .trim();
   return `${selected || "Gulim"}, Gulim, "굴림", "Malgun Gothic", "맑은 고딕", sans-serif`;
 };
+const RANKING_SETTING_KEYS = [
+  "minimumDonationAmount",
+  ...Object.keys(DEFAULT_SETTINGS).filter((key) => key.startsWith("ranking")),
+];
+const pickRankingSettings = (settings) => Object.fromEntries(
+  RANKING_SETTING_KEYS.map((key) => [key, settings[key]]),
+);
+const normalizeRankingLayout = (settings) => ({
+  ...settings,
+  rankingColumns: Math.max(1, Math.min(2, Number(settings.rankingColumns) || 1)),
+  rankingRowsPerColumn: Math.max(
+    1,
+    Math.min(30, Number(settings.rankingRowsPerColumn) || 10),
+  ),
+});
 
 // Render the same text twice: a stroked copy behind and a clean fill above it.
 // The foreground covers the inner half of the browser stroke, leaving a smooth,
@@ -321,6 +336,8 @@ function AuthenticatedRoutes() {
   if (location.pathname === "/obs") return <ObsSetup />;
   if (location.pathname === "/settings/ranking")
     return <Settings mode="ranking" />;
+  if (location.pathname === "/settings/ranking-full")
+    return <Settings mode="ranking-full" />;
   if (location.pathname === "/settings" && location.hash === "#ranking")
     return <Settings mode="ranking" />;
   if (
@@ -415,6 +432,7 @@ const PAGE_INFO = {
   "/settings/alert": ["내 방송", "후원 알림 설정"],
   "/settings": ["내 방송", "후원 알림 설정"],
   "/settings/ranking": ["내 방송", "후원 순위표 설정"],
+  "/settings/ranking-full": ["내 방송", "전체화면 순위표 설정"],
   "/settings/tts-words": ["방송 관리", "금지 단어 설정"],
   "/obs": ["내 방송", "OBS 연결"],
   "/phone-test": ["내 방송", "휴대폰 연동 테스트"],
@@ -714,6 +732,7 @@ function PageLayout({ children }) {
     "/deposits": "₩",
     "/settings/alert": "◉",
     "/settings/ranking": "≡",
+    "/settings/ranking-full": "▤",
     "/settings/tts-words": "Aa",
     "/obs": "↗",
     "/phone-test": "⌁",
@@ -765,6 +784,11 @@ function PageLayout({ children }) {
             href="/settings/ranking"
             label="후원 순위표 설정"
             hint="순위 · 테마 · 표시 인원"
+          />
+          <Link
+            href="/settings/ranking-full"
+            label="전체화면 순위표 설정"
+            hint="전체화면 전용 디자인 · 표시 인원"
           />
           <span className="nav-label nav-group">방송 관리</span>
           <Link
@@ -2593,7 +2617,7 @@ function ObsSetup() {
         {
           key: "ranking-full",
           title: "후원 순위표 · 전체화면",
-          description: "후원 순위표의 열 수와 표시 인원 설정을 그대로 사용하며 5초마다 다음 명단으로 전환",
+          description: "일반 순위표 설정을 그대로 사용하거나 전체화면 전용 설정으로 별도 구성",
           path: paths.fullRankingPath,
           previewPath: "/ranking-full",
           size: `${RANKING_OUTPUT_WIDTH} × ${RANKING_OUTPUT_HEIGHT}`,
@@ -3729,6 +3753,7 @@ function AlertSettingSection({
 }
 
 function Settings({ mode }) {
+  const isFullRanking = mode === "ranking-full";
   const voices = useSpeechVoices();
   const [elevenVoices, setElevenVoices] = useState([]);
   const [elevenConfigured, setElevenConfigured] = useState(null);
@@ -3738,8 +3763,42 @@ function Settings({ mode }) {
   const [typecastVoiceError, setTypecastVoiceError] = useState("");
   const [typecastVoiceQuery, setTypecastVoiceQuery] = useState("");
   const [typecastGenderFilter, setTypecastGenderFilter] = useState("");
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [storedSettings, setStoredSettings] = useState(DEFAULT_SETTINGS);
   const [savedSettings, setSavedSettings] = useState(DEFAULT_SETTINGS);
+  const hydrateSettings = (value) => {
+    if (!isFullRanking) return normalizeRankingLayout(value);
+    const standardRankingSettings = pickRankingSettings(normalizeRankingLayout(value));
+    return normalizeRankingLayout({
+      ...value,
+      ...(value.fullRankingUseStandardSettings !== false
+        ? standardRankingSettings
+        : value.fullRankingSettings || standardRankingSettings),
+      __standardRankingSettings: standardRankingSettings,
+    });
+  };
+  const settings = hydrateSettings(storedSettings);
+  const setSettings = (updater) => setStoredSettings((currentStored) => {
+    const current = hydrateSettings(currentStored);
+    const next = typeof updater === "function" ? updater(current) : updater;
+    if (!isFullRanking) return next;
+    const standard = currentStored.__standardRankingSettings || pickRankingSettings(currentStored);
+    if (next.fullRankingUseStandardSettings !== false) {
+      return {
+        ...currentStored,
+        ...standard,
+        fullRankingUseStandardSettings: true,
+        fullRankingSettings: currentStored.fullRankingSettings || pickRankingSettings(next),
+        __standardRankingSettings: standard,
+      };
+    }
+    return {
+      ...currentStored,
+      ...standard,
+      fullRankingUseStandardSettings: false,
+      fullRankingSettings: pickRankingSettings(next),
+      __standardRankingSettings: standard,
+    };
+  });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
   const [settingsLoadError, setSettingsLoadError] = useState("");
   const [settingsLoadAttempt, setSettingsLoadAttempt] = useState(0);
@@ -3798,18 +3857,10 @@ function Settings({ mode }) {
     setSettingsLoadError("");
     api("/api/settings").then((value) => {
       if(!active)return;
-      const loadedSettings = mode === "ranking"
-        ? {
-            ...value,
-            rankingColumns: Math.max(1, Math.min(2, Number(value.rankingColumns) || 1)),
-            rankingRowsPerColumn: Math.max(
-              1,
-              Math.min(30, Number(value.rankingRowsPerColumn) || 10),
-            ),
-          }
-        : value;
-      setSettings(loadedSettings);
-      setSavedSettings(loadedSettings);
+      const loadedSettings = mode === "alert" ? value : normalizeRankingLayout(value);
+      const hydratedSettings = hydrateSettings(loadedSettings);
+      setStoredSettings(hydratedSettings);
+      setSavedSettings(hydratedSettings);
       setSettingsLoaded(true);
     }).catch((error)=>{
       if(active)setSettingsLoadError(error.message||"설정을 불러오지 못했습니다.");
@@ -3857,24 +3908,61 @@ function Settings({ mode }) {
     setSettings((current) => ({ ...current, [key]: value }));
     setPreviewRun((current) => current + 1);
   };
+  const toggleFullRankingUseStandard = (useStandard) => {
+    setStoredSettings((current) => {
+      const standard = current.__standardRankingSettings || pickRankingSettings(current);
+      if (useStandard) {
+        return {
+          ...current,
+          ...standard,
+          fullRankingUseStandardSettings: true,
+          __standardRankingSettings: standard,
+        };
+      }
+      const custom = current.fullRankingSettings && Object.keys(current.fullRankingSettings).length
+        ? current.fullRankingSettings
+        : standard;
+      return {
+        ...current,
+        ...custom,
+        fullRankingUseStandardSettings: false,
+        fullRankingSettings: custom,
+        __standardRankingSettings: standard,
+      };
+    });
+    setPreviewRun((current) => current + 1);
+  };
   async function persistSettings() {
     validateAmountTiers(settings.amountTiers);
+    let payload = settings;
+    if (isFullRanking) {
+      const standard = settings.__standardRankingSettings || pickRankingSettings(settings);
+      payload = {
+        ...settings,
+        ...standard,
+        fullRankingSettings: settings.fullRankingUseStandardSettings !== false
+          ? settings.fullRankingSettings || standard
+          : pickRankingSettings(settings),
+      };
+      delete payload.__standardRankingSettings;
+    }
     const next = await api("/api/settings", {
       method: "PUT",
-      body: JSON.stringify(settings),
+      body: JSON.stringify(payload),
     });
-    setSettings(next);
-    setSavedSettings(next);
-    return next;
+    const hydratedNext = hydrateSettings(next);
+    setStoredSettings(hydratedNext);
+    setSavedSettings(hydratedNext);
+    return hydratedNext;
   }
   function restoreSettings() {
-    setSettings(savedSettings);
+    setStoredSettings(savedSettings);
     setPreviewRun((current) => current + 1);
     setSaved("저장된 설정으로 되돌렸습니다.");
   }
   function finishLeave(allow) {
     if (allow && !savingBeforeLeave.current) {
-      setSettings(savedSettings);
+      setStoredSettings(savedSettings);
       setPreviewRun((current) => current + 1);
       setSaved("");
     }
@@ -3948,7 +4036,7 @@ function Settings({ mode }) {
         addEventListener("message", handlePreviewReady);
         setTimeout(playSyncedAudio, 1800);
         popup.location.href = `/overlay?preview=1&sound=off&previewToken=${encodeURIComponent(previewSession.token)}`;
-      } else if (popup) popup.location.href = "/ranking";
+      } else if (popup) popup.location.href = isFullRanking ? "/ranking-full" : "/ranking";
       setSaved("현재 설정을 저장하고 예시 화면을 열었습니다.");
     } catch (error) {
       popup?.close();
@@ -3957,7 +4045,7 @@ function Settings({ mode }) {
   }
   if(!settingsLoaded){
     const isAlert=mode==="alert";
-    return <PageLayout><div className="shell settings-loading-shell"><header><div><span className="eyebrow">{isAlert?"DONATION ALERT":"DONATION RANKING"}</span><h1>{isAlert?"후원 알림 설정":"후원 순위표 설정"}</h1><p className="page-description">저장된 설정을 안전하게 불러온 뒤 화면을 표시합니다.</p></div></header><section className="panel settings-loading-card" aria-live="polite">{settingsLoadError?<><span className="settings-loading-error">!</span><h2>설정을 불러오지 못했습니다</h2><p>{settingsLoadError}</p><button type="button" className="primary-button" onClick={()=>setSettingsLoadAttempt(value=>value+1)}>다시 불러오기</button></>:<><span className="settings-loading-spinner"/><h2>저장된 설정을 불러오는 중입니다</h2><p>잠시만 기다려주세요.</p></>}</section></div></PageLayout>;
+    return <PageLayout><div className="shell settings-loading-shell"><header><div><span className="eyebrow">{isAlert?"DONATION ALERT":isFullRanking?"FULL SCREEN RANKING":"DONATION RANKING"}</span><h1>{isAlert?"후원 알림 설정":isFullRanking?"전체화면 순위표 설정":"후원 순위표 설정"}</h1><p className="page-description">저장된 설정을 안전하게 불러온 뒤 화면을 표시합니다.</p></div></header><section className="panel settings-loading-card" aria-live="polite">{settingsLoadError?<><span className="settings-loading-error">!</span><h2>설정을 불러오지 못했습니다</h2><p>{settingsLoadError}</p><button type="button" className="primary-button" onClick={()=>setSettingsLoadAttempt(value=>value+1)}>다시 불러오기</button></>:<><span className="settings-loading-spinner"/><h2>저장된 설정을 불러오는 중입니다</h2><p>잠시만 기다려주세요.</p></>}</section></div></PageLayout>;
   }
   const appearance = alertAppearance(settings, 50000);
   const preview = appearance.messageTemplate
@@ -4158,9 +4246,9 @@ function Settings({ mode }) {
         <header>
           <div>
             <span className="eyebrow">
-              {isAlert ? "DONATION ALERT" : "DONATION RANKING"}
+              {isAlert ? "DONATION ALERT" : isFullRanking ? "FULL SCREEN RANKING" : "DONATION RANKING"}
             </span>
-            <h1>{isAlert ? "후원 알림 설정" : "후원 순위표 설정"}</h1>
+            <h1>{isAlert ? "후원 알림 설정" : isFullRanking ? "전체화면 순위표 설정" : "후원 순위표 설정"}</h1>
             <p className="page-description">
               위에서 아래로 하나씩 설정하면 오른쪽 미리보기에 바로 반영됩니다.
             </p>
@@ -4174,7 +4262,21 @@ function Settings({ mode }) {
             className={`controls alert-controls ${isAlert ? "" : "ranking-controls"}`}
             onSubmit={save}
           >
-            <label className="toggle-label overlay-enabled-toggle">
+            {isFullRanking && (
+              <label className="toggle-label overlay-enabled-toggle">
+                <span>
+                  <b>기존 후원 순위표 설정 사용</b>
+                  <small>일반 순위표 설정을 저장할 때마다 전체화면에도 그대로 반영됩니다.</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={settings.fullRankingUseStandardSettings !== false}
+                  onChange={(event) => toggleFullRankingUseStandard(event.target.checked)}
+                />
+                <i />
+              </label>
+            )}
+            {(!isFullRanking || settings.fullRankingUseStandardSettings === false) && <label className="toggle-label overlay-enabled-toggle">
               <span>
                 <b>{isAlert ? "후원 알림 사용" : "후원 순위표 사용"}</b>
                 <small>OBS 주소와 배치 위치는 그대로 유지됩니다.</small>
@@ -4185,7 +4287,7 @@ function Settings({ mode }) {
                 onChange={(event) => update(isAlert ? "alertOverlayEnabled" : "rankingOverlayEnabled", event.target.checked)}
               />
               <i />
-            </label>
+            </label>}
             {isAlert ? (
               <>
                 <AlertSettingSection
@@ -5956,6 +6058,8 @@ function Settings({ mode }) {
                   </div>
                 </AlertSettingSection>
               </>
+            ) : isFullRanking && settings.fullRankingUseStandardSettings !== false ? (
+              <p className="rank-style-help">일반 후원 순위표의 모든 설정을 그대로 사용 중입니다. 별도로 설정하려면 위 체크를 해제해주세요.</p>
             ) : (
               <>
                 <AlertSettingSection
@@ -6298,7 +6402,7 @@ function Settings({ mode }) {
                     행 간격
                     <input
                       type="range"
-                      min="0"
+                      min="-20"
                       max="40"
                       value={settings.rankingRowGap}
                       onChange={(e) =>
@@ -6502,18 +6606,30 @@ function Settings({ mode }) {
                     <i />
                   </label>
                   {settings.rankingShowRank && (
-                    <label>
-                      순위 번호 표시 범위
-                      <select
-                        value={Number(settings.rankingLimit) === 1 ? 1 : 3}
-                        onChange={(e) =>
-                          update("rankingLimit", Number(e.target.value))
-                        }
-                      >
-                        <option value="1">1위까지만</option>
-                        <option value="3">3위까지</option>
-                      </select>
-                    </label>
+                    <>
+                      <label>
+                        순위 정렬 방식
+                        <select
+                          value={settings.rankingRankPlacement || "inline"}
+                          onChange={(e) => update("rankingRankPlacement", e.target.value)}
+                        >
+                          <option value="inline">순위를 포함해서 정렬</option>
+                          <option value="gutter">순위는 왼쪽, 닉네임끼리 정렬</option>
+                        </select>
+                      </label>
+                      <label>
+                        순위 번호 표시 범위
+                        <select
+                          value={Number(settings.rankingLimit) === 1 ? 1 : 3}
+                          onChange={(e) =>
+                            update("rankingLimit", Number(e.target.value))
+                          }
+                        >
+                          <option value="1">1위까지만</option>
+                          <option value="3">3위까지</option>
+                        </select>
+                      </label>
+                    </>
                   )}
                   <label className="toggle-label">
                     후원 횟수 표시
@@ -6692,7 +6808,13 @@ function Settings({ mode }) {
                   className="settings-save"
                   disabled={!isDirty || settingsSaving}
                 >
-                  {settingsSaving?"저장 중...":isAlert ? "알림 설정 저장" : "순위표 설정 저장"}
+                  {settingsSaving
+                    ? "저장 중..."
+                    : isAlert
+                      ? "알림 설정 저장"
+                      : isFullRanking
+                        ? "전체화면 순위표 설정 저장"
+                        : "순위표 설정 저장"}
                 </button>
               </div>
               {saved && <p className="settings-save-message">{saved}</p>}
@@ -6979,7 +7101,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
     "--ranking-gap": `${effectiveRowGap * renderScale}px`,
     "--ranking-row-padding": `${effectiveRowPadding * renderScale}px`,
     "--ranking-item-gap": `${8 * renderScale}px`,
-    "--column-gap": `${Math.min(settings.rankingColumnGap, 12) * renderScale}px`,
+    "--column-gap": `${settings.rankingColumnGap * renderScale}px`,
     "--line-height": settings.rankingUseLineHeight
       ? settings.rankingLineHeight
       : "normal",
@@ -6999,7 +7121,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
       : firstGridColumn;
   return (
     <div
-      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} ranking-columns-${layoutColumns} ranking-data-columns-${columns.length} ${full ? "ranking-full-card" : "ranking-standard-card"} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
+      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} rank-placement-${settings.rankingRankPlacement || "inline"} ranking-columns-${layoutColumns} ranking-data-columns-${columns.length} ${full ? "ranking-full-card" : "ranking-standard-card"} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
       style={cardStyle}
     >
       {settings.rankingShowTitle && (
@@ -7082,9 +7204,13 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                   }}
                 >
                   <b style={{ textAlign: settings.rankingNameAlign }}>
-                    {settings.rankingShowRank && index < rankNumberLimit && (
+                    {settings.rankingShowRank && settings.rankingRankPlacement === "gutter" ? (
+                      <span className="rank-marker-slot">
+                        {index < rankNumberLimit && <em>{rankMarker(settings.rankingTheme, index)}</em>}
+                      </span>
+                    ) : settings.rankingShowRank && index < rankNumberLimit ? (
                       <em>{rankMarker(settings.rankingTheme, index)}</em>
-                    )}
+                    ) : null}
                     <OutlinedText
                       className="donor-name"
                       enabled={settings.rankingNameOutlineEnabled}
@@ -7101,10 +7227,11 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     className="donor-amount"
                     enabled={settings.rankingAmountOutlineEnabled}
                     singlePass
-                    width={`${Math.min(0.12, settings.rankingAmountOutlineWidth / Math.max(1, settings.rankingFontSize * 0.92))}em`}
+                    width={`${Math.min(0.12, settings.rankingAmountOutlineWidth / Math.max(1, settings.rankingFontSize * (rankHighlight && index < 3 ? 1 : 0.92)))}em`}
                     color={settings.rankingAmountOutlineColor}
                     style={{
                       textAlign: settings.rankingAmountAlign,
+                      fontSize: rankHighlight && index < 3 ? "1em" : undefined,
                     }}
                   >
                     {formatWon(item.amount)}
@@ -7123,15 +7250,13 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
 function Widget({ token, full = false }) {
   useTransparentDocument();
   const resolveRenderScale = () => {
-    if (full || typeof window === "undefined") return 1;
+    if (typeof window === "undefined") return 1;
     if (window.innerWidth >= 1500 && window.innerHeight >= 1100) return 2;
     if (window.innerWidth <= 900 && window.innerHeight <= 700) return 4 / 3;
     return 1;
   };
   const [renderScale, setRenderScale] = useState(resolveRenderScale);
   const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
-  const [fullRankingPage, setFullRankingPage] = useState(0);
-  const [fullRankingFading, setFullRankingFading] = useState(false);
   useEffect(() => {
     const load = () =>
       token
@@ -7165,53 +7290,24 @@ function Widget({ token, full = false }) {
     };
   }, [token, full]);
   useEffect(() => {
-    if (full) {
-      setRenderScale(1);
-      return undefined;
-    }
     const updateScale = () => setRenderScale(resolveRenderScale());
     updateScale();
     window.addEventListener("resize", updateScale);
     return () => window.removeEventListener("resize", updateScale);
   }, [full]);
-  const fullRankingPageSize = Math.max(1, Math.min(30, data.settings.rankingRowsPerColumn || 10))
-    * Math.max(1, Math.min(2, data.settings.rankingColumns || 1));
-  const fullRankingPageCount = Math.max(1, Math.ceil(data.ranking.length / fullRankingPageSize));
-  useEffect(() => {
-    if (!full || fullRankingPageCount <= 1) {
-      setFullRankingPage(0);
-      setFullRankingFading(false);
-      return undefined;
-    }
-    setFullRankingPage((page) => page % fullRankingPageCount);
-    let fadeTimer = null;
-    const pageTimer = setInterval(() => {
-      setFullRankingFading(true);
-      fadeTimer = setTimeout(() => {
-        setFullRankingPage((page) => (page + 1) % fullRankingPageCount);
-        setFullRankingFading(false);
-      }, 500);
-    }, 5000);
-    return () => {
-      clearInterval(pageTimer);
-      if (fadeTimer) clearTimeout(fadeTimer);
-    };
-  }, [full, fullRankingPageCount]);
-  if (data.settings.rankingOverlayEnabled === false)
+  const effectiveSettings = full && data.settings.fullRankingUseStandardSettings === false
+    ? { ...data.settings, ...(data.settings.fullRankingSettings || {}) }
+    : data.settings;
+  if (effectiveSettings.rankingOverlayEnabled === false)
     return <div className="ranking-root" />;
-  const pageStart = fullRankingPage * fullRankingPageSize;
-  const rankingPageItems = full
-    ? data.ranking.slice(pageStart, pageStart + fullRankingPageSize)
-    : data.ranking;
   return (
     <div className="ranking-root">
       <RankingOutputCanvas quality={renderScale}>
-        <div className={full ? `full-ranking-page${fullRankingFading ? " is-fading" : ""}` : undefined}>
+        <div>
           <RankingCard
-            items={rankingPageItems}
-            settings={data.settings}
+            items={data.ranking}
+            settings={effectiveSettings}
             full={full}
-            rankOffset={full ? pageStart : 0}
             renderScale={renderScale}
           />
         </div>

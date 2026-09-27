@@ -746,5 +746,6 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 .full-ranking-page.is-fading{opacity:0}
 .ranking-standard-card.ranking-data-columns-1 .ranking-column{width:100%;justify-self:stretch}
 .ranking-quality-2 .ranking-output-content{padding:40px}.ranking-quality-2 .widget-card{padding:36px 44px;border-width:2px;border-radius:36px}.ranking-quality-2 .widget-card h2{margin-bottom:0}
-.widget-card h2{margin-bottom:0}.ranking-column .widget-row:first-child{margin-top:0}
+.widget-card h2{margin-bottom:0}.widget-card .ranking-column .widget-row{margin-top:var(--ranking-gap,10px)}.ranking-column .widget-row:first-child{margin-top:0}
+.rank-placement-gutter .rank-marker-slot{display:inline-flex;flex:none;width:calc(var(--ranking-size,30px) * 3);align-items:center;justify-content:flex-end}
 @media(prefers-reduced-motion:reduce){.full-ranking-page{transition:none}}

@@ -336,7 +336,9 @@ async function getObsUser(token) {
   return result.rows[0] || null;
 }
 
-function cleanSettings(input) {
+const RANKING_SETTING_KEYS = ['minimumDonationAmount', ...Object.keys(DEFAULT_SETTINGS).filter(key => key.startsWith('ranking'))];
+
+function cleanSettings(input, skipFullRanking = false) {
   const settings = { ...DEFAULT_SETTINGS, ...input };
   settings.minimumDonationAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.minimumDonationAmount) || 0)));
   settings.alertMinimumAmount = Math.max(0, Math.min(100000000, Math.floor(Number(settings.alertMinimumAmount) || 0)));
@@ -446,7 +448,7 @@ function cleanSettings(input) {
   settings.rankingUseLineHeight = Boolean(settings.rankingUseLineHeight);
   settings.rankingLineHeight = Math.max(.8, Math.min(2, Number(settings.rankingLineHeight) || 1.2));
   settings.rankingLetterSpacing = Math.max(-5, Math.min(20, Number(settings.rankingLetterSpacing) || 0));
-  settings.rankingRowGap = Math.max(0, Math.min(40, Math.floor(Number(settings.rankingRowGap) || 0)));
+  settings.rankingRowGap = Math.max(-20, Math.min(40, Math.floor(Number(settings.rankingRowGap) || 0)));
   settings.rankingColumnGap = Math.max(0, Math.min(80, Number(settings.rankingColumnGap) || 0));
   settings.rankingNameAlign = ['left','center','right'].includes(settings.rankingNameAlign) ? settings.rankingNameAlign : 'left';
   settings.rankingAmountAlign = ['left','center','right'].includes(settings.rankingAmountAlign) ? settings.rankingAmountAlign : 'right';
@@ -474,8 +476,22 @@ function cleanSettings(input) {
   settings.rankingRankHighlightEnabled = settings.rankingRankHighlightEnabled !== false;
   settings.rankingRankStyles = Array.from({length:4},(_,index)=>{const source=Array.isArray(settings.rankingRankStyles)?settings.rankingRankStyles[index]||{}:{};const fallback=DEFAULT_SETTINGS.rankingRankStyles[index];return {color:String(source.color||fallback.color).slice(0,20),amountColor:String(source.amountColor||settings.rankingAmountColor||fallback.amountColor||DEFAULT_SETTINGS.rankingAmountColor).slice(0,20),badge:String(source.badge||fallback.badge).slice(0,20),size:Math.max(70,Math.min(160,Number(source.size)||fallback.size)),weight:Math.max(100,Math.min(900,Number(source.weight)||fallback.weight))};});
   settings.rankingShowRank = Boolean(settings.rankingShowRank);
+  settings.rankingRankPlacement = settings.rankingRankPlacement === 'gutter' ? 'gutter' : 'inline';
   settings.rankingShowCount = Boolean(settings.rankingShowCount);
   settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);
+  if (skipFullRanking) {
+    delete settings.fullRankingSettings;
+    delete settings.fullRankingUseStandardSettings;
+  } else {
+    settings.fullRankingUseStandardSettings = settings.fullRankingUseStandardSettings !== false;
+    const fullSource = input?.fullRankingSettings && typeof input.fullRankingSettings === 'object' && Object.keys(input.fullRankingSettings).length
+      ? input.fullRankingSettings
+      : Object.fromEntries(RANKING_SETTING_KEYS.map(key => [key, settings[key]]));
+    const fullClean = cleanSettings({ ...DEFAULT_SETTINGS, ...fullSource }, true);
+    settings.fullRankingSettings = Object.fromEntries(
+      RANKING_SETTING_KEYS.map(key => [key, fullClean[key]]),
+    );
+  }
   return settings;
 }
 
