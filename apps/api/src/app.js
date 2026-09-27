@@ -23,6 +23,7 @@ const overlayPreviewSessions = new Map();
 const pendingBankAlertTimers = new Map();
 const toonationManager = new ToonationManager(handleToonationDonation);
 const youtubeChatManager = new YouTubeChatManager(handleYouTubeDonationCommand);
+let externalConnectionsStarted = false;
 
 function escapeJsonStringControlCharacters(source) {
   let result = '';
@@ -672,6 +673,8 @@ export async function queueBankDonationAlert(donationId, userId, settings) {
 }
 
 export async function startExternalConnections() {
+  if (externalConnectionsStarted) return;
+  externalConnectionsStarted = true;
   const users = await db.execute(`SELECT id FROM users WHERE is_active = 1`);
   for (const user of users.rows) {
     const settings = await getUserSettings(user.id);
@@ -684,6 +687,14 @@ export async function startExternalConnections() {
     });
     for (const donation of pending.rows) await queueBankDonationAlert(donation.id, user.id, settings);
   }
+}
+
+export function stopExternalConnections() {
+  externalConnectionsStarted = false;
+  toonationManager.stopAll();
+  youtubeChatManager.stopAll();
+  for (const timer of pendingBankAlertTimers.values()) clearTimeout(timer);
+  pendingBankAlertTimers.clear();
 }
 
 app.post('/api/auth/login', async (req, res) => {

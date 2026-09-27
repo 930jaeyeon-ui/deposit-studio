@@ -144,5 +144,9 @@ export class ToonationManager {
     this.connections.delete(Number(userId));
     this.configure(userId, settings);
   }
+  stopAll() {
+    for (const connection of this.connections.values()) connection.stop();
+    this.connections.clear();
+  }
   setStatus(userId, status) { this.statuses.set(Number(userId), { ...status, changedAt:new Date().toISOString() }); }
 }

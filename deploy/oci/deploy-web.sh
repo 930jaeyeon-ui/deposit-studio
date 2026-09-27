@@ -4,11 +4,23 @@ set -Eeuo pipefail
 
 archive="/tmp/deposit-studio-web-${RELEASE_ID}.tar.gz"
 release_dir="/var/www/deposit-studio/releases/${RELEASE_ID}"
+previous_target="$(readlink -f /var/www/deposit-studio/current 2>/dev/null || true)"
+switched=0
+rollback() {
+  status=$?
+  if [ "$switched" -eq 1 ] && [ -n "$previous_target" ]; then
+    ln -sfn "$previous_target" /var/www/deposit-studio/current-next
+    mv -Tf /var/www/deposit-studio/current-next /var/www/deposit-studio/current
+  fi
+  exit "$status"
+}
+trap rollback ERR
 test -f "$archive"
 install -d /var/www/deposit-studio/releases "$release_dir"
 tar -xzf "$archive" -C "$release_dir"
 ln -sfn "$release_dir/dist" /var/www/deposit-studio/current-next
 mv -Tf /var/www/deposit-studio/current-next /var/www/deposit-studio/current
+switched=1
 test -x /usr/local/bin/caddy
 install -d /etc/caddy
 cat >/etc/caddy/Caddyfile <<'EOF'
@@ -61,7 +73,11 @@ kernel.panic = 10
 EOF
 sysctl --system >/dev/null
 systemctl enable caddy
-systemctl restart caddy
+if systemctl is-active --quiet caddy; then
+  systemctl reload caddy
+else
+  systemctl start caddy
+fi
 if command -v firewall-cmd >/dev/null; then
   firewall-cmd --permanent --add-service=http
   firewall-cmd --permanent --add-service=https
@@ -69,6 +85,7 @@ if command -v firewall-cmd >/dev/null; then
 fi
 for attempt in {1..20}; do
   if curl -kfsS --resolve n9signal.duckdns.org:443:127.0.0.1 https://n9signal.duckdns.org/ >/dev/null; then
+    switched=0
     rm -f "$archive" /tmp/deploy-web.sh
     exit 0
   fi
