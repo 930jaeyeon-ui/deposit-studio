@@ -192,9 +192,9 @@ switched=0
 trap - ERR
 
 if [ "$active_slot" = legacy ]; then
-  systemctl kill -s SIGTERM deposit-studio-api.service || true
+  systemctl stop deposit-studio-api.service || true
 else
-  systemctl kill -s SIGTERM "deposit-studio-api@${active_slot}.service" || true
+  systemctl stop "deposit-studio-api@${active_slot}.service" || true
 fi
 
 if [ "$active_slot" = legacy ]; then
