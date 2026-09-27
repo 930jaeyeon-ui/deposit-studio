@@ -10,6 +10,8 @@ nginx_config="/etc/nginx/conf.d/deposit-studio-api.conf"
 nginx_backup="$(mktemp /tmp/deposit-studio-nginx.XXXXXX)"
 switched=0
 new_slot=""
+listeners_paused=0
+old_unit=""
 
 cleanup() { rm -f "$nginx_backup"; }
 rollback() {
@@ -18,6 +20,7 @@ rollback() {
     cp "$nginx_backup" "$nginx_config"
     nginx -t && systemctl reload nginx || true
   fi
+  if [ "$listeners_paused" -eq 1 ] && [ -n "$old_unit" ]; then systemctl kill -s SIGUSR2 "$old_unit" || true; fi
   if [ -n "$new_slot" ]; then systemctl stop "deposit-studio-api@${new_slot}.service" || true; fi
   cleanup
   exit "$status"
@@ -52,6 +55,7 @@ case "$active_slot" in
   legacy) new_slot=green; new_port=3002 ;;
   *) echo "Unknown active slot: $active_slot" >&2; exit 1 ;;
 esac
+if [ "$active_slot" = legacy ]; then old_unit=deposit-studio-api.service; else old_unit="deposit-studio-api@${active_slot}.service"; fi
 
 # Starting a second Node process while the old slot is live needs headroom.
 # Abort before touching the active slot when the 1 GB VM is already pressured.
@@ -174,8 +178,13 @@ nginx -t
 systemctl reload nginx
 curl -fsS --max-time 5 http://127.0.0.1/api/health >/dev/null
 
-# Start the new singleton listeners while rollback is still possible. The old
-# listeners overlap only for the few commands needed to commit the slot state.
+# Newer slots support pausing their singleton listeners without stopping HTTP.
+# The compatibility branch is needed only for the first rollout of this signal.
+old_release="$(readlink -f "/opt/deposit-studio/slots/${active_slot}" 2>/dev/null || readlink -f /opt/deposit-studio/current)"
+if grep -q "SIGUSR1" "${old_release}/apps/api/src/index.js" 2>/dev/null; then
+  systemctl kill -s SIGUSR1 "$old_unit"
+  listeners_paused=1
+fi
 systemctl kill -s SIGUSR2 "deposit-studio-api@${new_slot}.service"
 cat >"/etc/deposit-studio-api-${new_slot}.env" <<EOF
 PORT=${new_port}
@@ -187,6 +196,7 @@ mv -f "${active_file}.new" "$active_file"
 ln -sfn "$release_dir" /opt/deposit-studio/current-next
 mv -Tf /opt/deposit-studio/current-next /opt/deposit-studio/current
 switched=0
+listeners_paused=0
 # From here the new slot is committed. A cleanup failure must never stop the
 # process Nginx is already serving.
 trap - ERR

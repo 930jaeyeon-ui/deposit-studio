@@ -24,6 +24,8 @@ process.on('SIGUSR2', () => {
   });
 });
 
+process.on('SIGUSR1', () => stopExternalConnections());
+
 process.on('SIGTERM', () => {
   if (shuttingDown) return;
   shuttingDown = true;

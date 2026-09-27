@@ -7,7 +7,7 @@ import { join } from 'node:path';
 test('전체 API E2E 흐름', { timeout:30000 }, async () => {
   const directory = mkdtempSync(join(tmpdir(),'n9-signal-e2e-'));
   process.env.TURSO_DATABASE_URL = `file:${join(directory,'test.db')}`;
-  const [{ app, handleYouTubeDonationCommand, queueBankDonationAlert },{ initializeDatabase, db, activeSession }] = await Promise.all([import('../src/app.js'),import('../src/db.js')]);
+  const [{ app, handleToonationDonation, handleYouTubeDonationCommand, queueBankDonationAlert },{ initializeDatabase, db, activeSession }] = await Promise.all([import('../src/app.js'),import('../src/db.js')]);
   await initializeDatabase();
   const server = await new Promise(resolve => { const value=app.listen(0,'127.0.0.1',()=>resolve(value)); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -129,6 +129,15 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.toonationWidgetUrl,'https://toon.at/widget/alertbox/abcdefgh');
     assert.equal(result.data.toonationAlertMode,'custom-original-audio');
     assert.equal(result.data.toonationUseOwnAlert,true);
+    const toonationSettings = { ...result.data, toonationEnabled:true };
+    await db.execute({ sql:'UPDATE user_settings SET value = ? WHERE user_id = ?', args:[JSON.stringify(toonationSettings),memberUserId] });
+    const toonationEvent = { donorName:'중복검증',amount:5000,message:'동일 이벤트',grade:'',eventKey:'e2e-same-event' };
+    await Promise.all([handleToonationDonation(memberUserId,toonationEvent),handleToonationDonation(memberUserId,toonationEvent)]);
+    const toonationRows = await db.execute({ sql:`SELECT COUNT(*) total FROM donations WHERE recipient_user_id = ? AND bank = 'toonation' AND donor_name = '중복검증'`, args:[memberUserId] });
+    assert.equal(Number(toonationRows.rows[0].total),1);
+    await db.execute({ sql:`DELETE FROM donations WHERE recipient_user_id = ? AND bank = 'toonation' AND donor_name = '중복검증'`, args:[memberUserId] });
+    await db.execute(`DELETE FROM external_event_dedup WHERE source = 'toonation' AND event_key LIKE '%e2e-same-event'`);
+    await db.execute({ sql:'UPDATE user_settings SET value = ? WHERE user_id = ?', args:[JSON.stringify(result.data),memberUserId] });
     assert.equal(result.data.rankingCustomBorderEnabled,false);
     assert.equal(result.data.rankingCustomRowBackgroundEnabled,false);
     assert.equal(result.data.rankingTitleColumn,'last');

@@ -194,6 +194,7 @@ function useBroadcastDeploymentRecovery() {
         const { runtimeId } = await response.json();
         if (stopped || !runtimeId) return;
         if (knownRuntimeId && runtimeId !== knownRuntimeId) {
+          if (sessionStorage.getItem("n9-alert-playing") === "1") return;
           location.reload();
           return;
         }
@@ -7230,6 +7231,8 @@ function Overlay({ token, preview = false }) {
   const currentRef = useRef(null);
   const playbackTimers = useRef([]);
   const playbackSequence = useRef(0);
+  const completedStorageKey = `n9-overlay-completed:${token || "preview"}`;
+  const completedDonationId = useRef(Number(localStorage.getItem(completedStorageKey)) || 0);
   const [exiting, setExiting] = useState(false);
   const previewSoundMuted =
     new URLSearchParams(location.search).get("sound") === "off";
@@ -7299,7 +7302,7 @@ function Overlay({ token, preview = false }) {
           return;
         }
         if (!initialized) {
-          lastId.current = lastDonationId;
+          lastId.current = completedDonationId.current || lastDonationId;
           initialized = true;
         }
         events?.close();
@@ -7368,6 +7371,7 @@ function Overlay({ token, preview = false }) {
     if (playing.current || !queue.current.length) return;
     playing.current = true;
     const donation = queue.current.shift();
+    if (!previewMode) sessionStorage.setItem("n9-alert-playing", "1");
     const sequence = ++playbackSequence.current;
     currentRef.current = donation;
     setExiting(false);
@@ -7387,6 +7391,11 @@ function Overlay({ token, preview = false }) {
       playbackTimers.current = [
         setTimeout(() => setExiting(true), Math.max(200, duration - 500)),
         setTimeout(() => {
+          if (!donation.isTest && Number(donation.id) > completedDonationId.current) {
+            completedDonationId.current = Number(donation.id);
+            localStorage.setItem(completedStorageKey, String(completedDonationId.current));
+          }
+          sessionStorage.removeItem("n9-alert-playing");
           setCurrent(null);
           currentRef.current = null;
           setExiting(false);
@@ -7422,6 +7431,11 @@ function Overlay({ token, preview = false }) {
     for (const timer of playbackTimers.current) clearTimeout(timer);
     playbackTimers.current = [];
     stopActiveAlertSpeech();
+    if (!currentRef.current?.isTest && Number(currentRef.current?.id) > completedDonationId.current) {
+      completedDonationId.current = Number(currentRef.current.id);
+      localStorage.setItem(completedStorageKey, String(completedDonationId.current));
+    }
+    sessionStorage.removeItem("n9-alert-playing");
     currentRef.current = null;
     setCurrent(null);
     setExiting(false);

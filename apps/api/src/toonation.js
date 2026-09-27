@@ -30,7 +30,8 @@ export function parseToonationPayload(raw) {
       donorName:String(content.name || '익명').trim().slice(0,40) || '익명',
       amount,
       message:String(content.message || '').trim().slice(0,2000),
-      grade:String(grade || '').trim().slice(0,30)
+      grade:String(grade || '').trim().slice(0,30),
+      eventKey:createHash('sha256').update(String(content.id || content.uid || content.transaction_id || content.donation_id || `${content.name}|${amount}|${content.message}`)).digest('hex').slice(0,32)
     };
   } catch {
     return null;
@@ -89,6 +90,7 @@ class Connection {
     }, 20000);
     socket.addEventListener('open', () => this.onStatus(this.userId, { state:'connected', text:'투네이션 연결됨' }));
     socket.addEventListener('message', event => {
+      if (this.stopped) return;
       lastMessageAt = Date.now();
       const donation = parseToonationPayload(event.data);
       if (!donation || this.duplicate(donation)) return;

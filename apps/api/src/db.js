@@ -53,6 +53,12 @@ export async function initializeDatabase() {
       value TEXT NOT NULL,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS external_event_dedup (
+      source TEXT NOT NULL,
+      event_key TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY(source, event_key)
+    )`,
     `CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       login_id TEXT NOT NULL UNIQUE COLLATE NOCASE,

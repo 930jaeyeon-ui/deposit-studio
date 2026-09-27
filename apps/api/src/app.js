@@ -479,9 +479,15 @@ function cleanSettings(input) {
   return settings;
 }
 
-async function handleToonationDonation(userId, input) {
+export async function handleToonationDonation(userId, input) {
   const settings = await getUserSettings(userId);
   if (!settings.toonationEnabled || input.amount < Number(settings.minimumDonationAmount || 0)) return;
+  await db.execute(`DELETE FROM external_event_dedup WHERE created_at < datetime('now', '-2 minutes')`);
+  const claimed = await db.execute({
+    sql:`INSERT OR IGNORE INTO external_event_dedup (source, event_key) VALUES ('toonation', ?)`,
+    args:[`${userId}:${input.eventKey}`]
+  });
+  if (!claimed.rowsAffected) return;
   const session = await activeSession();
   const inserted = await db.execute({
     sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, ?, ?, 'toonation')`,
