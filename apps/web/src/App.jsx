@@ -3526,7 +3526,7 @@ function stopActiveAlertSpeech() {
   }
 }
 
-async function playRemoteSpeech(appearance, text, token = null) {
+async function prepareRemoteSpeech(appearance, text, token = null) {
   const endpoint = token
     ? `/api/overlay/${encodeURIComponent(token)}/tts`
     : "/api/tts/preview";
@@ -3553,31 +3553,58 @@ async function playRemoteSpeech(appearance, text, token = null) {
   }
   const url = URL.createObjectURL(await response.blob());
   const audio = new Audio(url);
+  audio.preload = "auto";
+  audio.load();
+  return { audio, url, provider:appearance.ttsProvider };
+}
+
+function discardPreparedSpeech(prepared) {
+  if (!prepared) return;
+  prepared.audio.pause();
+  prepared.audio.removeAttribute("src");
+  prepared.audio.load();
+  URL.revokeObjectURL(prepared.url);
+}
+
+async function playPreparedSpeech(prepared, volume) {
+  if (!prepared) return "none";
+  const { audio, url, provider } = prepared;
   activeAlertSpeechAudio?.audio.pause();
   activeAlertSpeechAudio = { audio, url };
-  audio.volume = Math.max(0, Math.min(1, Number(appearance.ttsVolume) / 100));
+  audio.volume = Math.max(0, Math.min(1, Number(volume) / 100));
   const cleanup = () => {
     if (activeAlertSpeechAudio?.audio === audio) activeAlertSpeechAudio = null;
     URL.revokeObjectURL(url);
   };
   audio.addEventListener("ended", cleanup, { once: true });
   audio.addEventListener("error", cleanup, { once: true });
-  await audio.play();
-  return appearance.ttsProvider;
+  try {
+    await audio.play();
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+  return provider;
 }
 
-async function playAlertSpeech(appearance, text, options = {}) {
+async function prepareAlertSpeech(appearance, text, options = {}) {
   const speechText = String(text || "")
     .replaceAll("{grade}", "")
     .replace(/\s+/g, " ")
     .trim();
   if (!speechText) return "none";
   if (!appearance.ttsTypecastVoiceId) return "none";
-  return playRemoteSpeech(
+  return prepareRemoteSpeech(
     { ...appearance, ttsProvider:"typecast" },
     speechText,
     options.token,
   );
+}
+
+async function playAlertSpeech(appearance, text, options = {}) {
+  const prepared = await prepareAlertSpeech(appearance, text, options);
+  if (prepared === "none") return "none";
+  return playPreparedSpeech(prepared, appearance.ttsVolume);
 }
 
 const TYPECAST_EMOTION_LABELS = {
@@ -3605,6 +3632,42 @@ const TYPECAST_SEARCH_ALIASES = {
   "e-learning":"교육 학습", ads:"광고", voicemail:"안내 음성",
 };
 
+const preloadedAlertSounds = new Map();
+let sharedAlertAudioContext = null;
+
+function getAlertAudioContext() {
+  const AudioContext = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContext) return null;
+  if (!sharedAlertAudioContext || sharedAlertAudioContext.state === "closed")
+    sharedAlertAudioContext = new AudioContext();
+  return sharedAlertAudioContext;
+}
+
+function preloadAlertSounds(settings) {
+  if (typeof Audio === "undefined") return;
+  getAlertAudioContext();
+  const sources = new Set([
+    settings.customSoundData,
+    ...(settings.soundLibrary || []).map((sound) => sound.data),
+    ...(settings.amountTiers || []).map((tier) => tier.customSoundData),
+  ].filter((source) => typeof source === "string" && source.startsWith("data:audio/")));
+  for (const [source, audio] of preloadedAlertSounds) {
+    if (sources.has(source)) continue;
+    audio.pause();
+    audio.removeAttribute("src");
+    audio.load();
+    preloadedAlertSounds.delete(source);
+  }
+  for (const source of sources) {
+    if (preloadedAlertSounds.has(source)) continue;
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.src = source;
+    audio.load();
+    preloadedAlertSounds.set(source, audio);
+  }
+}
+
 async function playAlertSound(
   settings,
   preset = settings.soundPreset,
@@ -3617,7 +3680,16 @@ async function playAlertSound(
     (preset === "custom" || preset?.startsWith("library:")) &&
     customSoundData
   ) {
-    const audio = new Audio(customSoundData);
+    let audio = preloadedAlertSounds.get(customSoundData);
+    if (!audio) {
+      audio = new Audio();
+      audio.preload = "auto";
+      audio.src = customSoundData;
+      audio.load();
+      preloadedAlertSounds.set(customSoundData, audio);
+    }
+    audio.pause();
+    try { audio.currentTime = 0; } catch {}
     audio.volume = Math.max(0, Math.min(1, volume / 100));
     await audio.play().catch(() => {});
     if (waitForCompletion && !audio.paused) {
@@ -3633,9 +3705,8 @@ async function playAlertSound(
     }
     return;
   }
-  const AudioContext = window.AudioContext || window.webkitAudioContext;
-  if (!AudioContext) return;
-  const context = new AudioContext();
+  const context = getAlertAudioContext();
+  if (!context) return;
   if (context.state === "suspended") await context.resume();
   const master = context.createGain();
   master.connect(context.destination);
@@ -3679,9 +3750,6 @@ async function playAlertSound(
   });
   if (waitForCompletion) {
     await new Promise(resolve => setTimeout(resolve, Math.ceil(finishAt * 1000) + 30));
-    await context.close().catch(() => {});
-  } else {
-    setTimeout(() => context.close().catch(() => {}), 1500);
   }
 }
 
@@ -7381,6 +7449,7 @@ function Overlay({ token, preview = false }) {
     const applySettings = (value) => {
       setSettings(value);
       settingsRef.current = value;
+      preloadAlertSounds(value);
       if (value.alertOverlayEnabled === false) {
         queue.current = [];
         playbackSequence.current += 1;
@@ -7519,6 +7588,9 @@ function Overlay({ token, preview = false }) {
       ];
     };
     if (!previewSoundMuted && !usesToonationOriginalAudio) void (async () => {
+      const preparedSpeechPromise = prepareAlertSpeech(appearance, spokenText, {
+        token: preview ? null : token,
+      }).catch((error) => ({ error }));
       try {
         await playAlertSound(
           settingsRef.current,
@@ -7527,8 +7599,17 @@ function Overlay({ token, preview = false }) {
           appearance.customSoundData,
           true,
         );
-        if (playbackSequence.current !== sequence) return;
-        await playAlertSpeech(appearance, spokenText, { token: preview ? null : token });
+        if (playbackSequence.current !== sequence) {
+          preparedSpeechPromise.then((prepared) => {
+            if (prepared && prepared !== "none" && !prepared.error)
+              discardPreparedSpeech(prepared);
+          });
+          return;
+        }
+        const preparedSpeech = await preparedSpeechPromise;
+        if (preparedSpeech?.error) throw preparedSpeech.error;
+        if (preparedSpeech !== "none")
+          await playPreparedSpeech(preparedSpeech, appearance.ttsVolume);
       } catch (error) {
         console.warn("알림 음성 재생을 건너뜁니다:", error);
       } finally {
