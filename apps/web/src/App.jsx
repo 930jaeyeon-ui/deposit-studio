@@ -3554,7 +3554,26 @@ async function prepareRemoteSpeech(appearance, text, token = null) {
   const url = URL.createObjectURL(await response.blob());
   const audio = new Audio(url);
   audio.preload = "auto";
-  audio.load();
+  try {
+    await new Promise((resolve, reject) => {
+      const finish = (error) => {
+        clearTimeout(timer);
+        audio.removeEventListener("canplaythrough", onReady);
+        audio.removeEventListener("error", onError);
+        error ? reject(error) : resolve();
+      };
+      const onReady = () => finish();
+      const onError = () => finish(new Error("AI 음성을 불러오지 못했습니다."));
+      const timer = setTimeout(() => finish(new Error("AI 음성 로딩 시간이 초과되었습니다.")), 10000);
+      audio.addEventListener("canplaythrough", onReady, { once: true });
+      audio.addEventListener("error", onError, { once: true });
+      audio.load();
+      if (audio.readyState >= 4) onReady();
+    });
+  } catch (error) {
+    discardPreparedSpeech({ audio, url });
+    throw error;
+  }
   return { audio, url, provider:appearance.ttsProvider };
 }
 
@@ -3588,6 +3607,7 @@ async function playPreparedSpeech(prepared, volume) {
 }
 
 async function prepareAlertSpeech(appearance, text, options = {}) {
+  if (appearance.ttsEnabled === false) return "none";
   const speechText = String(text || "")
     .replaceAll("{grade}", "")
     .replace(/\s+/g, " ")
@@ -7561,7 +7581,6 @@ function Overlay({ token, preview = false }) {
     const sequence = ++playbackSequence.current;
     currentRef.current = donation;
     setExiting(false);
-    setCurrent(donation);
     const appearance = alertAppearance(settingsRef.current, donation.amount);
     const messageTemplate = donation.message
       ? `${appearance.messageTemplate}\n{message}`
@@ -7592,10 +7611,17 @@ function Overlay({ token, preview = false }) {
       ];
     };
     if (!previewSoundMuted && !usesToonationOriginalAudio) void (async () => {
-      const preparedSpeechPromise = prepareAlertSpeech(appearance, spokenText, {
-        token: preview ? null : token,
-      }).catch((error) => ({ error }));
+      let preparedSpeech = "none";
       try {
+        try {
+          preparedSpeech = await prepareAlertSpeech(appearance, spokenText, {
+            token: preview ? null : token,
+          });
+        } catch (error) {
+          console.warn("알림 음성 준비를 건너뜁니다:", error);
+        }
+        if (playbackSequence.current !== sequence) return;
+        setCurrent(donation);
         await playAlertSound(
           settingsRef.current,
           appearance.soundPreset,
@@ -7603,24 +7629,23 @@ function Overlay({ token, preview = false }) {
           appearance.customSoundData,
           true,
         );
-        if (playbackSequence.current !== sequence) {
-          preparedSpeechPromise.then((prepared) => {
-            if (prepared && prepared !== "none" && !prepared.error)
-              discardPreparedSpeech(prepared);
-          });
-          return;
+        if (playbackSequence.current !== sequence) return;
+        if (preparedSpeech !== "none") {
+          const speech = preparedSpeech;
+          preparedSpeech = "none";
+          await playPreparedSpeech(speech, appearance.ttsVolume);
         }
-        const preparedSpeech = await preparedSpeechPromise;
-        if (preparedSpeech?.error) throw preparedSpeech.error;
-        if (preparedSpeech !== "none")
-          await playPreparedSpeech(preparedSpeech, appearance.ttsVolume);
       } catch (error) {
         console.warn("알림 음성 재생을 건너뜁니다:", error);
       } finally {
+        if (preparedSpeech !== "none") discardPreparedSpeech(preparedSpeech);
         scheduleDismiss();
       }
     })();
-    else scheduleDismiss();
+    else {
+      setCurrent(donation);
+      scheduleDismiss();
+    }
   }
 
   function stopCurrentChat() {
