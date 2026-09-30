@@ -3456,6 +3456,7 @@ function alertAppearance(settings, amount = 50000) {
       backgroundPosition: `${settings.backgroundImagePositionX ?? 50}% ${settings.backgroundImagePositionY ?? 50}%`,
       backgroundRepeat: "no-repeat",
     },
+    textPositionY: settings.textPositionY ?? 50,
   };
 }
 
@@ -4685,6 +4686,17 @@ function Settings({ mode }) {
                       <option value="center">가운데</option>
                       <option value="right">오른쪽</option>
                     </select>
+                  </label>
+                  <label>
+                    글자 세로 위치
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={settings.textPositionY ?? 50}
+                      onChange={(e) => update("textPositionY", Number(e.target.value))}
+                    />
+                    <span>{settings.textPositionY ?? 50}% · 0% 위 / 100% 아래</span>
                   </label>
                   <label>
                     줄 간격
@@ -7091,11 +7103,23 @@ function AlertMessage({
   );
 }
 
-function AlertPreviewFrame({ appearance, donorName, amountText }) {
+function PositionedAlert({ appearance, message, animation }) {
   const fullCanvasBackground = appearance.backgroundImageArea === "canvas" && appearance.style.backgroundImage !== "none";
   const alertStyle = fullCanvasBackground
     ? { ...appearance.style, backgroundColor: "transparent" }
     : appearance.style;
+  const position = { top:`${appearance.textPositionY}%` };
+  if (fullCanvasBackground) return (
+    <div className={`alert alert-full-canvas ${animation}`} style={alertStyle}>
+      <div className="alert-text-position" style={position}>
+        <div className={`alert alert-foreground ${animation}`}>{message}</div>
+      </div>
+    </div>
+  );
+  return <div className="alert-text-position" style={position}><div className={`alert ${animation}`} style={alertStyle}>{message}</div></div>;
+}
+
+function AlertPreviewFrame({ appearance, donorName, amountText }) {
   const messageContent = (
     <AlertMessage
       template={appearance.messageTemplate}
@@ -7127,12 +7151,7 @@ function AlertPreviewFrame({ appearance, donorName, amountText }) {
   return (
     <AlertOutputCanvas className="preview-stage alert-preview-frame">
       <div className="alert-preview-canvas dark-mosaic">
-        <div
-          className={`alert ${fullCanvasBackground ? "alert-full-canvas" : appearance.animation}`}
-          style={alertStyle}
-        >
-          {fullCanvasBackground ? <div className={`alert alert-foreground ${appearance.animation}`}>{message}</div> : message}
-        </div>
+        <PositionedAlert appearance={appearance} message={message} animation={appearance.animation} />
       </div>
     </AlertOutputCanvas>
   );
@@ -7716,10 +7735,6 @@ function Overlay({ token, preview = false }) {
   const crewGrade = (settings.crewGrades || []).find(
     (grade) => grade.id === current.crewGradeId,
   );
-  const fullCanvasBackground = appearance.backgroundImageArea === "canvas" && appearance.style.backgroundImage !== "none";
-  const alertStyle = fullCanvasBackground
-    ? { ...appearance.style, backgroundColor: "transparent" }
-    : appearance.style;
   const messageContent = (
     <AlertMessage
       template={outputTemplate}
@@ -7751,12 +7766,7 @@ function Overlay({ token, preview = false }) {
   );
   return (
     <AlertOutputCanvas className="overlay-stage">
-      <div
-        className={`alert ${fullCanvasBackground ? "alert-full-canvas" : exiting ? appearance.exitAnimation : appearance.animation}`}
-        style={alertStyle}
-      >
-        {fullCanvasBackground ? <div className={`alert alert-foreground ${exiting ? appearance.exitAnimation : appearance.animation}`}>{message}</div> : message}
-      </div>
+      <PositionedAlert appearance={appearance} message={message} animation={exiting ? appearance.exitAnimation : appearance.animation} />
     </AlertOutputCanvas>
   );
 }

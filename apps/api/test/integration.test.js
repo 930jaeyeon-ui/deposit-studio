@@ -63,6 +63,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.displayName,'E2E 멤버');
     result = await request('/api/settings',{cookie:memberCookie});
     assert.equal(result.response.status,200);
+    assert.equal(result.data.textPositionY,50);
     assert.equal((await request('/api/settings')).response.status,401);
     assert.equal((await request('/api/tts/voices',{cookie:memberCookie})).data.configured,false);
     assert.equal((await request('/api/tts/typecast-voices',{cookie:memberCookie})).data.configured,false);
@@ -79,6 +80,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       fontSize:1,
       fontWeight:9999,
       textAlign:'invalid',
+      textPositionY:130,
       animation:'invalid',
       exitAnimation:'invalid',
       soundVolume:-20,
@@ -130,6 +132,8 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.fontSize,20);
     assert.equal(result.data.fontWeight,900);
     assert.equal(result.data.textAlign,'center');
+    assert.equal(result.data.textPositionY,100);
+    assert.equal((await request('/api/settings',{cookie:memberCookie})).data.textPositionY,100);
     assert.equal(result.data.animation,'zoom');
     assert.equal(result.data.exitAnimation,'fade-out');
     assert.equal(result.data.soundVolume,0);

@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   fontFamily: 'Pretendard, "Noto Sans KR", sans-serif',
   customFontFamily: '',
   textAlign: 'center',
+  textPositionY: 50,
   lineHeight: 1.35,
   letterSpacing: 0,
   textColor: '#ffffff',

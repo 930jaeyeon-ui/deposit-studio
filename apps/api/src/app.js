@@ -412,6 +412,7 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.backgroundImageScale=Math.max(25,Math.min(300,Number.isFinite(Number(settings.backgroundImageScale))?Number(settings.backgroundImageScale):DEFAULT_SETTINGS.backgroundImageScale));
   settings.backgroundImagePositionX=Math.max(0,Math.min(100,Number.isFinite(Number(settings.backgroundImagePositionX))?Number(settings.backgroundImagePositionX):DEFAULT_SETTINGS.backgroundImagePositionX));
   settings.backgroundImagePositionY=Math.max(0,Math.min(100,Number.isFinite(Number(settings.backgroundImagePositionY))?Number(settings.backgroundImagePositionY):DEFAULT_SETTINGS.backgroundImagePositionY));
+  settings.textPositionY=Math.max(0,Math.min(100,Number.isFinite(Number(settings.textPositionY))?Number(settings.textPositionY):DEFAULT_SETTINGS.textPositionY));
   settings.outlineEnabled = settings.outlineEnabled !== false;
   settings.textShadow = Boolean(settings.textShadow);
   settings.soundEnabled = Boolean(settings.soundEnabled);
