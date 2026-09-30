@@ -1090,6 +1090,7 @@ app.get('/api/donation-timing-logs', requireAuth, requireSuper, async (req, res)
 });
 
 app.post('/api/overlay/:token/timing', async (req, res) => {
+  const acknowledgedAt = new Date().toISOString();
   const user = await getObsUser(req.params.token);
   if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
   const donationId = Number(req.body?.donationId);
@@ -1101,6 +1102,7 @@ app.post('/api/overlay/:token/timing', async (req, res) => {
   const occurredAt = String(req.body?.occurredAt || '');
   if (!Number.isFinite(Date.parse(occurredAt)) || Math.abs(Date.now() - Date.parse(occurredAt)) > 86400000) return res.status(400).json({ error:'잘못된 시각입니다.' });
   await db.execute({ sql:'INSERT OR IGNORE INTO donation_timing_logs (donation_id, stage, occurred_at) VALUES (?, ?, ?)', args:[donationId,stage,new Date(occurredAt).toISOString()] });
+  if (stage === 'overlay_received') await db.execute({ sql:'INSERT OR IGNORE INTO donation_timing_logs (donation_id, stage, occurred_at) VALUES (?, ?, ?)', args:[donationId,'overlay_acknowledged',acknowledgedAt] });
   res.json({ ok:true });
 });
 
