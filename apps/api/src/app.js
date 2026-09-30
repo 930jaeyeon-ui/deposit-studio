@@ -102,11 +102,19 @@ function openDataChangeStream(req, res, userId) {
 
 function publishOverlayDonation(donation, userId) {
   recordDonationTiming(donation.id, 'server_publish');
+  let connected = 0;
   for (const client of overlayClients) {
     if (Number(client.userId) !== Number(userId)) continue;
-    if (client.ready) sendOverlayEvent(client.res, 'donation', donation, donation.id);
+    connected += 1;
+    if (client.timingEnabled) recordDonationTiming(donation.id, 'overlay_instrumented');
+    else recordDonationTiming(donation.id, 'overlay_legacy');
+    if (client.ready) {
+      sendOverlayEvent(client.res, 'donation', donation, donation.id);
+      recordDonationTiming(donation.id, 'overlay_stream_write');
+    }
     else client.pending.push(donation);
   }
+  if (!connected) recordDonationTiming(donation.id, 'overlay_disconnected');
 }
 
 function recordDonationTiming(donationId, stage, occurredAt = new Date().toISOString()) {
@@ -1363,7 +1371,7 @@ app.get('/api/overlay/:token/events', async (req, res) => {
 
   const requestedAfter = Math.max(0, Number(req.get('Last-Event-ID')) || Number(req.query.after) || 0);
   const resuming = Boolean(req.get('Last-Event-ID') || req.query.after);
-  const client = { res, userId:user.id, ready:false, pending:[] };
+  const client = { res, userId:user.id, ready:false, pending:[], timingEnabled:req.query.timing === '1' };
   overlayClients.add(client);
   const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000);
   res.on('close', () => {
@@ -1389,7 +1397,12 @@ app.get('/api/overlay/:token/events', async (req, res) => {
       .sort((a,b) => a.id - b.id);
     client.ready = true;
     client.pending = [];
-    for (const donation of queued) sendOverlayEvent(res, 'donation', donation, donation.id);
+    for (const donation of queued) {
+      sendOverlayEvent(res, 'donation', donation, donation.id);
+      recordDonationTiming(donation.id, 'overlay_stream_write');
+      if (client.timingEnabled) recordDonationTiming(donation.id, 'overlay_instrumented');
+      else recordDonationTiming(donation.id, 'overlay_legacy');
+    }
   } catch (error) {
     sendOverlayEvent(res, 'stream-error', { message:'OBS 이벤트 스트림을 시작하지 못했습니다.' });
     res.end();
