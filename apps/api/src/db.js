@@ -138,6 +138,12 @@ export async function initializeDatabase() {
       duration_ms INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`,
+    `CREATE TABLE IF NOT EXISTS donation_timing_logs (
+      donation_id INTEGER NOT NULL REFERENCES donations(id) ON DELETE CASCADE,
+      stage TEXT NOT NULL,
+      occurred_at TEXT NOT NULL,
+      PRIMARY KEY(donation_id, stage)
+    )`,
     `CREATE TABLE IF NOT EXISTS ranking_adjustments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER NOT NULL REFERENCES broadcast_sessions(id),

@@ -349,6 +349,7 @@ function AuthenticatedRoutes() {
   if (location.pathname === "/phone-test") return isSuper ? <PhoneTestPage /> : <AccessDenied />;
   if (location.pathname === "/admin/notification-rules") return isSuper ? <NotificationRules /> : <AccessDenied />;
   if (location.pathname === "/admin/api-logs") return isSuper ? <ApiLogs /> : <AccessDenied />;
+  if (location.pathname === "/admin/donation-logs") return isSuper ? <DonationTimingLogs /> : <AccessDenied />;
   if (location.pathname === "/admin/users") return isSuper ? <AdminAccounts /> : <AccessDenied />;
   if (location.pathname === "/obs") return <ObsSetup />;
   if (location.pathname === "/settings/ranking")
@@ -456,6 +457,7 @@ const PAGE_INFO = {
   "/admin/users": ["관리", "계정 관리"],
   "/admin/notification-rules": ["관리", "알림 파싱 규칙"],
   "/admin/api-logs": ["관리", "API 로그"],
+  "/admin/donation-logs": ["관리", "후원 로그 관리"],
 };
 
 async function resizeAvatar(file) {
@@ -756,6 +758,7 @@ function PageLayout({ children }) {
     "/admin/users": "♙",
     "/admin/notification-rules": "⌘",
     "/admin/api-logs": "≣",
+    "/admin/donation-logs": "◷",
   };
   const Link = ({ href, label, hint }) => (
     <a className={activePath === href ? "active" : ""} href={href}>
@@ -829,6 +832,7 @@ function PageLayout({ children }) {
               />
               <Link href="/admin/notification-rules" label="알림 파싱 규칙" hint="앱 패키지별 정규식" />
               <Link href="/admin/api-logs" label="API 로그" hint="요청과 응답 기록" />
+              <Link href="/admin/donation-logs" label="후원 로그 관리" hint="화면·효과음·TTS 지연 분석" />
             </>
           )}
         </nav>
@@ -2556,6 +2560,25 @@ function NotificationRules() {
   return <PageLayout><div className="shell notification-rules-page"><section className="panel"><div className="section-heading notification-rules-header"><div><span className="eyebrow">PARSING RULES</span><h1>알림 파싱 규칙</h1><p>앱 패키지명을 기준으로 제목과 내용에서 입금자와 금액을 추출합니다.</p></div><button className="primary-button notification-add-button" onClick={()=>open(null)}><span>＋</span> 새 규칙 추가</button></div>
     {message&&<p className="form-message error">{message}</p>}<div className="table-wrap notification-rules-table"><table><thead><tr><th>앱 패키지명</th><th>제목 정규식</th><th>내용 정규식</th><th>관리</th></tr></thead><tbody>{items.length?items.map(item=><tr key={item.packageName}><td><code>{item.packageName}</code></td><td><code>{item.titlePattern||'-'}</code></td><td><code>{item.contentPattern}</code></td><td><div className="notification-rule-actions"><button onClick={()=>open(item)}>수정</button><button className="danger" onClick={()=>remove(item.packageName)}>삭제</button></div></td></tr>):<tr><td colSpan="4"><div className="notification-rules-empty"><b>등록된 파싱 규칙이 없습니다</b><span>새 규칙을 추가해 알림 제목과 내용을 파싱해 보세요.</span><button onClick={()=>open(null)}>첫 규칙 만들기</button></div></td></tr>}</tbody></table></div>
     {editing&&<div className="dialog-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setEditing(null)}><form className="dialog-card notification-rule-dialog" onSubmit={save}><div className="notification-dialog-heading"><div><span>{editing.packageName?'EDIT RULE':'NEW RULE'}</span><h2>{editing.packageName?'규칙 수정':'새 파싱 규칙'}</h2></div><button type="button" aria-label="닫기" onClick={()=>setEditing(null)}>×</button></div><div className="notification-rule-fields"><label>앱 패키지명<input value={form.packageName} onChange={e=>setForm({...form,packageName:e.target.value})} placeholder="예: com.example.bank" required/></label><label>제목 정규식 <small>선택</small><textarea rows="3" value={form.titlePattern||''} onChange={e=>setForm({...form,titlePattern:e.target.value})} placeholder="예: 입금\\s+(?<amount>[\\d,]+)원"/></label><label>내용 정규식 <small>필수</small><textarea rows="5" value={form.contentPattern} onChange={e=>setForm({...form,contentPattern:e.target.value})} placeholder="예: 입금자\\s*:\\s*(?<donor>.+)" required/></label></div><p className="notification-rule-help">제목과 내용을 합쳐 <code>(?&lt;donor&gt;...)</code>와 <code>(?&lt;amount&gt;...)</code> 캡처 그룹이 필요합니다.</p><div className="dialog-actions"><button type="button" onClick={()=>setEditing(null)}>취소</button><button className="primary-button">{editing.packageName?'변경사항 저장':'규칙 저장'}</button></div></form></div>}
+  </section></div></PageLayout>;
+}
+
+function DonationTimingLogs() {
+  const [items,setItems] = useState([]);
+  const [error,setError] = useState('');
+  const load = () => api('/api/donation-timing-logs').then(setItems).catch(value => setError(value.message));
+  useEffect(() => { load(); const timer = setInterval(load, 15000); return () => clearInterval(timer); }, []);
+  const stages = [
+    ['server_publish','서버 전송'], ['overlay_received','화면 수신'],
+    ['tts_start','TTS 요청'], ['tts_ready','TTS 준비'], ['tts_failed','TTS 실패'],
+    ['visual_start','화면 시작'], ['sound_start','효과음 시작'], ['sound_end','효과음 종료'], ['voice_start','음성 시작']
+  ];
+  const clock = value => value ? new Date(value).toLocaleString('ko-KR', { timeZone:'Asia/Seoul', hour12:false, fractionalSecondDigits:3 }) : '—';
+  const elapsed = (start,end) => start && end ? `${Math.round(new Date(end)-new Date(start))}ms` : '—';
+  return <PageLayout><div className="shell"><section className="panel"><div className="section-heading"><div><span className="eyebrow">DONATION TIMING</span><h1>후원 로그 관리</h1><p>최근 3일간 후원별 수신, TTS 준비, 화면과 소리 시작 시각입니다. 시각은 한국 시간으로 표시합니다.</p></div><button type="button" onClick={load}>새로고침</button></div>
+    {error && <p className="form-message error">{error}</p>}
+    <div className="table-wrap"><table><thead><tr><th>후원</th><th>서버 처리</th><th>서버→화면</th><th>TTS 준비</th><th>준비→화면</th><th>단계별 시각</th></tr></thead><tbody>{items.map(item => <tr key={item.id}><td>#{item.id} · {item.recipientName}<br/>{item.bank} · {formatWon(item.amount)}원</td><td>{elapsed(item.stages.server_received,item.stages.server_publish)}</td><td>{elapsed(item.stages.server_publish,item.stages.overlay_received)}</td><td>{elapsed(item.stages.tts_start,item.stages.tts_ready)}</td><td>{elapsed(item.stages.tts_ready,item.stages.visual_start)}</td><td>{[['server_received','서버 수신'],...stages].filter(([key]) => item.stages[key]).map(([key,label]) => <div key={key}><b>{label}</b> {clock(item.stages[key])}</div>)}</td></tr>)}</tbody></table></div>
+    {!items.length && !error && <p>아직 기록된 후원이 없습니다.</p>}
   </section></div></PageLayout>;
 }
 
@@ -7528,6 +7551,7 @@ function Overlay({ token, preview = false }) {
         });
         events.addEventListener("donation", (event) => {
           const donation = JSON.parse(event.data);
+          if (!previewMode && !donation.isTest && !donation.isChatMessage) logTiming(donation, 'overlay_received');
           if (!donation.isTest) {
             if (!donation.isChatMessage && donation.id <= lastId.current) return;
             lastId.current = Math.max(lastId.current, Number(donation.id) || 0);
@@ -7568,6 +7592,15 @@ function Overlay({ token, preview = false }) {
       if (refreshTimer) clearInterval(refreshTimer);
     };
   }, [token, preview]);
+
+  function logTiming(donation, stage) {
+    if (previewMode || donation?.isTest || donation?.isChatMessage || !Number.isSafeInteger(Number(donation?.id))) return;
+    const occurredAt = new Date().toISOString();
+    void fetch(apiUrl(`/api/overlay/${encodeURIComponent(token)}/timing`), {
+      method:'POST', credentials:'include', headers:{ 'Content-Type':'application/json' },
+      body:JSON.stringify({ donationId:Number(donation.id), stage, occurredAt }), keepalive:true
+    }).catch(() => {});
+  }
 
   function play() {
     if (settingsRef.current.alertOverlayEnabled === false) {
@@ -7614,14 +7647,19 @@ function Overlay({ token, preview = false }) {
       let preparedSpeech = "none";
       try {
         try {
+          logTiming(donation, 'tts_start');
           preparedSpeech = await prepareAlertSpeech(appearance, spokenText, {
             token: preview ? null : token,
           });
+          logTiming(donation, 'tts_ready');
         } catch (error) {
+          logTiming(donation, 'tts_failed');
           console.warn("알림 음성 준비를 건너뜁니다:", error);
         }
         if (playbackSequence.current !== sequence) return;
         setCurrent(donation);
+        requestAnimationFrame(() => logTiming(donation, 'visual_start'));
+        logTiming(donation, 'sound_start');
         await playAlertSound(
           settingsRef.current,
           appearance.soundPreset,
@@ -7629,10 +7667,12 @@ function Overlay({ token, preview = false }) {
           appearance.customSoundData,
           true,
         );
+        logTiming(donation, 'sound_end');
         if (playbackSequence.current !== sequence) return;
         if (preparedSpeech !== "none") {
           const speech = preparedSpeech;
           preparedSpeech = "none";
+          logTiming(donation, 'voice_start');
           await playPreparedSpeech(speech, appearance.ttsVolume);
         }
       } catch (error) {
@@ -7644,6 +7684,7 @@ function Overlay({ token, preview = false }) {
     })();
     else {
       setCurrent(donation);
+      requestAnimationFrame(() => logTiming(donation, 'visual_start'));
       scheduleDismiss();
     }
   }

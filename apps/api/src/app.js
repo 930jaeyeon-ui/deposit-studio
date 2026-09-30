@@ -101,11 +101,20 @@ function openDataChangeStream(req, res, userId) {
 }
 
 function publishOverlayDonation(donation, userId) {
+  recordDonationTiming(donation.id, 'server_publish');
   for (const client of overlayClients) {
     if (Number(client.userId) !== Number(userId)) continue;
     if (client.ready) sendOverlayEvent(client.res, 'donation', donation, donation.id);
     else client.pending.push(donation);
   }
+}
+
+function recordDonationTiming(donationId, stage, occurredAt = new Date().toISOString()) {
+  if (!Number.isSafeInteger(Number(donationId)) || !donationId) return;
+  void db.execute({
+    sql:'INSERT OR IGNORE INTO donation_timing_logs (donation_id, stage, occurred_at) VALUES (?, ?, ?)',
+    args:[Number(donationId),stage,occurredAt]
+  }).catch(error => console.warn('Donation timing log failed:', error));
 }
 
 function publishOverlayTest(donation, userId) {
@@ -502,6 +511,7 @@ function cleanSettings(input, skipFullRanking = false) {
 }
 
 export async function handleToonationDonation(userId, input) {
+  const receivedAt = new Date().toISOString();
   const settings = await getUserSettings(userId);
   if (!settings.toonationEnabled || input.amount < Number(settings.minimumDonationAmount || 0)) return;
   await db.execute(`DELETE FROM external_event_dedup WHERE created_at < datetime('now', '-2 minutes')`);
@@ -515,6 +525,7 @@ export async function handleToonationDonation(userId, input) {
     sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, ?, ?, 'toonation')`,
     args:[session.id,userId,input.donorName,input.amount]
   });
+  recordDonationTiming(inserted.lastInsertRowid, 'server_received', receivedAt);
   const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[inserted.lastInsertRowid] });
   const donation = await donationWithCrewGrade({ ...saved.rows[0], message:input.message, toonationGrade:input.grade }, userId, settings);
   if (settings.toonationUseOwnAlert) publishOverlayDonation(donation, userId);
@@ -1055,6 +1066,36 @@ app.get('/api/api-logs', requireAuth, requireSuper, async (req, res) => {
   res.json({ items, total, page, pageSize, totalPages:Math.max(1,Math.ceil(total/pageSize)) });
 });
 
+app.get('/api/donation-timing-logs', requireAuth, requireSuper, async (req, res) => {
+  const result = await db.execute(`SELECT d.id, u.display_name recipientName, d.bank, d.amount,
+    d.received_at receivedAt, t.stage, t.occurred_at occurredAt
+    FROM donations d JOIN users u ON u.id = d.recipient_user_id
+    LEFT JOIN donation_timing_logs t ON t.donation_id = d.id
+    WHERE d.received_at >= datetime('now', '-3 days')
+    ORDER BY d.id DESC LIMIT 1500`);
+  const entries = new Map();
+  for (const row of result.rows) {
+    if (!entries.has(row.id)) entries.set(row.id, { id:row.id, recipientName:row.recipientName, bank:row.bank, amount:row.amount, receivedAt:row.receivedAt, stages:{} });
+    if (row.stage) entries.get(row.id).stages[row.stage] = row.occurredAt;
+  }
+  res.json([...entries.values()]);
+});
+
+app.post('/api/overlay/:token/timing', async (req, res) => {
+  const user = await getObsUser(req.params.token);
+  if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
+  const donationId = Number(req.body?.donationId);
+  const stage = String(req.body?.stage || '');
+  const allowed = new Set(['overlay_received','tts_start','tts_ready','tts_failed','visual_start','sound_start','sound_end','voice_start']);
+  if (!Number.isSafeInteger(donationId) || donationId <= 0 || !allowed.has(stage)) return res.status(400).json({ error:'잘못된 로그입니다.' });
+  const owned = await db.execute({ sql:'SELECT id FROM donations WHERE id = ? AND recipient_user_id = ?', args:[donationId,user.id] });
+  if (!owned.rows.length) return res.status(404).json({ error:'후원을 찾을 수 없습니다.' });
+  const occurredAt = String(req.body?.occurredAt || '');
+  if (!Number.isFinite(Date.parse(occurredAt)) || Math.abs(Date.now() - Date.parse(occurredAt)) > 86400000) return res.status(400).json({ error:'잘못된 시각입니다.' });
+  await db.execute({ sql:'INSERT OR IGNORE INTO donation_timing_logs (donation_id, stage, occurred_at) VALUES (?, ?, ?)', args:[donationId,stage,new Date(occurredAt).toISOString()] });
+  res.json({ ok:true });
+});
+
 app.delete('/api/api-logs', requireAuth, requireSuper, async (_req, res) => {
   await db.execute('DELETE FROM api_request_logs');
   res.json({ ok:true });
@@ -1107,6 +1148,7 @@ async function notificationApiUser(req) {
 }
 
 app.post('/api/notifications', async (req, res) => {
+  const timingReceivedAt = new Date().toISOString();
   const apiUser = await notificationApiUser(req);
   if (!apiUser) {
     res.setHeader('WWW-Authenticate','Basic realm="N9 SIGNAL Notification API"');
@@ -1134,6 +1176,7 @@ app.post('/api/notifications', async (req, res) => {
     const session = await activeSession();
     const inserted = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, ?, ?, ?)`, args:[session.id,apiUser.id,parsed.donorName,parsed.amount,packageName] });
     const donationId = Number(inserted.lastInsertRowid);
+    recordDonationTiming(donationId, 'server_received', timingReceivedAt);
     await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, donation_id, status) VALUES (?, ?, ?, ?, ?, 'created')`, args:[packageName,title,content,packageName,donationId] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[donationId] });
     const donation = await donationWithCrewGrade(saved.rows[0], apiUser.id, settings);

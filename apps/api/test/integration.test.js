@@ -44,12 +44,14 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal((await request('/api/users',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/notification-rules',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/api-logs',{cookie:memberCookie})).response.status,403);
+    assert.equal((await request('/api/donation-timing-logs',{cookie:memberCookie})).response.status,403);
     const memberUser = await db.execute(`SELECT id FROM users WHERE login_id = 'hh01'`);
     const memberUserId = Number(memberUser.rows[0].id);
     await db.execute({ sql:'UPDATE users SET role = ? WHERE id = ?', args:['admin',memberUserId] });
     assert.equal((await request('/api/users',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/users',{method:'POST',cookie:memberCookie,body:{loginId:'forbidden-admin-create',displayName:'차단 확인',role:'member'}})).response.status,403);
     assert.equal((await request('/api/api-logs',{cookie:memberCookie})).response.status,403);
+    assert.equal((await request('/api/donation-timing-logs',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/api-logs',{method:'DELETE',cookie:memberCookie})).response.status,403);
     const adminCrewWords = await request('/api/crew/tts-word-replacements',{method:'PUT',cookie:memberCookie,body:{items:[{source:'금지',replacement:'안전'}]}});
     assert.equal(adminCrewWords.response.status,200);
@@ -340,6 +342,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     await new Promise(resolve=>setTimeout(resolve,50));
 
     result = await request('/api/api-logs?page=1&pageSize=10',{cookie:superCookie});
+    assert.equal((await request('/api/donation-timing-logs',{cookie:superCookie})).response.status,200);
     assert.ok(result.data.total>=5);
     assert.equal(result.data.pageSize,10);
     assert.ok(result.data.items.some(item=>item.requestHeaders.authorization==='[REDACTED]'));
