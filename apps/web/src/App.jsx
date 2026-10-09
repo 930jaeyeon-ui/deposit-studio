@@ -7625,7 +7625,7 @@ function Widget({ token, full = false }) {
     return 1;
   };
   const [renderScale, setRenderScale] = useState(resolveRenderScale);
-  const [data, setData] = useState({ ranking: [], settings: DEFAULT_SETTINGS });
+  const [data, setData] = useState({ ranking: [], settings: null });
   useEffect(() => {
     const load = () =>
       token
@@ -7664,6 +7664,7 @@ function Widget({ token, full = false }) {
     window.addEventListener("resize", updateScale);
     return () => window.removeEventListener("resize", updateScale);
   }, [full]);
+  if (!data.settings) return <div className="ranking-root" />;
   const effectiveSettings = full && data.settings.fullRankingUseStandardSettings === false
     ? { ...data.settings, ...(data.settings.fullRankingSettings || {}) }
     : data.settings;

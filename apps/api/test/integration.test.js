@@ -76,6 +76,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       ...isolatedInitialSettings,
       rankingTitle:'다른 계정 전용 순위표',
       rankingNameColor:'#123abc',
+      rankingRowGap:19,
       textColor:'#456def',
       minimumDonationAmount:7654,
     }});
@@ -159,6 +160,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     const isolatedAfterMemberSave = (await request('/api/settings',{cookie:isolatedMemberCookie})).data;
     assert.equal(isolatedAfterMemberSave.rankingTitle,'다른 계정 전용 순위표');
     assert.equal(isolatedAfterMemberSave.rankingNameColor,'#123abc');
+    assert.equal(isolatedAfterMemberSave.rankingRowGap,19);
     assert.equal(isolatedAfterMemberSave.textColor,'#456def');
     assert.equal(isolatedAfterMemberSave.minimumDonationAmount,7654);
     const memberBeforeOtherSave = (await request('/api/settings',{cookie:memberCookie})).data;
@@ -167,6 +169,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(memberAfterOtherSave.rankingTitle,memberBeforeOtherSave.rankingTitle);
     assert.equal(memberAfterOtherSave.textColor,memberBeforeOtherSave.textColor);
     assert.equal(memberAfterOtherSave.minimumDonationAmount,memberBeforeOtherSave.minimumDonationAmount);
+    assert.equal(memberAfterOtherSave.rankingRowGap,memberBeforeOtherSave.rankingRowGap);
     const isolationTokens = await db.execute({ sql:'SELECT id, obs_token obsToken FROM users WHERE id IN (?, ?)', args:[memberUserId,Number(isolatedUser.data.id)] });
     const memberTokenForIsolation = isolationTokens.rows.find(row=>Number(row.id)===memberUserId).obsToken;
     const isolatedTokenForIsolation = isolationTokens.rows.find(row=>Number(row.id)===Number(isolatedUser.data.id)).obsToken;
@@ -174,6 +177,8 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     const isolatedWidgetForIsolation = (await request(`/api/widgets/${isolatedTokenForIsolation}`)).data;
     assert.equal(memberWidgetForIsolation.settings.rankingTitle,memberAfterOtherSave.rankingTitle);
     assert.equal(isolatedWidgetForIsolation.settings.rankingTitle,'다른 계정에서 다시 변경');
+    assert.equal(isolatedWidgetForIsolation.settings.rankingRowGap,19);
+    assert.equal(memberWidgetForIsolation.settings.rankingRowGap,memberAfterOtherSave.rankingRowGap);
     assert.notEqual(memberWidgetForIsolation.settings.rankingTitle,isolatedWidgetForIsolation.settings.rankingTitle);
     assert.equal(result.data.minimumDonationAmount,1000);
     assert.equal(result.data.durationMs,30000);
