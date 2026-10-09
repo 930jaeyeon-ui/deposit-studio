@@ -165,6 +165,32 @@ function ttsText(settings, text) {
   return applyTtsWordReplacements(crewSafe, settings?.ttsWordReplacements);
 }
 
+const BANK_TEST_ALERT_KEY = 'bank_test_alert';
+const BANK_TEST_ALERT_TEXT = '폴조지가 테스트중입니다. 죄송합니다 히히..';
+
+function cleanBankTestAlert(input = {}) {
+  const donorName = String(input.donorName || '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  const amount = Math.max(0, Math.min(100000000, Math.floor(Number(input.amount) || 0)));
+  return { enabled:Boolean(input.enabled) && Boolean(donorName) && amount > 0, donorName, amount };
+}
+
+async function getBankTestAlert() {
+  const result = await db.execute({ sql:'SELECT value FROM app_meta WHERE key = ? LIMIT 1', args:[BANK_TEST_ALERT_KEY] });
+  if (!result.rows[0]?.value) return cleanBankTestAlert();
+  try { return cleanBankTestAlert(JSON.parse(result.rows[0].value)); }
+  catch { return cleanBankTestAlert(); }
+}
+
+function isBankTestAlert(donation, rule) {
+  if (!rule?.enabled || Number(donation?.amount) !== rule.amount) return false;
+  const normalize = value => String(value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ko-KR');
+  return normalize(donation?.donorName) === normalize(rule.donorName);
+}
+
+function bankTestOverlayDonation(donation) {
+  return { ...donation, alertTextOverride:BANK_TEST_ALERT_TEXT, isOperationalTest:true };
+}
+
 async function donationWithCrewGrade(donation, userId, settings) {
   if (!settings?.crewGradeEnabled) return { ...donation, crewGradeId:null };
   const total = await db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) total FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${effectiveDonorName} = ? AND d.status = 'included'`, args:[donation.donorName] });
@@ -1126,6 +1152,23 @@ app.get('/api/notification-rules', requireAuth, requireSuper, async (_req, res) 
   res.json(result.rows);
 });
 
+app.get('/api/admin/bank-test-alert', requireAuth, requireSuper, async (_req, res) => {
+  res.json({ ...(await getBankTestAlert()), alertText:BANK_TEST_ALERT_TEXT });
+});
+
+app.put('/api/admin/bank-test-alert', requireAuth, requireSuper, async (req, res) => {
+  const settings = cleanBankTestAlert(req.body);
+  if (req.body?.enabled && (!settings.donorName || settings.amount < 1)) {
+    return res.status(400).json({ error:'활성화하려면 테스트 입금자명과 금액을 입력해주세요.' });
+  }
+  await db.execute({
+    sql:`INSERT INTO app_meta (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,
+    args:[BANK_TEST_ALERT_KEY,JSON.stringify(settings)]
+  });
+  res.json({ ...settings, alertText:BANK_TEST_ALERT_TEXT });
+});
+
 app.post('/api/notification-rules', requireAuth, requireSuper, async (req, res) => {
   try {
     const rule = validateRuleInput(req.body);
@@ -1191,16 +1234,22 @@ app.post('/api/notifications', async (req, res) => {
       await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, status, error) VALUES (?, ?, ?, ?, 'not_matched', ?)`, args:[packageName,title,content,packageName,'정규식 불일치'] });
       return res.status(422).json({ error:'알림이 등록된 정규식과 일치하지 않습니다.' });
     }
-    const settings = await getUserSettings(apiUser.id);
-    if (parsed.amount < Number(settings.minimumDonationAmount || 0)) return res.status(202).json({ ignored:true, ...parsed });
+    const [settings,bankTestAlert] = await Promise.all([getUserSettings(apiUser.id),getBankTestAlert()]);
+    const operationalTest = isBankTestAlert(parsed, bankTestAlert);
+    if (!operationalTest && parsed.amount < Number(settings.minimumDonationAmount || 0)) return res.status(202).json({ ignored:true, ...parsed });
     const session = await activeSession();
-    const inserted = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, ?, ?, ?)`, args:[session.id,apiUser.id,parsed.donorName,parsed.amount,packageName] });
+    const inserted = await db.execute({
+      sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, status, alert_published_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args:[session.id,apiUser.id,parsed.donorName,parsed.amount,packageName,operationalTest?'excluded':'included',operationalTest?new Date().toISOString():null]
+    });
     const donationId = Number(inserted.lastInsertRowid);
     recordDonationTiming(donationId, 'server_received', timingReceivedAt);
-    await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, donation_id, status) VALUES (?, ?, ?, ?, ?, 'created')`, args:[packageName,title,content,packageName,donationId] });
+    await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, donation_id, status) VALUES (?, ?, ?, ?, ?, ?)`, args:[packageName,title,content,packageName,donationId,operationalTest?'test_created':'created'] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[donationId] });
     const donation = await donationWithCrewGrade(saved.rows[0], apiUser.id, settings);
-    await queueBankDonationAlert(donationId, apiUser.id, settings);
+    if (operationalTest) publishOverlayDonation(bankTestOverlayDonation(donation), apiUser.id);
+    else await queueBankDonationAlert(donationId, apiUser.id, settings);
     publishDataChange(apiUser.id, 'deposit-created');
     res.status(201).json({ ok:true, donation, packageName, recipient:{ loginId:apiUser.loginId, displayName:apiUser.displayName } });
   } catch (error) {
@@ -1433,15 +1482,16 @@ app.get('/api/donations', async (req, res) => {
 app.post('/api/donations', requireAuth, async (req, res) => {
   try {
     const input = normalizeDonation(req.body);
-    const settings = await getUserSettings(req.user.id);
-    if (input.amount < Number(settings.minimumDonationAmount || 0)) {
+    const [settings,bankTestAlert] = await Promise.all([getUserSettings(req.user.id),getBankTestAlert()]);
+    const operationalTest = isBankTestAlert(input, bankTestAlert);
+    if (!operationalTest && input.amount < Number(settings.minimumDonationAmount || 0)) {
       return res.status(202).json({ ignored:true, minimumDonationAmount:settings.minimumDonationAmount, message:`${settings.minimumDonationAmount.toLocaleString('ko-KR')}원 미만 입금은 후원 리스트에 기록하지 않습니다.` });
     }
     const session = await activeSession();
-    const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id, alert_published_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId] });
+    const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id, status, alert_published_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId,operationalTest?'excluded':'included'] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
     const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, settings);
-    publishOverlayDonation(donation, req.user.id);
+    publishOverlayDonation(operationalTest?bankTestOverlayDonation(donation):donation, req.user.id);
     publishDataChange(req.user.id, 'deposit-created');
     res.status(201).json(donation);
   } catch (error) {

@@ -348,6 +348,7 @@ function AuthenticatedRoutes() {
   if (location.pathname === "/settings/tts-words") return <TtsWordReplacements />;
   if (location.pathname === "/phone-test") return isSuper ? <PhoneTestPage /> : <AccessDenied />;
   if (location.pathname === "/admin/notification-rules") return isSuper ? <NotificationRules /> : <AccessDenied />;
+  if (location.pathname === "/admin/bank-test-alert") return isSuper ? <BankTestAlertSettings /> : <AccessDenied />;
   if (location.pathname === "/admin/api-logs") return isSuper ? <ApiLogs /> : <AccessDenied />;
   if (location.pathname === "/admin/donation-logs") return isSuper ? <DonationTimingLogs /> : <AccessDenied />;
   if (location.pathname === "/admin/users") return isSuper ? <AdminAccounts /> : <AccessDenied />;
@@ -456,6 +457,7 @@ const PAGE_INFO = {
   "/phone-test": ["내 방송", "휴대폰 연동 테스트"],
   "/admin/users": ["관리", "계정 관리"],
   "/admin/notification-rules": ["관리", "알림 파싱 규칙"],
+  "/admin/bank-test-alert": ["관리", "실입금 테스트 설정"],
   "/admin/api-logs": ["관리", "API 로그"],
   "/admin/donation-logs": ["관리", "후원 로그 관리"],
 };
@@ -757,6 +759,7 @@ function PageLayout({ children }) {
     "/phone-test": "⌁",
     "/admin/users": "♙",
     "/admin/notification-rules": "⌘",
+    "/admin/bank-test-alert": "✓",
     "/admin/api-logs": "≣",
     "/admin/donation-logs": "◷",
   };
@@ -831,6 +834,7 @@ function PageLayout({ children }) {
                 hint="크루 멤버와 권한"
               />
               <Link href="/admin/notification-rules" label="알림 파싱 규칙" hint="앱 패키지별 정규식" />
+              <Link href="/admin/bank-test-alert" label="실입금 테스트 설정" hint="최소금액 예외 · 순위 제외" />
               <Link href="/admin/api-logs" label="API 로그" hint="요청과 응답 기록" />
               <Link href="/admin/donation-logs" label="후원 로그 관리" hint="화면·효과음·TTS 지연 분석" />
             </>
@@ -2560,6 +2564,29 @@ function NotificationRules() {
   return <PageLayout><div className="shell notification-rules-page"><section className="panel"><div className="section-heading notification-rules-header"><div><span className="eyebrow">PARSING RULES</span><h1>알림 파싱 규칙</h1><p>앱 패키지명을 기준으로 제목과 내용에서 입금자와 금액을 추출합니다.</p></div><button className="primary-button notification-add-button" onClick={()=>open(null)}><span>＋</span> 새 규칙 추가</button></div>
     {message&&<p className="form-message error">{message}</p>}<div className="table-wrap notification-rules-table"><table><thead><tr><th>앱 패키지명</th><th>제목 정규식</th><th>내용 정규식</th><th>관리</th></tr></thead><tbody>{items.length?items.map(item=><tr key={item.packageName}><td><code>{item.packageName}</code></td><td><code>{item.titlePattern||'-'}</code></td><td><code>{item.contentPattern}</code></td><td><div className="notification-rule-actions"><button onClick={()=>open(item)}>수정</button><button className="danger" onClick={()=>remove(item.packageName)}>삭제</button></div></td></tr>):<tr><td colSpan="4"><div className="notification-rules-empty"><b>등록된 파싱 규칙이 없습니다</b><span>새 규칙을 추가해 알림 제목과 내용을 파싱해 보세요.</span><button onClick={()=>open(null)}>첫 규칙 만들기</button></div></td></tr>}</tbody></table></div>
     {editing&&<div className="dialog-backdrop" onMouseDown={event=>event.target===event.currentTarget&&setEditing(null)}><form className="dialog-card notification-rule-dialog" onSubmit={save}><div className="notification-dialog-heading"><div><span>{editing.packageName?'EDIT RULE':'NEW RULE'}</span><h2>{editing.packageName?'규칙 수정':'새 파싱 규칙'}</h2></div><button type="button" aria-label="닫기" onClick={()=>setEditing(null)}>×</button></div><div className="notification-rule-fields"><label>앱 패키지명<input value={form.packageName} onChange={e=>setForm({...form,packageName:e.target.value})} placeholder="예: com.example.bank" required/></label><label>제목 정규식 <small>선택</small><textarea rows="3" value={form.titlePattern||''} onChange={e=>setForm({...form,titlePattern:e.target.value})} placeholder="예: 입금\\s+(?<amount>[\\d,]+)원"/></label><label>내용 정규식 <small>필수</small><textarea rows="5" value={form.contentPattern} onChange={e=>setForm({...form,contentPattern:e.target.value})} placeholder="예: 입금자\\s*:\\s*(?<donor>.+)" required/></label></div><p className="notification-rule-help">제목과 내용을 합쳐 <code>(?&lt;donor&gt;...)</code>와 <code>(?&lt;amount&gt;...)</code> 캡처 그룹이 필요합니다.</p><div className="dialog-actions"><button type="button" onClick={()=>setEditing(null)}>취소</button><button className="primary-button">{editing.packageName?'변경사항 저장':'규칙 저장'}</button></div></form></div>}
+  </section></div></PageLayout>;
+}
+
+function BankTestAlertSettings() {
+  const empty={enabled:false,donorName:'',amount:0,alertText:'폴조지가 테스트중입니다. 죄송합니다 히히..'};
+  const [form,setForm]=useState(empty),[message,setMessage]=useState(''),[saving,setSaving]=useState(false);
+  useEffect(()=>{api('/api/admin/bank-test-alert').then(setForm).catch(error=>setMessage(error.message));},[]);
+  async function save(event){
+    event.preventDefault();setSaving(true);setMessage('');
+    try{const saved=await api('/api/admin/bank-test-alert',{method:'PUT',body:JSON.stringify(form)});setForm(saved);setMessage('실입금 테스트 설정을 저장했습니다.');}
+    catch(error){setMessage(error.message);}
+    finally{setSaving(false);}
+  }
+  return <PageLayout><div className="shell"><section className="panel bank-test-settings"><div className="section-heading"><div><span className="eyebrow">LIVE BANK TEST</span><h1>실입금 테스트 설정</h1><p>지정한 실제 입금만 최소 후원금액을 우회해 OBS 알림 경로를 점검합니다. 테스트 입금은 후원 순위와 누적 금액에서 제외됩니다.</p></div></div>
+    <form onSubmit={save}>
+      <label className="toggle-label">테스트 조건 활성화<input type="checkbox" checked={form.enabled} onChange={event=>setForm({...form,enabled:event.target.checked})}/><i/></label>
+      <label>후원자명<input value={form.donorName} maxLength="40" placeholder="실제 입금자명과 동일하게 입력" onChange={event=>setForm({...form,donorName:event.target.value})}/></label>
+      <label>금액<input type="number" min="1" max="100000000" step="1" value={form.amount||''} placeholder="예: 100" onChange={event=>setForm({...form,amount:Number(event.target.value)})}/></label>
+      <label>고정 알림 문구<textarea value={form.alertText} readOnly rows="2"/></label>
+      <p className="notice">입금자명과 금액이 모두 일치해야 합니다. BJ가 설정한 디자인·애니메이션·효과음·TTS는 그대로 사용됩니다.</p>
+      <button className="primary-button" disabled={saving}>{saving?'저장 중...':'설정 저장'}</button>
+    </form>
+    {message&&<p className="form-message">{message}</p>}
   </section></div></PageLayout>;
 }
 
@@ -7729,10 +7756,10 @@ function Overlay({ token, preview = false }) {
     currentRef.current = donation;
     setExiting(false);
     const appearance = alertAppearance(settingsRef.current, donation.amount);
-    const messageTemplate = donation.message
+    const messageTemplate = donation.alertTextOverride || (donation.message
       ? `${appearance.messageTemplate}\n{message}`
-      : appearance.messageTemplate;
-    const spokenText = donation.message || messageTemplate
+      : appearance.messageTemplate);
+    const spokenText = donation.alertTextOverride || donation.message || messageTemplate
       .replaceAll("{name}", donation.donorName)
       .replaceAll("{amount}", formatWon(donation.amount))
       .replaceAll("{message}", "");
@@ -7823,9 +7850,9 @@ function Overlay({ token, preview = false }) {
 
   if (settings.alertOverlayEnabled === false || !current) return <div className="overlay-stage" />;
   const appearance = alertAppearance(settings, current.amount);
-  const outputTemplate = current.message
+  const outputTemplate = current.alertTextOverride || (current.message
     ? `${appearance.messageTemplate}\n{message}`
-    : appearance.messageTemplate;
+    : appearance.messageTemplate);
   const crewGrade = (settings.crewGrades || []).find(
     (grade) => grade.id === current.crewGradeId,
   );

@@ -43,6 +43,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
 
     assert.equal((await request('/api/users',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/notification-rules',{cookie:memberCookie})).response.status,403);
+    assert.equal((await request('/api/admin/bank-test-alert',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/api-logs',{cookie:memberCookie})).response.status,403);
     assert.equal((await request('/api/donation-timing-logs',{cookie:memberCookie})).response.status,403);
     const memberUser = await db.execute(`SELECT id FROM users WHERE login_id = 'hh01'`);
@@ -209,9 +210,19 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal((await request(`/api/notification-rules/${rule.packageName}`,{method:'PUT',cookie:superCookie,body:updatedRule})).response.status,200);
 
     const notification = content => ({ packageName:updatedRule.packageName,title:'입금 알림',content });
+    result = await request('/api/admin/bank-test-alert',{method:'PUT',cookie:superCookie,body:{enabled:true,donorName:'폴조지테스트',amount:100}});
+    assert.equal(result.response.status,200);
+    assert.equal(result.data.alertText,'폴조지가 테스트중입니다. 죄송합니다 히히..');
+    assert.equal((await request('/api/admin/bank-test-alert',{cookie:superCookie})).data.donorName,'폴조지테스트');
     assert.equal((await request('/api/notifications',{method:'POST',body:notification('홍길동님이 1,000원을 입금했습니다.')})).response.status,401);
     assert.equal((await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:{...notification('홍길동님이 1,000원을 입금했습니다.'),packageName:'unknown.package'}})).response.status,404);
     assert.equal((await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:notification('정규식 불일치')})).response.status,422);
+    const operationalTestOne = await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:notification('폴조지테스트님이 100원을 입금했습니다.')});
+    const operationalTestTwo = await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:notification('폴조지테스트님이 100원을 입금했습니다.')});
+    assert.equal(operationalTestOne.response.status,201);
+    assert.equal(operationalTestTwo.response.status,201);
+    const operationalRows = await db.execute(`SELECT status FROM donations WHERE donor_name = '폴조지테스트' ORDER BY id`);
+    assert.deepEqual(operationalRows.rows.map(row=>row.status),['excluded','excluded']);
     const first = await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:notification('홍길동님이 12,345원을 입금했습니다.')});
     const second = await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:notification('홍길동님이 23,456원을 입금했습니다.')});
     assert.equal(first.response.status,201);
