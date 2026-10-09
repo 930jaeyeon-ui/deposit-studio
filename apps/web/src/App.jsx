@@ -3224,7 +3224,7 @@ const RANKING_THEME_PRESETS = {
     rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: -0.5, rankingRowGap: 12, rankingColumnGap: 26,
     rankingTitleSize: 44, rankingTitleAlign: "center", rankingTitleColor: "#ffd76a", rankingNameColor: "#fff1bf", rankingAmountColor: "#ffd76a",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "stagger", rankingBackgroundEnabled: true,
-    rankingMedalShape: "circle", rankingMedalSize: 100, rankingMedalRibbonShape: "classic", rankingMedalRibbonPattern: "solid", rankingMedalDepth: "soft", rankingMedalShineEnabled: true, rankingMedalShadowEnabled: true,
+    rankingMedalShape: "circle", rankingMedalSize: 100, rankingMedalRibbonSize: 100, rankingMedalRibbonShape: "classic", rankingMedalRibbonPattern: "solid", rankingMedalDepth: "soft", rankingMedalShineEnabled: true, rankingMedalShadowEnabled: true,
     rankingMedalStyles: [
       { medal: "#ffe45c", ribbon: "#e34f5f", number: "#5b3b00" },
       { medal: "#9fdbff", ribbon: "#557fb2", number: "#173b5f" },
@@ -6377,6 +6377,11 @@ function Settings({ mode }) {
                           <span>{settings.rankingMedalSize || 100}%</span>
                         </label>
                         <label>
+                          리본 크기
+                          <input type="range" min="70" max="180" value={settings.rankingMedalRibbonSize || 100} onChange={(e)=>update("rankingMedalRibbonSize",Number(e.target.value))}/>
+                          <span>{settings.rankingMedalRibbonSize || 100}%</span>
+                        </label>
+                        <label>
                           리본 모양
                           <select value={settings.rankingMedalRibbonShape || "classic"} onChange={(e)=>update("rankingMedalRibbonShape",e.target.value)}>
                             <option value="classic">클래식 V</option>
@@ -7410,6 +7415,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     "--medal-ribbon": medalStyle.ribbon,
                     "--medal-number": medalStyle.number,
                     "--medal-scale": (settings.rankingMedalSize || 100) / 100,
+                    "--ribbon-scale": (settings.rankingMedalRibbonSize || 100) / 100,
                   } : undefined}
                 >{rankMarker(settings.rankingTheme, index)}</em>
               ) : null;

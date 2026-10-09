@@ -487,6 +487,7 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.rankingCustomMarker=['circle','square','pill','plain'].includes(settings.rankingCustomMarker)?settings.rankingCustomMarker:'circle';
   settings.rankingMedalShape=['circle','hex','star'].includes(settings.rankingMedalShape)?settings.rankingMedalShape:'circle';
   settings.rankingMedalSize=Math.max(70,Math.min(160,Number(settings.rankingMedalSize)||100));
+  settings.rankingMedalRibbonSize=Math.max(70,Math.min(180,Number(settings.rankingMedalRibbonSize)||100));
   settings.rankingMedalRibbonPattern=['solid','stripe','diagonal'].includes(settings.rankingMedalRibbonPattern)?settings.rankingMedalRibbonPattern:'solid';
   settings.rankingMedalDepth=['flat','soft','strong'].includes(settings.rankingMedalDepth)?settings.rankingMedalDepth:'soft';
   settings.rankingMedalShineEnabled=settings.rankingMedalShineEnabled !== false;
