@@ -84,6 +84,19 @@ function OutlinedText({
   );
 }
 
+function AnimatedRankText({ text, stagger = false, offset = 0 }) {
+  if (!stagger) return text;
+  return Array.from(String(text)).map((character, index) => (
+    <span
+      className="rank-motion-character"
+      style={{ "--character-index": index + offset }}
+      key={`${character}-${index}`}
+    >
+      {character === " " ? "\u00a0" : character}
+    </span>
+  ));
+}
+
 function ThemeSelector() {
   const [theme, setTheme] = useState(() => {
     const savedTheme = localStorage.getItem("deposit-studio-theme");
@@ -6914,6 +6927,7 @@ function Settings({ mode }) {
                         const motionUsesSecondColor = ["border-spin","gradient-flow","spotlight","aura","underline-run","sparkle-bg"].includes(rankMotion);
                         const motionUsesBackground = ["ambient","border-pulse","border-spin","gradient-flow","spotlight","aura","underline-run","sparkle-bg"].includes(rankMotion);
                         const motionUsesSpeed = !["none","ambient"].includes(rankMotion);
+                        const motionSupportsCharacters = ["pulse","float","sway","glow"].includes(rankMotion);
                         return (
                           <article key={label}>
                             <b>{label}</b>
@@ -6989,6 +7003,7 @@ function Settings({ mode }) {
                                 {motionUsesBackground && <label>배경색<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectBackground || "#111827")} onChange={(e)=>changeRankStyle(index,"effectBackground",e.target.value)}/><input className="color-code-input" value={rankStyle.effectBackground || "#111827"} maxLength="7" aria-label={`${label} 배경색 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectBackground",e.target.value)}/></span></label>}
                                 {motionUsesSpeed && <label>속도<select value={rankStyle.effectSpeed || "normal"} onChange={(e)=>changeRankStyle(index,"effectSpeed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label>}
                                 <label>강도<input type="range" min="20" max="100" step="10" value={rankStyle.effectIntensity || 60} onChange={(e)=>changeRankStyle(index,"effectIntensity",Number(e.target.value))}/><span>{rankStyle.effectIntensity || 60}%</span></label>
+                                {motionSupportsCharacters && <label className="rank-character-toggle">글자 단위<span className="inline-setting-check"><input type="checkbox" checked={rankStyle.staggerCharacters === true} onChange={(e)=>changeRankStyle(index,"staggerCharacters",e.target.checked)}/>한 글자씩</span></label>}
                               </div>
                             )}
                           </article>
@@ -7466,6 +7481,9 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                 settings.rankingRankHighlightEnabled !== false;
               const isMedalMarker = settings.rankingTheme === "gold" && index < 3;
               const medalStyle = (settings.rankingMedalStyles || DEFAULT_SETTINGS.rankingMedalStyles)[index] || DEFAULT_SETTINGS.rankingMedalStyles[0];
+              const rankMotion = rankHighlight && index < 3 ? (rankStyle.motion || "none") : "none";
+              const isTextMotion = ["pulse","float","sway","glow"].includes(rankMotion);
+              const staggerCharacters = isTextMotion && rankStyle.staggerCharacters === true;
               const rankMarkerNode = index < rankNumberLimit ? (
                 <em
                   className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"} ribbon-shape-${settings.rankingMedalRibbonShape || "classic"} ribbon-${settings.rankingMedalRibbonPattern || "solid"} depth-${settings.rankingMedalDepth || "soft"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}
@@ -7510,10 +7528,12 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     "--rank-effect-bg": rankStyle.effectBackground || "#111827",
                     "--rank-effect-strength": Math.max(.2,Math.min(1,(rankStyle.effectIntensity || 60) / 100)),
                     "--rank-effect-duration": rankStyle.effectSpeed === "slow" ? "4s" : rankStyle.effectSpeed === "fast" ? "1.35s" : "2.4s",
+                    "--rank-motion-scale": 1 + Math.max(20,Math.min(100,rankStyle.effectIntensity || 60)) * .00075,
+                    "--rank-motion-distance": `${.03 + Math.max(20,Math.min(100,rankStyle.effectIntensity || 60)) * .0015}em`,
                     "--delay": `${index * 0.07}s`,
                   }}
                 >
-                  <b className="rank-line" style={{ textAlign: settings.rankingNameAlign }}>
+                  <b className={`rank-line${isTextMotion ? ` rank-motion-${rankMotion}` : ""}${staggerCharacters ? " rank-motion-staggered" : ""}`} style={{ textAlign: settings.rankingNameAlign }}>
                     {settings.rankingShowRank && settings.rankingRankPlacement === "gutter" ? (
                       <span className="rank-marker-slot">
                         {rankMarkerNode}
@@ -7521,7 +7541,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     ) : settings.rankingShowRank && index < rankNumberLimit ? (
                       rankMarkerNode
                     ) : null}
-                    <span className={`rank-text-effect${rankHighlight && index < 3 ? ` rank-motion-${rankStyle.motion || "none"}` : ""}`}>
+                    <span className={`rank-text-effect${!isTextMotion && rankMotion !== "none" ? ` rank-motion-${rankMotion}` : ""}`}>
                     <span className="rank-name-group">
                     <OutlinedText
                       className="donor-name"
@@ -7530,7 +7550,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       width={`${Math.min(0.12, settings.rankingNameOutlineWidth / Math.max(1, settings.rankingFontSize))}em`}
                       color={settings.rankingNameOutlineColor}
                     >
-                      {item.donorName}
+                      <AnimatedRankText text={item.donorName} stagger={staggerCharacters}/>
                       {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: settings.rankingNameSuffixColor || settings.rankingNameColor }}>{settings.rankingNameSuffix}</span>}
                     </OutlinedText>
                     {settings.rankingShowCount && <small>{item.count}회</small>}
@@ -7546,7 +7566,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       fontSize: rankHighlight && index < 3 ? "1em" : undefined,
                     }}
                   >
-                    {formatWon(item.amount)}
+                    <AnimatedRankText text={formatWon(item.amount)} stagger={staggerCharacters} offset={Array.from(String(item.donorName)).length + 2}/>
                     {settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: settings.rankingAmountSuffixColor || settings.rankingAmountColor }}>{settings.rankingAmountSuffix}</span>}
                   </OutlinedText>
                     </span>

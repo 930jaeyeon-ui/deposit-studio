@@ -153,9 +153,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingShowCount: false,
   rankingRankHighlightEnabled: true,
   rankingRankStyles: [
-    { color:'#ffd76a', amountColor:'#b9dcff', badge:'#8a6414', size:110, weight:900, motion:'none', effectColor:'#ffe45c', effectColor2:'#ffffff', effectBackground:'#3a2a08', effectSpeed:'normal', effectIntensity:60 },
-    { color:'#dce8f5', amountColor:'#b9dcff', badge:'#60758b', size:105, weight:800, motion:'none', effectColor:'#9fdbff', effectColor2:'#ffffff', effectBackground:'#132538', effectSpeed:'normal', effectIntensity:60 },
-    { color:'#e7aa78', amountColor:'#b9dcff', badge:'#855137', size:102, weight:800, motion:'none', effectColor:'#ffaa72', effectColor2:'#ffffff', effectBackground:'#382015', effectSpeed:'normal', effectIntensity:60 },
+    { color:'#ffd76a', amountColor:'#b9dcff', badge:'#8a6414', size:110, weight:900, motion:'none', effectColor:'#ffe45c', effectColor2:'#ffffff', effectBackground:'#3a2a08', effectSpeed:'normal', effectIntensity:60, staggerCharacters:false },
+    { color:'#dce8f5', amountColor:'#b9dcff', badge:'#60758b', size:105, weight:800, motion:'none', effectColor:'#9fdbff', effectColor2:'#ffffff', effectBackground:'#132538', effectSpeed:'normal', effectIntensity:60, staggerCharacters:false },
+    { color:'#e7aa78', amountColor:'#b9dcff', badge:'#855137', size:102, weight:800, motion:'none', effectColor:'#ffaa72', effectColor2:'#ffffff', effectBackground:'#382015', effectSpeed:'normal', effectIntensity:60, staggerCharacters:false },
     { color:'#ffffff', badge:'#315b88', size:100, weight:700 }
   ]
 });
