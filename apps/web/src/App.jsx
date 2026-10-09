@@ -7699,6 +7699,7 @@ function Overlay({ token, preview = false }) {
           }
           if (settingsRef.current.alertOverlayEnabled === false) return;
           if (
+            !donation.isOperationalTest &&
             donation.amount < Number(settingsRef.current.alertMinimumAmount || 0)
           )
             return;
