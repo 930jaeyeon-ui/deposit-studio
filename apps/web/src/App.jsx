@@ -6902,7 +6902,7 @@ function Settings({ mode }) {
                   </label>
                   {settings.rankingRankHighlightEnabled !== false && (
                     <div className="rank-style-editor">
-                      <p className="rank-style-help">전체 글자 크기와 같은 px 단위입니다. 1~3위만 개별 강조되며 4위 이하는 선택한 테마 설정을 따라갑니다.</p>
+                      <p className="rank-style-help">전체 글자 크기와 같은 px 단위입니다. 1~3위만 개별 강조되며, 강조 모션은 방송 화면에서 계속 반복됩니다.</p>
                       {["1위", "2위", "3위"].map((label, index) => {
                         const rankStyle = (settings.rankingRankStyles ||
                           DEFAULT_SETTINGS.rankingRankStyles)[index];
@@ -6957,6 +6957,16 @@ function Settings({ mode }) {
                               닉네임 굵기
                               <select value={rankStyle.weight || settings.rankingNameFontWeight || settings.rankingFontWeight} onChange={(e)=>changeRankStyle(index,"weight",Number(e.target.value))}>
                                 {[300,400,500,600,700,800,900].map(value=><option key={value} value={value}>{value}</option>)}
+                              </select>
+                            </label>
+                            <label>
+                              강조 모션
+                              <select value={rankStyle.motion || "none"} onChange={(e)=>changeRankStyle(index,"motion",e.target.value)}>
+                                <option value="none">없음</option>
+                                <option value="pulse">두근두근</option>
+                                <option value="float">살짝 떠오르기</option>
+                                <option value="sway">좌우 흔들기</option>
+                                <option value="glow">은은한 반짝임</option>
                               </select>
                             </label>
                           </article>
@@ -7448,7 +7458,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               ) : null;
               return (
                 <div
-                  className={`widget-row rank-${index + 1} row-${settings.rankingRowAlign}`}
+                  className={`widget-row rank-${index + 1} row-${settings.rankingRowAlign}${rankHighlight && index < 3 ? ` rank-motion-${rankStyle.motion || "none"}` : ""}`}
                   key={`${item.donorName}-${index}`}
                   onClick={onEdit ? () => onEdit(item) : undefined}
                   role={onEdit ? "button" : undefined}

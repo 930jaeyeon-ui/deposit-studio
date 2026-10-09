@@ -153,9 +153,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingShowCount: false,
   rankingRankHighlightEnabled: true,
   rankingRankStyles: [
-    { color:'#ffd76a', amountColor:'#b9dcff', badge:'#8a6414', size:110, weight:900 },
-    { color:'#dce8f5', amountColor:'#b9dcff', badge:'#60758b', size:105, weight:800 },
-    { color:'#e7aa78', amountColor:'#b9dcff', badge:'#855137', size:102, weight:800 },
+    { color:'#ffd76a', amountColor:'#b9dcff', badge:'#8a6414', size:110, weight:900, motion:'none' },
+    { color:'#dce8f5', amountColor:'#b9dcff', badge:'#60758b', size:105, weight:800, motion:'none' },
+    { color:'#e7aa78', amountColor:'#b9dcff', badge:'#855137', size:102, weight:800, motion:'none' },
     { color:'#ffffff', badge:'#315b88', size:100, weight:700 }
   ]
 });
