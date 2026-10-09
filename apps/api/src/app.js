@@ -193,7 +193,7 @@ function bankTestOverlayDonation(donation) {
 
 async function donationWithCrewGrade(donation, userId, settings) {
   if (!settings?.crewGradeEnabled) return { ...donation, crewGradeId:null };
-  const total = await db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) total FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.recipient_user_id = ? AND ${effectiveDonorName} = ? AND d.status = 'included'`, args:[userId,donation.donorName] });
+  const total = await db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) total FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${effectiveDonorName} = ? AND d.status = 'included'`, args:[donation.donorName] });
   const cumulativeAmount=Number(total.rows[0]?.total||0);
   const grade=[...(settings.crewGrades||[])].filter(item=>cumulativeAmount>=Number(item.minAmount||0)&&(item.maxAmount==null||cumulativeAmount<=Number(item.maxAmount))).sort((a,b)=>Number(b.minAmount)-Number(a.minAmount))[0];
   return { ...donation, cumulativeAmount, crewGradeId:grade?.id||null };
