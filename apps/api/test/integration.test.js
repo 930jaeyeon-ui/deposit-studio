@@ -221,6 +221,8 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     const operationalTestTwo = await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:notification('폴조지테스트님이 100원을 입금했습니다.')});
     assert.equal(operationalTestOne.response.status,201);
     assert.equal(operationalTestTwo.response.status,201);
+    assert.equal(operationalTestOne.data.operationalTest,true);
+    assert.equal(typeof operationalTestOne.data.delivered,'number');
     const operationalRows = await db.execute(`SELECT status FROM donations WHERE donor_name = '폴조지테스트' ORDER BY id`);
     assert.deepEqual(operationalRows.rows.map(row=>row.status),['excluded','excluded']);
     const first = await request('/api/notifications',{method:'POST',authorization:basic('hh01','Init1234!!'),body:notification('홍길동님이 12,345원을 입금했습니다.')});

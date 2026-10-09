@@ -1248,10 +1248,10 @@ app.post('/api/notifications', async (req, res) => {
     await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, donation_id, status) VALUES (?, ?, ?, ?, ?, ?)`, args:[packageName,title,content,packageName,donationId,operationalTest?'test_created':'created'] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[donationId] });
     const donation = await donationWithCrewGrade(saved.rows[0], apiUser.id, settings);
-    if (operationalTest) publishOverlayDonation(bankTestOverlayDonation(donation), apiUser.id);
-    else await queueBankDonationAlert(donationId, apiUser.id, settings);
+    const delivered = operationalTest ? publishOverlayTest(bankTestOverlayDonation(donation), apiUser.id) : null;
+    if (!operationalTest) await queueBankDonationAlert(donationId, apiUser.id, settings);
     publishDataChange(apiUser.id, 'deposit-created');
-    res.status(201).json({ ok:true, donation, packageName, recipient:{ loginId:apiUser.loginId, displayName:apiUser.displayName } });
+    res.status(201).json({ ok:true, donation, operationalTest, delivered, packageName, recipient:{ loginId:apiUser.loginId, displayName:apiUser.displayName } });
   } catch (error) {
     await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, status, error) VALUES (?, ?, ?, ?, 'parse_error', ?)`, args:[packageName,title,content,packageName,String(error.message).slice(0,500)] });
     res.status(422).json({ error:error.message });
@@ -1491,9 +1491,11 @@ app.post('/api/donations', requireAuth, async (req, res) => {
     const result = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank, external_id, status, alert_published_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`, args:[session.id,req.user.id,input.donorName,input.amount,input.bank,input.externalId,operationalTest?'excluded':'included'] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
     const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, settings);
-    publishOverlayDonation(operationalTest?bankTestOverlayDonation(donation):donation, req.user.id);
+    const delivered = operationalTest
+      ? publishOverlayTest(bankTestOverlayDonation(donation), req.user.id)
+      : (publishOverlayDonation(donation, req.user.id), null);
     publishDataChange(req.user.id, 'deposit-created');
-    res.status(201).json(donation);
+    res.status(201).json(operationalTest?{...donation,operationalTest:true,delivered}:donation);
   } catch (error) {
     const duplicate = String(error.message).includes('UNIQUE constraint');
     res.status(duplicate ? 409 : 400).json({ error:duplicate ? '이미 처리한 입금입니다.' : error.message });
