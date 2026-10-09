@@ -111,6 +111,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingCustomRowBackground: '#16243a',
   rankingCustomRadius: 18,
   rankingCustomMarker: 'circle',
+  rankingMedalShape: 'circle',
+  rankingMedalSize: 100,
+  rankingMedalShineEnabled: true,
+  rankingMedalShadowEnabled: true,
+  rankingMedalStyles: [
+    { medal:'#ffe45c', ribbon:'#e34f5f', number:'#5b3b00' },
+    { medal:'#9fdbff', ribbon:'#557fb2', number:'#173b5f' },
+    { medal:'#ffaa72', ribbon:'#a85a38', number:'#5a2814' }
+  ],
   rankingNameSuffix: '',
   rankingAmountSuffix: '원',
   rankingNameSuffixColor: '#ffffff',

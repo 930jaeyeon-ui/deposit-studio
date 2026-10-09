@@ -3224,6 +3224,12 @@ const RANKING_THEME_PRESETS = {
     rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: -0.5, rankingRowGap: 12, rankingColumnGap: 26,
     rankingTitleSize: 44, rankingTitleAlign: "center", rankingTitleColor: "#ffd76a", rankingNameColor: "#fff1bf", rankingAmountColor: "#ffd76a",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "stagger", rankingBackgroundEnabled: true,
+    rankingMedalShape: "circle", rankingMedalSize: 100, rankingMedalShineEnabled: true, rankingMedalShadowEnabled: true,
+    rankingMedalStyles: [
+      { medal: "#ffe45c", ribbon: "#e34f5f", number: "#5b3b00" },
+      { medal: "#9fdbff", ribbon: "#557fb2", number: "#173b5f" },
+      { medal: "#ffaa72", ribbon: "#a85a38", number: "#5a2814" },
+    ],
     rankingRankStyles: rankingStyles(
       { color: "#fff3a8", badge: "#c99628", size: 130, weight: 900 }, { color: "#f0f2f5", badge: "#9ca6af", size: 117, weight: 800 },
       { color: "#f2b384", badge: "#a75d31", size: 110, weight: 800 }, { color: "#fff1bf", badge: "#6d511b", size: 100, weight: 700 },
@@ -3292,7 +3298,7 @@ const RANKING_THEME_PRESETS = {
 };
 function rankMarker(theme, index) {
   const rank = index + 1;
-  if (theme === "gold" && rank <= 3) return ["🥇", "🥈", "🥉"][index];
+  if (theme === "gold" && rank <= 3) return rank;
   if (theme === "rose" && rank <= 3)
     return `${rank}${["st", "nd", "rd"][index]}`;
   if (theme === "clean") return String(rank).padStart(2, "0");
@@ -6354,6 +6360,46 @@ function Settings({ mode }) {
                       </label>
                     </div>
                   )}
+                  {settings.rankingTheme === "gold" && (
+                    <div className="ranking-medal-editor">
+                      <div className="ranking-medal-options">
+                        <label>
+                          메달 모양
+                          <select value={settings.rankingMedalShape || "circle"} onChange={(e)=>update("rankingMedalShape",e.target.value)}>
+                            <option value="circle">원형</option>
+                            <option value="hex">육각형</option>
+                            <option value="star">별형</option>
+                          </select>
+                        </label>
+                        <label>
+                          메달 크기
+                          <input type="range" min="70" max="160" value={settings.rankingMedalSize || 100} onChange={(e)=>update("rankingMedalSize",Number(e.target.value))}/>
+                          <span>{settings.rankingMedalSize || 100}%</span>
+                        </label>
+                        <label className="toggle-label compact-toggle">
+                          광택
+                          <input type="checkbox" checked={settings.rankingMedalShineEnabled !== false} onChange={(e)=>update("rankingMedalShineEnabled",e.target.checked)}/>
+                          <i />
+                        </label>
+                        <label className="toggle-label compact-toggle">
+                          그림자
+                          <input type="checkbox" checked={settings.rankingMedalShadowEnabled !== false} onChange={(e)=>update("rankingMedalShadowEnabled",e.target.checked)}/>
+                          <i />
+                        </label>
+                      </div>
+                      <div className="ranking-medal-colors">
+                        {["1위","2위","3위"].map((label,index)=>{
+                          const styles=settings.rankingMedalStyles || DEFAULT_SETTINGS.rankingMedalStyles;
+                          const medal=styles[index] || DEFAULT_SETTINGS.rankingMedalStyles[index];
+                          const change=(key,value)=>update("rankingMedalStyles",styles.map((item,itemIndex)=>itemIndex===index?{...item,[key]:value}:item));
+                          return <article key={label}>
+                            <b>{label}</b>
+                            {[["medal","메달"],["ribbon","리본"],["number","숫자"]].map(([key,title])=><label key={key}>{title}<input type="color" value={colorPickerValue(medal[key])} onChange={(e)=>change(key,e.target.value)}/></label>)}
+                          </article>;
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </AlertSettingSection>
                 <AlertSettingSection
                   id="ranking-title"
@@ -7328,6 +7374,19 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                   };
               const rankHighlight =
                 settings.rankingRankHighlightEnabled !== false;
+              const isMedalMarker = settings.rankingTheme === "gold" && index < 3;
+              const medalStyle = (settings.rankingMedalStyles || DEFAULT_SETTINGS.rankingMedalStyles)[index] || DEFAULT_SETTINGS.rankingMedalStyles[0];
+              const rankMarkerNode = index < rankNumberLimit ? (
+                <em
+                  className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}
+                  style={isMedalMarker ? {
+                    "--medal-color": medalStyle.medal,
+                    "--medal-ribbon": medalStyle.ribbon,
+                    "--medal-number": medalStyle.number,
+                    "--medal-scale": (settings.rankingMedalSize || 100) / 100,
+                  } : undefined}
+                >{rankMarker(settings.rankingTheme, index)}</em>
+              ) : null;
               return (
                 <div
                   className={`widget-row rank-${index + 1} row-${settings.rankingRowAlign}`}
@@ -7358,10 +7417,10 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                   <b style={{ textAlign: settings.rankingNameAlign }}>
                     {settings.rankingShowRank && settings.rankingRankPlacement === "gutter" ? (
                       <span className="rank-marker-slot">
-                        {index < rankNumberLimit && <em>{rankMarker(settings.rankingTheme, index)}</em>}
+                        {rankMarkerNode}
                       </span>
                     ) : settings.rankingShowRank && index < rankNumberLimit ? (
-                      <em>{rankMarker(settings.rankingTheme, index)}</em>
+                      rankMarkerNode
                     ) : null}
                     <OutlinedText
                       className="donor-name"
