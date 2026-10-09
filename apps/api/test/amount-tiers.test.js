@@ -45,6 +45,12 @@ test('금액 구간은 최대 12개까지만 허용한다', () => {
   assert.throws(() => validateAmountTiers(tiers), /최대 12개/);
 });
 
+test('1원 단위의 단일 금액 구간을 허용한다', () => {
+  assert.doesNotThrow(() => validateAmountTiers([
+    { minAmount:44445, maxAmount:44445 },
+  ]));
+});
+
 test('TTS 금지 단어를 긴 단어부터 한 번만 안전하게 치환한다', () => {
   const rules = normalizeTtsWordReplacements([
     { source:'나쁜 말', replacement:'좋은 말' },

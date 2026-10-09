@@ -14,6 +14,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
   const basic = (id,password) => `Basic ${Buffer.from(`${id}:${password}`).toString('base64')}`;
   let superCookie = '';
   let memberCookie = '';
+  let isolatedMemberCookie = '';
 
   async function request(path,{ method='GET', body, cookie, authorization }={}) {
     const response = await fetch(`${base}${path}`,{
@@ -65,6 +66,20 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     result = await request('/api/settings',{cookie:memberCookie});
     assert.equal(result.response.status,200);
     assert.equal(result.data.textPositionY,50);
+    const isolatedUser = await request('/api/users',{method:'POST',cookie:superCookie,body:{loginId:'settings-isolation',displayName:'설정 격리 검증',role:'member'}});
+    assert.equal(isolatedUser.response.status,201);
+    const isolatedLogin = await request('/api/auth/login',{method:'POST',body:{loginId:'settings-isolation',password:'Init1234!!'}});
+    assert.equal(isolatedLogin.response.status,200);
+    isolatedMemberCookie = isolatedLogin.response.headers.get('set-cookie').split(';')[0];
+    const isolatedInitialSettings = (await request('/api/settings',{cookie:isolatedMemberCookie})).data;
+    const isolatedSaved = await request('/api/settings',{method:'PUT',cookie:isolatedMemberCookie,body:{
+      ...isolatedInitialSettings,
+      rankingTitle:'다른 계정 전용 순위표',
+      rankingNameColor:'#123abc',
+      textColor:'#456def',
+      minimumDonationAmount:7654,
+    }});
+    assert.equal(isolatedSaved.response.status,200);
     assert.equal((await request('/api/settings')).response.status,401);
     assert.equal((await request('/api/tts/voices',{cookie:memberCookie})).data.configured,false);
     assert.equal((await request('/api/tts/typecast-voices',{cookie:memberCookie})).data.configured,false);
@@ -114,6 +129,8 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
         effectSpeed:index === 0 ? 'fast' : undefined,
         effectIntensity:index === 0 ? 80 : undefined,
         staggerCharacters:index === 0,
+        nameSuffixColor:index === 0 ? '#135790' : undefined,
+        amountSuffixColor:index === 0 ? '#2468ac' : undefined,
       })),
       fullRankingUseStandardSettings:false,
       fullRankingSettings:{
@@ -131,7 +148,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       ],
       amountTiers:[{
         id:'vip',name:'VIP',minAmount:0,maxAmount:100000000,enabled:true,
-        textMode:'custom',fontSize:999,fontWeight:1,
+        textMode:'custom',fontSize:999,fontWeight:1,textColor:'#111111',nameColor:'#123456',amountColor:'#abcdef',
         effectMode:'custom',durationMs:1,
         soundMode:'custom',soundVolume:500,
         ttsMode:'custom',ttsProvider:'invalid',ttsRate:0.1,ttsPitch:9,ttsVolume:-1,
@@ -139,6 +156,25 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       crewGrades:[{ id:'forbidden',name:'멤버가 바꿀 수 없음',minAmount:0,maxAmount:null }],
     };
     result = await request('/api/settings',{method:'PUT',cookie:memberCookie,body:detailedSettings});
+    const isolatedAfterMemberSave = (await request('/api/settings',{cookie:isolatedMemberCookie})).data;
+    assert.equal(isolatedAfterMemberSave.rankingTitle,'다른 계정 전용 순위표');
+    assert.equal(isolatedAfterMemberSave.rankingNameColor,'#123abc');
+    assert.equal(isolatedAfterMemberSave.textColor,'#456def');
+    assert.equal(isolatedAfterMemberSave.minimumDonationAmount,7654);
+    const memberBeforeOtherSave = (await request('/api/settings',{cookie:memberCookie})).data;
+    await request('/api/settings',{method:'PUT',cookie:isolatedMemberCookie,body:{...isolatedAfterMemberSave,rankingTitle:'다른 계정에서 다시 변경',textColor:'#fedcba'}});
+    const memberAfterOtherSave = (await request('/api/settings',{cookie:memberCookie})).data;
+    assert.equal(memberAfterOtherSave.rankingTitle,memberBeforeOtherSave.rankingTitle);
+    assert.equal(memberAfterOtherSave.textColor,memberBeforeOtherSave.textColor);
+    assert.equal(memberAfterOtherSave.minimumDonationAmount,memberBeforeOtherSave.minimumDonationAmount);
+    const isolationTokens = await db.execute({ sql:'SELECT id, obs_token obsToken FROM users WHERE id IN (?, ?)', args:[memberUserId,Number(isolatedUser.data.id)] });
+    const memberTokenForIsolation = isolationTokens.rows.find(row=>Number(row.id)===memberUserId).obsToken;
+    const isolatedTokenForIsolation = isolationTokens.rows.find(row=>Number(row.id)===Number(isolatedUser.data.id)).obsToken;
+    const memberWidgetForIsolation = (await request(`/api/widgets/${memberTokenForIsolation}`)).data;
+    const isolatedWidgetForIsolation = (await request(`/api/widgets/${isolatedTokenForIsolation}`)).data;
+    assert.equal(memberWidgetForIsolation.settings.rankingTitle,memberAfterOtherSave.rankingTitle);
+    assert.equal(isolatedWidgetForIsolation.settings.rankingTitle,'다른 계정에서 다시 변경');
+    assert.notEqual(memberWidgetForIsolation.settings.rankingTitle,isolatedWidgetForIsolation.settings.rankingTitle);
     assert.equal(result.data.minimumDonationAmount,1000);
     assert.equal(result.data.durationMs,30000);
     assert.equal(result.data.fontSize,20);
@@ -161,6 +197,8 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.rankingRankStyles[0].effectIntensity,80);
     assert.equal(result.data.rankingRankStyles[0].effectBackgroundEnabled,false);
     assert.equal(result.data.rankingRankStyles[0].staggerCharacters,true);
+    assert.equal(result.data.rankingRankStyles[0].nameSuffixColor,'#135790');
+    assert.equal(result.data.rankingRankStyles[0].amountSuffixColor,'#2468ac');
     assert.equal(result.data.rankingRankStyles[1].motion,'none');
     assert.equal((await request('/api/settings',{cookie:memberCookie})).data.rankingRankStyles[0].motion,'gradient-flow');
     assert.equal(result.data.toonationUseOwnAlert,true);
@@ -194,6 +232,8 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.amountTiers[0].maxAmount,100000000);
     assert.equal(result.data.amountTiers[0].fontSize,160);
     assert.equal(result.data.amountTiers[0].fontWeight,100);
+    assert.equal(result.data.amountTiers[0].nameColor,'#123456');
+    assert.equal(result.data.amountTiers[0].amountColor,'#abcdef');
     assert.equal(result.data.amountTiers[0].durationMs,1000);
     assert.equal(result.data.amountTiers[0].soundVolume,100);
     assert.equal(result.data.amountTiers[0].ttsProvider,'typecast');

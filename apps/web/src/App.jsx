@@ -3431,10 +3431,10 @@ function alertAppearance(settings, amount = 50000) {
     gradeDisplayMode: settings.crewGradeDisplayMode,
     gradeTextStyle: { color:settings.crewGradeTextColor, fontFamily:settings.crewGradeTextFontFamily, fontSize:settings.crewGradeTextSize },
     showGrade: settings.crewGradeEnabled,
-    nameColorEnabled: settings.nameColorEnabled,
-    nameColor: settings.nameColor,
-    amountColorEnabled: settings.amountColorEnabled,
-    amountColor: settings.amountColor,
+    nameColorEnabled: customText ? true : settings.nameColorEnabled,
+    nameColor: customText ? (tier.nameColor || tier.textColor) : settings.nameColor,
+    amountColorEnabled: customText ? true : settings.amountColorEnabled,
+    amountColor: customText ? (tier.amountColor || tier.textColor) : settings.amountColor,
     suffixStyle: settings.suffixStyleEnabled ? { color:settings.suffixColor, fontFamily:settings.suffixFontFamily } : undefined,
     outlineEnabled: settings.outlineEnabled !== false,
     outlineColor: customText ? tier.outlineColor : settings.outlineColor,
@@ -4294,6 +4294,8 @@ function Settings({ mode }) {
         fontSize: settings.fontSize,
         fontWeight: settings.fontWeight,
         textColor: settings.textColor,
+        nameColor: settings.nameColorEnabled ? settings.nameColor : settings.textColor,
+        amountColor: settings.amountColorEnabled ? settings.amountColor : settings.textColor,
         outlineColor: settings.outlineColor,
         outlineWidth: settings.outlineWidth,
         effectMode: "inherit",
@@ -5644,7 +5646,7 @@ function Settings({ mode }) {
                                   <input
                                     type="number"
                                     min="0"
-                                    step="1000"
+                                    step="1"
                                     value={tier.minAmount}
                                     onChange={(e) =>
                                       changeTier(
@@ -5660,7 +5662,7 @@ function Settings({ mode }) {
                                   <input
                                     type="number"
                                     min="0"
-                                    step="1000"
+                                    step="1"
                                     placeholder="제한 없음"
                                     value={tier.maxAmount ?? ""}
                                     onChange={(e) =>
@@ -5810,6 +5812,20 @@ function Settings({ mode }) {
                                       <span className="inline-color-control">
                                         <input type="color" value={colorPickerValue(tier.textColor || settings.textColor)} onChange={(e) => changeTier(tier.id, "textColor", e.target.value)} />
                                         <input className="color-code-input" value={tier.textColor || settings.textColor} onChange={(e) => changeTier(tier.id, "textColor", e.target.value)} aria-label="구간 글자색 HEX 코드" />
+                                      </span>
+                                    </label>
+                                    <label>
+                                      닉네임색
+                                      <span className="inline-color-control">
+                                        <input type="color" value={colorPickerValue(tier.nameColor || tier.textColor || settings.nameColor || settings.textColor)} onChange={(e) => changeTier(tier.id, "nameColor", e.target.value)} />
+                                        <input className="color-code-input" value={tier.nameColor || tier.textColor || settings.nameColor || settings.textColor} onChange={(e) => changeTier(tier.id, "nameColor", e.target.value)} aria-label="구간 닉네임색 HEX 코드" />
+                                      </span>
+                                    </label>
+                                    <label>
+                                      금액색
+                                      <span className="inline-color-control">
+                                        <input type="color" value={colorPickerValue(tier.amountColor || tier.textColor || settings.amountColor || settings.textColor)} onChange={(e) => changeTier(tier.id, "amountColor", e.target.value)} />
+                                        <input className="color-code-input" value={tier.amountColor || tier.textColor || settings.amountColor || settings.textColor} onChange={(e) => changeTier(tier.id, "amountColor", e.target.value)} aria-label="구간 금액색 HEX 코드" />
                                       </span>
                                     </label>
                                     <label>
@@ -6998,6 +7014,22 @@ function Settings({ mode }) {
                                 <option value="sparkle-bg">반짝이는 배경</option>
                               </select>
                             </label>
+                            <div className="rank-suffix-color-settings">
+                              <label>
+                                ‘님’ 색상
+                                <span className="rank-color-control">
+                                  <input type="color" value={colorPickerValue(rankStyle.nameSuffixColor || settings.rankingNameSuffixColor || rankStyle.color)} onChange={(e)=>changeRankStyle(index,"nameSuffixColor",e.target.value)}/>
+                                  <input className="color-code-input" value={rankStyle.nameSuffixColor || settings.rankingNameSuffixColor || rankStyle.color} maxLength="7" aria-label={`${label} 님 색상 HEX 코드`} onChange={(e)=>changeRankStyle(index,"nameSuffixColor",e.target.value)}/>
+                                </span>
+                              </label>
+                              <label>
+                                ‘원’ 색상
+                                <span className="rank-color-control">
+                                  <input type="color" value={colorPickerValue(rankStyle.amountSuffixColor || settings.rankingAmountSuffixColor || rankStyle.amountColor)} onChange={(e)=>changeRankStyle(index,"amountSuffixColor",e.target.value)}/>
+                                  <input className="color-code-input" value={rankStyle.amountSuffixColor || settings.rankingAmountSuffixColor || rankStyle.amountColor} maxLength="7" aria-label={`${label} 원 색상 HEX 코드`} onChange={(e)=>changeRankStyle(index,"amountSuffixColor",e.target.value)}/>
+                                </span>
+                              </label>
+                            </div>
                             {rankMotion !== "none" && (
                               <div className="rank-effect-settings">
                                 {motionUsesColor && <label>효과색 1<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectColor || rankStyle.color)} onChange={(e)=>changeRankStyle(index,"effectColor",e.target.value)}/><input className="color-code-input" value={rankStyle.effectColor || rankStyle.color} maxLength="7" aria-label={`${label} 효과색 1 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectColor",e.target.value)}/></span></label>}
@@ -7554,7 +7586,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       color={settings.rankingNameOutlineColor}
                     >
                       <AnimatedRankText text={item.donorName} stagger={staggerCharacters}/>
-                      {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: settings.rankingNameSuffixColor || settings.rankingNameColor }}>{settings.rankingNameSuffix}</span>}
+                      {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.nameSuffixColor || settings.rankingNameSuffixColor || rankStyle.color) : (settings.rankingNameSuffixColor || settings.rankingNameColor) }}>{settings.rankingNameSuffix}</span>}
                     </OutlinedText>
                     {settings.rankingShowCount && <small>{item.count}회</small>}
                     </span>
@@ -7570,7 +7602,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     }}
                   >
                     <AnimatedRankText text={formatWon(item.amount)} stagger={staggerCharacters} offset={Array.from(String(item.donorName)).length + 2}/>
-                    {settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: settings.rankingAmountSuffixColor || settings.rankingAmountColor }}>{settings.rankingAmountSuffix}</span>}
+                    {settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.amountSuffixColor || settings.rankingAmountSuffixColor || rankStyle.amountColor) : (settings.rankingAmountSuffixColor || settings.rankingAmountColor) }}>{settings.rankingAmountSuffix}</span>}
                   </OutlinedText>
                     </span>
                   </b>
