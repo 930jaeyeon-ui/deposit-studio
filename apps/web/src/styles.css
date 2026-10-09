@@ -39,6 +39,52 @@ header nav{display:flex;gap:8px}.header-button{color:#dce8ff;border:1px solid #3
 @media(max-width:600px){.account-summary{grid-template-columns:1fr 1fr}.account-summary article:first-child{grid-column:1/-1}}
 @media(max-width:600px){.period-filter{align-items:stretch;flex-direction:column}.period-tabs{width:100%;overflow:auto}.period-tabs button{flex:1;white-space:nowrap}.personal-kpis{grid-template-columns:1fr}.analytics-insights{grid-template-columns:1fr}.bar-chart{gap:3px;overflow-x:auto}.bar-item{min-width:28px}.analytics-chart{overflow:hidden}}
 @media(max-width:760px){.personal-kpis{grid-template-columns:1fr 1fr}.obs-grid{grid-template-columns:1fr}}
+
+/* Keep each medal swatch and its HEX value visually grouped as one control. */
+.medal-color-control{
+  display:grid;
+  grid-template-columns:34px minmax(68px,1fr);
+  min-width:0;
+  height:32px;
+  overflow:hidden;
+  border:1px solid #665323;
+  border-radius:7px;
+  background:#fff;
+}
+.ranking-medal-colors input[type=color]{
+  box-sizing:border-box;
+  width:34px;
+  height:32px;
+  margin:0;
+  padding:4px;
+  border:0;
+  border-right:1px solid #d6dce5;
+  border-radius:0;
+  background:#f4f6f8;
+  cursor:pointer;
+}
+.ranking-medal-colors .color-code-input{
+  height:32px;
+  min-height:32px;
+  margin:0!important;
+  padding:6px 7px!important;
+  border:0!important;
+  border-radius:0!important;
+  background:#fff!important;
+  color:#253247!important;
+  box-shadow:none!important;
+}
+.medal-color-control:focus-within{
+  border-color:#7aaeff;
+  box-shadow:0 0 0 2px #4b91ee33;
+}
+.theme-gold .widget-row b em.ranking-medal{
+  text-shadow:0 1px 1px #fff9,0 0 2px #0009;
+}
+@media(max-width:760px){
+  .medal-color-control{grid-template-columns:38px minmax(0,1fr)}
+  .ranking-medal-colors input[type=color]{width:38px}
+}
 @media(max-width:600px){.personal-kpis{grid-template-columns:1fr}}
 .eyebrow,.section-kicker,.brand small{display:none!important}.dashboard-kpis.personal-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.personal-kpis .kpi{min-width:0}.personal-kpis .kpi strong{font-size:clamp(18px,2vw,25px);white-space:nowrap}.preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.preview-heading>span{color:#9aabc4;font-size:13px}.preview-heading button{padding:7px 10px;border:1px solid #3a5b82;border-radius:8px;background:#17375d;color:#dcecff;font-size:11px}
 .theme-picker{flex:none;margin-top:18px;padding:13px 10px;border-top:1px solid #263c5e}.theme-picker>span{display:block;margin-bottom:8px;color:#7f93b0;font-size:10px;font-weight:700}.theme-picker>div{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:3px;border-radius:9px;background:#091322}.theme-picker button{padding:6px 3px;border:0;border-radius:6px;background:transparent;color:#7f93b0;font-size:9px}.theme-picker button.active{background:#285a8e;color:#fff}html[data-theme=dark]{color-scheme:dark}html[data-theme=light]{color-scheme:light}html[data-theme=light] body{color:#19263a;background:radial-gradient(circle at 16% -10%,#d8e7ff 0,transparent 32%),#eef3f9}html[data-theme=light] .side-menu{background:#f8fbff;border-color:#ccd9e8}html[data-theme=light] .brand{color:#15253a;border-color:#d4dfeb}html[data-theme=light] .side-nav a{color:#536983}html[data-theme=light] .side-nav a:hover,html[data-theme=light] .side-nav a.active{background:#dceaff;color:#173a63}html[data-theme=light] .side-nav a small,html[data-theme=light] .nav-label,html[data-theme=light] .side-user small{color:#71859e}html[data-theme=light] .nav-group,html[data-theme=light] .side-obs,html[data-theme=light] .side-user,html[data-theme=light] .theme-picker{border-color:#d4dfeb}html[data-theme=light] .side-obs a{color:#466987}html[data-theme=light] .theme-picker>div{background:#e4edf7}html[data-theme=light] .theme-picker button{color:#61758d}html[data-theme=light] .theme-picker button.active{background:#fff;color:#285b91;box-shadow:0 1px 5px #7892ad44}html[data-theme=light] .panel,html[data-theme=light] .kpi,html[data-theme=light] .account-summary article{background:#fff;border-color:#ccd9e8;box-shadow:0 8px 24px #4b658014}html[data-theme=light] .kpi.primary{background:linear-gradient(135deg,#d9e9ff,#e5e5ff);border-color:#a9c5e8}html[data-theme=light] .period-filter{background:linear-gradient(135deg,#f8fbff,#e9f1fb);border-color:#c8d8e9}html[data-theme=light] .period-tabs{background:#e7eef7;border-color:#c4d3e3}html[data-theme=light] .period-tabs button{color:#5c718b}html[data-theme=light] .period-tabs button.active{background:#3975b6;color:#fff}html[data-theme=light] .analytics-insights{background:#cdd9e7;border-color:#cdd9e7}html[data-theme=light] .analytics-insights article{background:#fff}html[data-theme=light] .ranking li,html[data-theme=light] .summary-row,html[data-theme=light] .account-list article,html[data-theme=light] .obs-card dl div{border-color:#dbe4ee}html[data-theme=light] .ranking span,html[data-theme=light] .summary-row b,html[data-theme=light] .account-list strong{color:#23364e}html[data-theme=light] .controls input,html[data-theme=light] .controls select,html[data-theme=light] .controls textarea,html[data-theme=light] .test-panel input,html[data-theme=light] .donor-search input{background:#f5f8fc;border-color:#c5d4e4;color:#17283d}html[data-theme=light] .bar-track{background:#e5edf6}html[data-theme=light] .donor-result,html[data-theme=light] .highlight-card{background:linear-gradient(145deg,#e5f0ff,#dceafa);border-color:#afc7e2}html[data-theme=light] .donor-result>strong,html[data-theme=light] .donor-result dd{color:#183552}html[data-theme=light] header a,html[data-theme=light] .header-button{background:#f8fbff;border-color:#bfd0e2;color:#294b70}html[data-theme=light] .obs-card>code{background:#eef5fc;border-color:#c4d5e7;color:#28557e}html[data-theme=light] .obs-actions a{background:#edf3fa;color:#2c5074}html[data-theme=light] .preview-stage,html[data-theme=light] .ranking-preview{background:radial-gradient(circle,#d8e8ff,#afc5e2 75%)}html[data-theme=light] .preview-mode,html[data-theme=light] .notice{background:#e3f0ff;border-color:#b8d0ea;color:#315c84}
