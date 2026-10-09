@@ -6909,6 +6909,11 @@ function Settings({ mode }) {
                         const rankSizePx = Math.round(
                           settings.rankingFontSize * (rankStyle.size / 100),
                         );
+                        const rankMotion = rankStyle.motion || "none";
+                        const motionUsesColor = !["none","pulse","float","sway"].includes(rankMotion);
+                        const motionUsesSecondColor = ["border-spin","gradient-flow","spotlight","aura","underline-run","sparkle-bg"].includes(rankMotion);
+                        const motionUsesBackground = ["ambient","border-pulse","border-spin","gradient-flow","spotlight","aura","underline-run","sparkle-bg"].includes(rankMotion);
+                        const motionUsesSpeed = !["none","ambient"].includes(rankMotion);
                         return (
                           <article key={label}>
                             <b>{label}</b>
@@ -6977,10 +6982,12 @@ function Settings({ mode }) {
                                 <option value="sparkle-bg">반짝이는 배경</option>
                               </select>
                             </label>
-                            {(rankStyle.motion || "none") !== "none" && (
+                            {rankMotion !== "none" && (
                               <div className="rank-effect-settings">
-                                {[['effectColor','효과색 1',rankStyle.color],['effectColor2','효과색 2','#ffffff'],['effectBackground','배경색','#111827']].map(([key,title,fallback])=><label key={key}>{title}<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle[key] || fallback)} onChange={(e)=>changeRankStyle(index,key,e.target.value)}/><input className="color-code-input" value={rankStyle[key] || fallback} maxLength="7" aria-label={`${label} ${title} HEX 코드`} onChange={(e)=>changeRankStyle(index,key,e.target.value)}/></span></label>)}
-                                <label>속도<select value={rankStyle.effectSpeed || "normal"} onChange={(e)=>changeRankStyle(index,"effectSpeed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label>
+                                {motionUsesColor && <label>효과색 1<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectColor || rankStyle.color)} onChange={(e)=>changeRankStyle(index,"effectColor",e.target.value)}/><input className="color-code-input" value={rankStyle.effectColor || rankStyle.color} maxLength="7" aria-label={`${label} 효과색 1 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectColor",e.target.value)}/></span></label>}
+                                {motionUsesSecondColor && <label>효과색 2<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectColor2 || "#ffffff")} onChange={(e)=>changeRankStyle(index,"effectColor2",e.target.value)}/><input className="color-code-input" value={rankStyle.effectColor2 || "#ffffff"} maxLength="7" aria-label={`${label} 효과색 2 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectColor2",e.target.value)}/></span></label>}
+                                {motionUsesBackground && <label>배경색<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectBackground || "#111827")} onChange={(e)=>changeRankStyle(index,"effectBackground",e.target.value)}/><input className="color-code-input" value={rankStyle.effectBackground || "#111827"} maxLength="7" aria-label={`${label} 배경색 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectBackground",e.target.value)}/></span></label>}
+                                {motionUsesSpeed && <label>속도<select value={rankStyle.effectSpeed || "normal"} onChange={(e)=>changeRankStyle(index,"effectSpeed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label>}
                                 <label>강도<input type="range" min="20" max="100" step="10" value={rankStyle.effectIntensity || 60} onChange={(e)=>changeRankStyle(index,"effectIntensity",Number(e.target.value))}/><span>{rankStyle.effectIntensity || 60}%</span></label>
                               </div>
                             )}
@@ -7473,7 +7480,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               ) : null;
               return (
                 <div
-                  className={`widget-row rank-${index + 1} row-${settings.rankingRowAlign}${rankHighlight && index < 3 ? ` rank-motion-${rankStyle.motion || "none"}` : ""}`}
+                  className={`widget-row rank-${index + 1} row-${settings.rankingRowAlign}`}
                   key={`${item.donorName}-${index}`}
                   onClick={onEdit ? () => onEdit(item) : undefined}
                   role={onEdit ? "button" : undefined}
@@ -7506,7 +7513,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     "--delay": `${index * 0.07}s`,
                   }}
                 >
-                  <b style={{ textAlign: settings.rankingNameAlign }}>
+                  <b className="rank-line" style={{ textAlign: settings.rankingNameAlign }}>
                     {settings.rankingShowRank && settings.rankingRankPlacement === "gutter" ? (
                       <span className="rank-marker-slot">
                         {rankMarkerNode}
@@ -7514,6 +7521,8 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     ) : settings.rankingShowRank && index < rankNumberLimit ? (
                       rankMarkerNode
                     ) : null}
+                    <span className={`rank-text-effect${rankHighlight && index < 3 ? ` rank-motion-${rankStyle.motion || "none"}` : ""}`}>
+                    <span className="rank-name-group">
                     <OutlinedText
                       className="donor-name"
                       enabled={settings.rankingNameOutlineEnabled}
@@ -7525,7 +7534,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: settings.rankingNameSuffixColor || settings.rankingNameColor }}>{settings.rankingNameSuffix}</span>}
                     </OutlinedText>
                     {settings.rankingShowCount && <small>{item.count}회</small>}
-                  </b>
+                    </span>
                   <OutlinedText
                     className="donor-amount"
                     enabled={settings.rankingAmountOutlineEnabled}
@@ -7540,6 +7549,8 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     {formatWon(item.amount)}
                     {settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: settings.rankingAmountSuffixColor || settings.rankingAmountColor }}>{settings.rankingAmountSuffix}</span>}
                   </OutlinedText>
+                    </span>
+                  </b>
                 </div>
               );
             })}
