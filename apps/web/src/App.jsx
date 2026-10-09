@@ -6967,8 +6967,23 @@ function Settings({ mode }) {
                                 <option value="float">살짝 떠오르기</option>
                                 <option value="sway">좌우 흔들기</option>
                                 <option value="glow">은은한 반짝임</option>
+                                <option value="ambient">은은한 배경</option>
+                                <option value="border-pulse">빛나는 테두리</option>
+                                <option value="border-spin">회전하는 빛 테두리</option>
+                                <option value="gradient-flow">흐르는 그라데이션</option>
+                                <option value="spotlight">지나가는 스포트라이트</option>
+                                <option value="aura">숨 쉬는 오라</option>
+                                <option value="underline-run">달리는 밑줄</option>
+                                <option value="sparkle-bg">반짝이는 배경</option>
                               </select>
                             </label>
+                            {(rankStyle.motion || "none") !== "none" && (
+                              <div className="rank-effect-settings">
+                                {[['effectColor','효과색 1',rankStyle.color],['effectColor2','효과색 2','#ffffff'],['effectBackground','배경색','#111827']].map(([key,title,fallback])=><label key={key}>{title}<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle[key] || fallback)} onChange={(e)=>changeRankStyle(index,key,e.target.value)}/><input className="color-code-input" value={rankStyle[key] || fallback} maxLength="7" aria-label={`${label} ${title} HEX 코드`} onChange={(e)=>changeRankStyle(index,key,e.target.value)}/></span></label>)}
+                                <label>속도<select value={rankStyle.effectSpeed || "normal"} onChange={(e)=>changeRankStyle(index,"effectSpeed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label>
+                                <label>강도<input type="range" min="20" max="100" step="10" value={rankStyle.effectIntensity || 60} onChange={(e)=>changeRankStyle(index,"effectIntensity",Number(e.target.value))}/><span>{rankStyle.effectIntensity || 60}%</span></label>
+                              </div>
+                            )}
                           </article>
                         );
                       })}
@@ -7483,6 +7498,11 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     "--rank-marker-weight": settings.rankingRankFontWeight > 0
                       ? settings.rankingRankFontWeight
                       : undefined,
+                    "--rank-effect-color": rankStyle.effectColor || rankStyle.color,
+                    "--rank-effect-color-2": rankStyle.effectColor2 || "#ffffff",
+                    "--rank-effect-bg": rankStyle.effectBackground || "#111827",
+                    "--rank-effect-strength": Math.max(.2,Math.min(1,(rankStyle.effectIntensity || 60) / 100)),
+                    "--rank-effect-duration": rankStyle.effectSpeed === "slow" ? "4s" : rankStyle.effectSpeed === "fast" ? "1.35s" : "2.4s",
                     "--delay": `${index * 0.07}s`,
                   }}
                 >

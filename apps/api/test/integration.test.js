@@ -104,6 +104,15 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
       rankingAmountOutlineEnabled:true,
       rankingAmountOutlineColor:'#334455',
       rankingAmountOutlineWidth:-2,
+      rankingRankStyles:result.data.rankingRankStyles.map((style,index)=>({
+        ...style,
+        motion:index === 0 ? 'gradient-flow' : index === 1 ? 'invalid-motion' : 'none',
+        effectColor:index === 0 ? '#123456' : undefined,
+        effectColor2:index === 0 ? '#abcdef' : undefined,
+        effectBackground:index === 0 ? '#101820' : undefined,
+        effectSpeed:index === 0 ? 'fast' : undefined,
+        effectIntensity:index === 0 ? 80 : undefined,
+      })),
       fullRankingUseStandardSettings:false,
       fullRankingSettings:{
         ...result.data,
@@ -144,6 +153,12 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.ttsVolume,100);
     assert.equal(result.data.toonationWidgetUrl,'https://toon.at/widget/alertbox/abcdefgh');
     assert.equal(result.data.toonationAlertMode,'custom-original-audio');
+    assert.equal(result.data.rankingRankStyles[0].motion,'gradient-flow');
+    assert.equal(result.data.rankingRankStyles[0].effectColor,'#123456');
+    assert.equal(result.data.rankingRankStyles[0].effectSpeed,'fast');
+    assert.equal(result.data.rankingRankStyles[0].effectIntensity,80);
+    assert.equal(result.data.rankingRankStyles[1].motion,'none');
+    assert.equal((await request('/api/settings',{cookie:memberCookie})).data.rankingRankStyles[0].motion,'gradient-flow');
     assert.equal(result.data.toonationUseOwnAlert,true);
     const toonationSettings = { ...result.data, toonationEnabled:true };
     await db.execute({ sql:'UPDATE user_settings SET value = ? WHERE user_id = ?', args:[JSON.stringify(toonationSettings),memberUserId] });
