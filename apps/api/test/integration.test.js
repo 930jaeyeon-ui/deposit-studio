@@ -110,6 +110,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
         effectColor:index === 0 ? '#123456' : undefined,
         effectColor2:index === 0 ? '#abcdef' : undefined,
         effectBackground:index === 0 ? '#101820' : undefined,
+        effectBackgroundEnabled:index !== 0,
         effectSpeed:index === 0 ? 'fast' : undefined,
         effectIntensity:index === 0 ? 80 : undefined,
         staggerCharacters:index === 0,
@@ -158,6 +159,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.rankingRankStyles[0].effectColor,'#123456');
     assert.equal(result.data.rankingRankStyles[0].effectSpeed,'fast');
     assert.equal(result.data.rankingRankStyles[0].effectIntensity,80);
+    assert.equal(result.data.rankingRankStyles[0].effectBackgroundEnabled,false);
     assert.equal(result.data.rankingRankStyles[0].staggerCharacters,true);
     assert.equal(result.data.rankingRankStyles[1].motion,'none');
     assert.equal((await request('/api/settings',{cookie:memberCookie})).data.rankingRankStyles[0].motion,'gradient-flow');

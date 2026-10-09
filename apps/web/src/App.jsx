@@ -6926,6 +6926,8 @@ function Settings({ mode }) {
                         const motionUsesColor = !["none","pulse","float","sway"].includes(rankMotion);
                         const motionUsesSecondColor = ["border-spin","gradient-flow","spotlight","aura","underline-run","sparkle-bg"].includes(rankMotion);
                         const motionUsesBackground = ["ambient","border-pulse","border-spin","gradient-flow","spotlight","aura","underline-run","sparkle-bg"].includes(rankMotion);
+                        const motionAllowsTransparentBackground = ["border-pulse","border-spin","aura","underline-run"].includes(rankMotion);
+                        const motionBackgroundEnabled = rankStyle.effectBackgroundEnabled !== false;
                         const motionUsesSpeed = !["none","ambient"].includes(rankMotion);
                         const motionSupportsCharacters = ["pulse","float","sway","glow"].includes(rankMotion);
                         return (
@@ -7000,7 +7002,8 @@ function Settings({ mode }) {
                               <div className="rank-effect-settings">
                                 {motionUsesColor && <label>효과색 1<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectColor || rankStyle.color)} onChange={(e)=>changeRankStyle(index,"effectColor",e.target.value)}/><input className="color-code-input" value={rankStyle.effectColor || rankStyle.color} maxLength="7" aria-label={`${label} 효과색 1 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectColor",e.target.value)}/></span></label>}
                                 {motionUsesSecondColor && <label>효과색 2<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectColor2 || "#ffffff")} onChange={(e)=>changeRankStyle(index,"effectColor2",e.target.value)}/><input className="color-code-input" value={rankStyle.effectColor2 || "#ffffff"} maxLength="7" aria-label={`${label} 효과색 2 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectColor2",e.target.value)}/></span></label>}
-                                {motionUsesBackground && <label>배경색<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectBackground || "#111827")} onChange={(e)=>changeRankStyle(index,"effectBackground",e.target.value)}/><input className="color-code-input" value={rankStyle.effectBackground || "#111827"} maxLength="7" aria-label={`${label} 배경색 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectBackground",e.target.value)}/></span></label>}
+                                {motionAllowsTransparentBackground && <label className="rank-character-toggle">배경 사용<span className="inline-setting-check"><input type="checkbox" checked={motionBackgroundEnabled} onChange={(e)=>changeRankStyle(index,"effectBackgroundEnabled",e.target.checked)}/>{motionBackgroundEnabled ? "사용" : "사용 안 함"}</span></label>}
+                                {motionUsesBackground && (!motionAllowsTransparentBackground || motionBackgroundEnabled) && <label>배경색<span className="rank-color-control"><input type="color" value={colorPickerValue(rankStyle.effectBackground || "#111827")} onChange={(e)=>changeRankStyle(index,"effectBackground",e.target.value)}/><input className="color-code-input" value={rankStyle.effectBackground || "#111827"} maxLength="7" aria-label={`${label} 배경색 HEX 코드`} onChange={(e)=>changeRankStyle(index,"effectBackground",e.target.value)}/></span></label>}
                                 {motionUsesSpeed && <label>속도<select value={rankStyle.effectSpeed || "normal"} onChange={(e)=>changeRankStyle(index,"effectSpeed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label>}
                                 <label>강도<input type="range" min="20" max="100" step="5" value={rankStyle.effectIntensity || 60} onChange={(e)=>changeRankStyle(index,"effectIntensity",Number(e.target.value))}/><span>{rankStyle.effectIntensity || 60}%</span></label>
                                 {motionSupportsCharacters && <label className="rank-character-toggle">글자 단위<span className="inline-setting-check"><input type="checkbox" checked={rankStyle.staggerCharacters === true} onChange={(e)=>changeRankStyle(index,"staggerCharacters",e.target.checked)}/>한 글자씩</span></label>}
@@ -7525,7 +7528,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       : undefined,
                     "--rank-effect-color": rankStyle.effectColor || rankStyle.color,
                     "--rank-effect-color-2": rankStyle.effectColor2 || "#ffffff",
-                    "--rank-effect-bg": rankStyle.effectBackground || "#111827",
+                    "--rank-effect-bg": rankStyle.effectBackgroundEnabled === false ? "transparent" : (rankStyle.effectBackground || "#111827"),
                     "--rank-effect-strength": Math.max(.2,Math.min(1,(rankStyle.effectIntensity || 60) / 100)),
                     "--rank-effect-duration": rankStyle.effectSpeed === "slow" ? "4s" : rankStyle.effectSpeed === "fast" ? "1.35s" : "2.4s",
                     "--rank-motion-scale": 1 + Math.max(20,Math.min(100,rankStyle.effectIntensity || 60)) * .00075,
