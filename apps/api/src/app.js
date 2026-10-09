@@ -468,6 +468,7 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.rankingFontSize = Math.max(24, Math.min(56, legacyRankingCanvas && requestedRankingFontSize <= 32 ? Math.round(requestedRankingFontSize * 1.6) : requestedRankingFontSize));
   settings.rankingCanvasVersion = 2;
   settings.rankingFontWeight = Math.max(100, Math.min(900, Math.floor(Number(settings.rankingFontWeight) || 700)));
+  settings.rankingRankFontWeight = Number(settings.rankingRankFontWeight) > 0 ? Math.max(100,Math.min(900,Math.floor(Number(settings.rankingRankFontWeight)))) : 0;
   for (const key of ['rankingTitleFontWeight','rankingNameFontWeight','rankingAmountFontWeight']) settings[key]=Math.max(100,Math.min(900,Math.floor(Number(settings[key])||settings.rankingFontWeight)));
   settings.rankingUseLineHeight = Boolean(settings.rankingUseLineHeight);
   settings.rankingLineHeight = Math.max(.8, Math.min(2, Number(settings.rankingLineHeight) || 1.2));
