@@ -9,8 +9,8 @@ export function toonationWidgetKey(value) {
   if (/^[A-Za-z0-9_-]{8,512}$/.test(input)) return input;
   try {
     const url = new URL(input);
-    if (url.protocol !== 'https:' || url.hostname !== 'toon.at' || url.port || url.username || url.password || url.search || url.hash) return '';
-    return /^\/widget\/alertbox\/([A-Za-z0-9_-]{8,512})\/?$/.exec(url.pathname)?.[1] || '';
+    if (url.protocol !== 'https:' || !['toon.at','www.toon.at'].includes(url.hostname) || url.port || url.username || url.password) return '';
+    return /^\/widget\/alertbox\/([A-Za-z0-9_-]{8,512})(?:\/\d+)?\/?$/.exec(url.pathname)?.[1] || '';
   } catch {
     return '';
   }

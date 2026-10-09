@@ -4,6 +4,9 @@ import { parseToonationPayload, toonationWidgetKey } from '../src/toonation.js';
 
 test('투네이션 위젯 주소에서 키를 추출한다', () => {
   assert.equal(toonationWidgetKey('https://toon.at/widget/alertbox/abcdefgh'), 'abcdefgh');
+  assert.equal(toonationWidgetKey('https://toon.at/widget/alertbox/abcdefgh?source=obs#alert'), 'abcdefgh');
+  assert.equal(toonationWidgetKey('https://www.toon.at/widget/alertbox/abcdefgh/'), 'abcdefgh');
+  assert.equal(toonationWidgetKey('https://toon.at/widget/alertbox/abcdefgh/101'), 'abcdefgh');
   assert.equal(toonationWidgetKey('abcdefgh'), 'abcdefgh');
   assert.equal(toonationWidgetKey('https://example.com/widget/alertbox/abcdefgh'), '');
 });
