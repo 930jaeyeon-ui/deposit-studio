@@ -486,6 +486,8 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.rankingCustomMarker=['circle','square','pill','plain'].includes(settings.rankingCustomMarker)?settings.rankingCustomMarker:'circle';
   settings.rankingMedalShape=['circle','hex','star'].includes(settings.rankingMedalShape)?settings.rankingMedalShape:'circle';
   settings.rankingMedalSize=Math.max(70,Math.min(160,Number(settings.rankingMedalSize)||100));
+  settings.rankingMedalRibbonPattern=['solid','stripe','diagonal'].includes(settings.rankingMedalRibbonPattern)?settings.rankingMedalRibbonPattern:'solid';
+  settings.rankingMedalDepth=['flat','soft','strong'].includes(settings.rankingMedalDepth)?settings.rankingMedalDepth:'soft';
   settings.rankingMedalShineEnabled=settings.rankingMedalShineEnabled !== false;
   settings.rankingMedalShadowEnabled=settings.rankingMedalShadowEnabled !== false;
   settings.rankingMedalStyles=Array.from({length:3},(_,index)=>{const source=Array.isArray(settings.rankingMedalStyles)?settings.rankingMedalStyles[index]||{}:{};const fallback=DEFAULT_SETTINGS.rankingMedalStyles[index];return {medal:String(source.medal||fallback.medal).slice(0,20),ribbon:String(source.ribbon||fallback.ribbon).slice(0,20),number:String(source.number||fallback.number).slice(0,20)};});

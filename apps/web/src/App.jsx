@@ -3224,7 +3224,7 @@ const RANKING_THEME_PRESETS = {
     rankingUseLineHeight: true, rankingLineHeight: 1.25, rankingLetterSpacing: -0.5, rankingRowGap: 12, rankingColumnGap: 26,
     rankingTitleSize: 44, rankingTitleAlign: "center", rankingTitleColor: "#ffd76a", rankingNameColor: "#fff1bf", rankingAmountColor: "#ffd76a",
     rankingRowAlign: "spread", rankingNameAlign: "left", rankingAmountAlign: "right", rankingAnimation: "stagger", rankingBackgroundEnabled: true,
-    rankingMedalShape: "circle", rankingMedalSize: 100, rankingMedalShineEnabled: true, rankingMedalShadowEnabled: true,
+    rankingMedalShape: "circle", rankingMedalSize: 100, rankingMedalRibbonPattern: "solid", rankingMedalDepth: "soft", rankingMedalShineEnabled: true, rankingMedalShadowEnabled: true,
     rankingMedalStyles: [
       { medal: "#ffe45c", ribbon: "#e34f5f", number: "#5b3b00" },
       { medal: "#9fdbff", ribbon: "#557fb2", number: "#173b5f" },
@@ -6376,6 +6376,22 @@ function Settings({ mode }) {
                           <input type="range" min="70" max="160" value={settings.rankingMedalSize || 100} onChange={(e)=>update("rankingMedalSize",Number(e.target.value))}/>
                           <span>{settings.rankingMedalSize || 100}%</span>
                         </label>
+                        <label>
+                          리본 무늬
+                          <select value={settings.rankingMedalRibbonPattern || "solid"} onChange={(e)=>update("rankingMedalRibbonPattern",e.target.value)}>
+                            <option value="solid">단색</option>
+                            <option value="stripe">세로 줄무늬</option>
+                            <option value="diagonal">사선 무늬</option>
+                          </select>
+                        </label>
+                        <label>
+                          메달 음영
+                          <select value={settings.rankingMedalDepth || "soft"} onChange={(e)=>update("rankingMedalDepth",e.target.value)}>
+                            <option value="flat">평면</option>
+                            <option value="soft">은은하게</option>
+                            <option value="strong">강하게</option>
+                          </select>
+                        </label>
                         <label className="toggle-label compact-toggle">
                           광택
                           <input type="checkbox" checked={settings.rankingMedalShineEnabled !== false} onChange={(e)=>update("rankingMedalShineEnabled",e.target.checked)}/>
@@ -7378,7 +7394,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const medalStyle = (settings.rankingMedalStyles || DEFAULT_SETTINGS.rankingMedalStyles)[index] || DEFAULT_SETTINGS.rankingMedalStyles[0];
               const rankMarkerNode = index < rankNumberLimit ? (
                 <em
-                  className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}
+                  className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"} ribbon-${settings.rankingMedalRibbonPattern || "solid"} depth-${settings.rankingMedalDepth || "soft"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}
                   style={isMedalMarker ? {
                     "--medal-color": medalStyle.medal,
                     "--medal-ribbon": medalStyle.ribbon,

@@ -113,6 +113,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingCustomMarker: 'circle',
   rankingMedalShape: 'circle',
   rankingMedalSize: 100,
+  rankingMedalRibbonPattern: 'solid',
+  rankingMedalDepth: 'soft',
   rankingMedalShineEnabled: true,
   rankingMedalShadowEnabled: true,
   rankingMedalStyles: [
