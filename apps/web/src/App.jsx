@@ -7463,6 +7463,9 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
     : settings.rankingTitleColumn === "last"
       ? firstGridColumn + columns.length - 1
       : firstGridColumn;
+  const titleRankGutter = settings.rankingShowRank && settings.rankingRankPlacement === "gutter"
+    ? "calc(var(--ranking-size) * 1.02)"
+    : undefined;
   return (
     <div
       className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} rank-placement-${settings.rankingRankPlacement || "inline"} ranking-columns-${layoutColumns} ranking-data-columns-${columns.length} ${full ? "ranking-full-card" : "ranking-standard-card"} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
@@ -7488,6 +7491,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
             style={{
               gridColumn: titleGridColumn,
               textAlign: settings.rankingTitleAlign,
+              paddingInlineStart: titleRankGutter,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
