@@ -7435,7 +7435,6 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
     "--ranking-gap": `${effectiveRowGap * renderScale}px`,
     "--ranking-row-padding": `${effectiveRowPadding * renderScale}px`,
     "--ranking-item-gap": `${8 * renderScale}px`,
-    "--rank-lane-width": `calc(var(--ranking-size) * 1.25)`,
     "--column-gap": `${settings.rankingColumnGap * renderScale}px`,
     "--line-height": settings.rankingUseLineHeight
       ? settings.rankingLineHeight
@@ -7454,12 +7453,9 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
     : settings.rankingTitleColumn === "last"
       ? firstGridColumn + columns.length - 1
       : firstGridColumn;
-  const titleRankGutter = settings.rankingShowRank
-    ? `var(--rank-lane-width)`
-    : undefined;
   return (
     <div
-      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} rank-placement-${settings.rankingRankPlacement || "inline"}${settings.rankingShowRank ? " ranking-rank-visible" : ""} ranking-columns-${layoutColumns} ranking-data-columns-${columns.length} ${full ? "ranking-full-card" : "ranking-standard-card"} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
+      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} rank-placement-${settings.rankingRankPlacement || "inline"} ranking-columns-${layoutColumns} ranking-data-columns-${columns.length} ${full ? "ranking-full-card" : "ranking-standard-card"} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
       style={cardStyle}
     >
       {settings.rankingShowTitle && (
@@ -7482,7 +7478,6 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
             style={{
               gridColumn: titleGridColumn,
               textAlign: settings.rankingTitleAlign,
-              paddingInlineStart: titleRankGutter,
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
