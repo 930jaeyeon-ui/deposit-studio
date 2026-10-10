@@ -7454,7 +7454,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
       ? firstGridColumn + columns.length - 1
       : firstGridColumn;
   const titleRankGutter = settings.rankingShowRank && settings.rankingRankPlacement === "gutter"
-    ? `calc(var(--ranking-size) * 3.35)`
+    ? `calc(var(--ranking-size) * 1.8)`
     : undefined;
   return (
     <div
@@ -7569,11 +7569,13 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                   }}
                 >
                   <b className={`rank-line${isTextMotion ? ` rank-motion-${rankMotion}` : ""}${staggerCharacters ? " rank-motion-staggered" : ""}`} style={{ textAlign: settings.rankingNameAlign }}>
-                    {settings.rankingShowRank && (
+                    {settings.rankingShowRank && settings.rankingRankPlacement === "gutter" ? (
                       <span className="rank-marker-slot">
                         {rankMarkerNode}
                       </span>
-                    )}
+                    ) : settings.rankingShowRank && index < rankNumberLimit ? (
+                      rankMarkerNode
+                    ) : null}
                     <span className={`rank-text-effect${!isTextMotion && rankMotion !== "none" ? ` rank-motion-${rankMotion}` : ""}`}>
                     <span className="rank-name-group">
                     <OutlinedText
