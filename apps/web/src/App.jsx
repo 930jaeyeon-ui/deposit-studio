@@ -7437,6 +7437,24 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
   // shrink it based on row count; only the explicit top-rank scale is applied.
   const effectiveFontSize = settings.rankingFontSize * renderScale;
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
+  const highlightedRankStyles = (settings.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles).slice(0, rankNumberLimit);
+  const maxRankScale = settings.rankingRankHighlightEnabled === false
+    ? 1
+    : Math.max(1, ...highlightedRankStyles.map((style) => Math.max(0.7, Math.min(2.4, (style?.size || 100) / 100))));
+  const markerLaneEm = settings.rankingTheme === "rose"
+    ? 2.7
+    : settings.rankingTheme === "ocean"
+      ? 1.45
+      : settings.rankingTheme === "custom" && settings.rankingCustomMarker === "pill"
+        ? 1.85
+        : settings.rankingTheme === "gold"
+          ? Math.max(
+              1.25,
+              0.55 * 1.42 * ((settings.rankingMedalSize || 100) / 100),
+              0.55 * 1.12 * ((settings.rankingMedalRibbonSize || 100) / 100),
+            )
+          : 1.3;
+  const rankLaneWidth = `${effectiveFontSize * markerLaneEm * maxRankScale}px`;
   const firstGridColumn = 2;
   const singleColumnPosition = "1 / 4";
   const cardStyle = {
@@ -7445,6 +7463,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
     "--ranking-gap": `${effectiveRowGap * renderScale}px`,
     "--ranking-row-padding": `${effectiveRowPadding * renderScale}px`,
     "--ranking-item-gap": `${8 * renderScale}px`,
+    "--rank-lane-width": rankLaneWidth,
     "--column-gap": `${settings.rankingColumnGap * renderScale}px`,
     "--line-height": settings.rankingUseLineHeight
       ? settings.rankingLineHeight
@@ -7464,7 +7483,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
       ? firstGridColumn + columns.length - 1
       : firstGridColumn;
   const titleRankGutter = settings.rankingShowRank && settings.rankingRankPlacement === "gutter"
-    ? "calc(var(--ranking-size) * 1.02)"
+    ? "var(--rank-lane-width)"
     : undefined;
   return (
     <div
