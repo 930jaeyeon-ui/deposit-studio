@@ -2613,7 +2613,17 @@ function DonationTimingLogs() {
     ['tts_start','TTS 요청'], ['tts_ready','TTS 준비'], ['tts_failed','TTS 실패'],
     ['visual_start','화면 시작'], ['sound_start','효과음 시작'], ['sound_end','효과음 종료'], ['voice_start','음성 시작']
   ];
-  const clock = value => value ? new Date(value).toLocaleString('ko-KR', { timeZone:'Asia/Seoul', hour12:false, fractionalSecondDigits:3 }) : '—';
+  const clock = value => value ? new Date(value).toLocaleString('ko-KR', {
+    timeZone:'Asia/Seoul',
+    hour12:false,
+    year:'numeric',
+    month:'2-digit',
+    day:'2-digit',
+    hour:'2-digit',
+    minute:'2-digit',
+    second:'2-digit',
+    fractionalSecondDigits:3,
+  }) : '—';
   const elapsed = (start,end) => start && end ? `${Math.round(new Date(end)-new Date(start))}ms` : '—';
   const deliveryStatus = item => item.stages.overlay_received ? '화면 수신 확인' : item.stages.overlay_stream_write && item.stages.overlay_legacy ? 'OBS에 이전 화면 코드 연결됨 · 소스 새로고침 필요' : item.stages.overlay_stream_write && item.stages.overlay_instrumented ? 'OBS로 전송됨 · 화면 기록 응답 없음' : item.stages.overlay_stream_write ? 'OBS로 전송됨 · 화면 계측 여부 미확인' : item.stages.overlay_disconnected ? '후원 시점에 OBS 화면 연결 없음' : '전송 상태 기록 없음';
   return <PageLayout><div className="shell"><section className="panel"><div className="section-heading"><div><span className="eyebrow">DONATION TIMING</span><h1>후원 로그 관리</h1><p>최근 3일간 후원별 수신, TTS 준비, 화면과 소리 시작 시각입니다. 전송→수신 확인은 서버 시계로 측정하며 화면의 확인 요청 왕복 시간도 포함합니다.</p></div><button type="button" onClick={load}>새로고침</button></div>
@@ -4979,7 +4989,7 @@ function Settings({ mode }) {
                           type="range"
                           min="0"
                           max="1"
-                          step=".05"
+                          step=".01"
                           value={settings.backgroundOpacity}
                           onChange={(e) =>
                             update("backgroundOpacity", Number(e.target.value))
