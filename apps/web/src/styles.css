@@ -821,3 +821,13 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 .rank-placement-inline .rank-line>em{margin-inline-start:calc(var(--ranking-size,30px) * .185)}.rank-placement-gutter .widget-row{display:block}.rank-placement-gutter .rank-line{display:grid;grid-template-columns:calc(var(--ranking-size,30px) * .82) minmax(0,1fr);column-gap:calc(var(--ranking-size,30px) * .2);width:100%}.rank-placement-gutter .rank-marker-slot{grid-column:1;display:flex;align-self:stretch;align-items:center;justify-content:flex-start}.rank-placement-gutter .rank-marker-slot>em{line-height:1}.rank-placement-gutter .rank-text-effect{grid-column:2;min-width:0;width:100%}
 @media(prefers-reduced-motion:reduce){.full-ranking-page{transition:none}}
 .bank-test-settings{max-width:720px}.bank-test-settings form{display:grid;gap:14px;margin-top:22px}.bank-test-settings form>label:not(.toggle-label){display:grid;gap:7px;color:var(--n9-muted);font-size:11px;font-weight:750}.bank-test-settings input,.bank-test-settings textarea{width:100%;padding:11px 12px;border:1px solid var(--n9-border);border-radius:9px;background:var(--n9-input);color:var(--n9-text)}.bank-test-settings textarea{resize:none}.bank-test-settings .toggle-label{padding:12px;border:1px solid var(--n9-border);border-radius:10px;background:var(--n9-soft)}.bank-test-settings .primary-button{justify-self:start;padding:11px 20px}
+
+/* Row-group alignment must remain explicit after the row internals became nested. */
+.rank-placement-inline .widget-row:is(.row-left,.row-center,.row-right){display:flex}
+.rank-placement-inline .widget-row.row-left{justify-content:flex-start}
+.rank-placement-inline .widget-row.row-center{justify-content:center}
+.rank-placement-inline .widget-row.row-right{justify-content:flex-end}
+.rank-placement-gutter .widget-row:is(.row-left,.row-center,.row-right) .rank-text-effect{width:auto}
+.rank-placement-gutter .widget-row.row-left .rank-text-effect{justify-self:start}
+.rank-placement-gutter .widget-row.row-center .rank-text-effect{justify-self:center}
+.rank-placement-gutter .widget-row.row-right .rank-text-effect{justify-self:end}
