@@ -3971,7 +3971,12 @@ function Settings({ mode }) {
   const [savedSettings, setSavedSettings] = useState(DEFAULT_SETTINGS);
   const hydrateSettings = (value) => {
     if (!isFullRanking) return normalizeRankingLayout(value);
-    const standardRankingSettings = pickRankingSettings(normalizeRankingLayout(value));
+    // Once the full-screen editor has been hydrated, its top-level ranking
+    // fields contain the full-screen preview. Keep using the original standard
+    // ranking snapshot instead of accidentally treating that preview as the
+    // standard settings on the next render/save.
+    const standardRankingSettings = value.__standardRankingSettings
+      || pickRankingSettings(normalizeRankingLayout(value));
     return normalizeRankingLayout({
       ...value,
       ...(value.fullRankingUseStandardSettings !== false
