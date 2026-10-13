@@ -4397,6 +4397,20 @@ function Settings({ mode }) {
         (style, i) => (i === index ? { ...style, [key]: value } : style),
       ),
     );
+  const changeRankMarkerVisibility = (index, visible) => {
+    setSettings((current) => ({
+      ...current,
+      rankingHiddenRankMarkers: Array.from({ length: 3 }, (_, rankIndex) =>
+        rankIndex === index
+          ? !visible
+          : current.rankingHiddenRankMarkers?.[rankIndex] === true || current.rankingRankStyles?.[rankIndex]?.hideMarker === true,
+      ),
+      rankingRankStyles: (current.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles).map(
+        (style, rankIndex) => rankIndex === index ? { ...style, hideMarker: !visible } : style,
+      ),
+    }));
+    setPreviewRun((current) => current + 1);
+  };
   async function addLibrarySound(file, select) {
     if (!file) return;
     try {
@@ -7052,10 +7066,10 @@ function Settings({ mode }) {
                               <span className="inline-setting-check">
                                 <input
                                   type="checkbox"
-                                  checked={rankStyle.hideMarker !== true}
-                                  onChange={(e)=>changeRankStyle(index,"hideMarker",!e.target.checked)}
+                                  checked={settings.rankingHiddenRankMarkers?.[index] !== true && rankStyle.hideMarker !== true}
+                                  onChange={(e)=>changeRankMarkerVisibility(index,e.target.checked)}
                                 />
-                                {rankStyle.hideMarker === true ? "숨김" : "표시"}
+                                {settings.rankingHiddenRankMarkers?.[index] === true || rankStyle.hideMarker === true ? "숨김" : "표시"}
                               </span>
                             </label>
                             <div className="rank-suffix-color-settings">
@@ -7582,7 +7596,8 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const rankMotion = rankHighlight && index < 3 ? (rankStyle.motion || "none") : "none";
               const isTextMotion = ["pulse","float","sway","glow"].includes(rankMotion);
               const staggerCharacters = isTextMotion && rankStyle.staggerCharacters === true;
-              const rankMarkerNode = index < rankNumberLimit && rankStyle.hideMarker !== true ? (
+              const markerHidden = settings.rankingHiddenRankMarkers?.[index] === true || rankStyle.hideMarker === true;
+              const rankMarkerNode = index < rankNumberLimit && !markerHidden ? (
                 <em
                   className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"} ribbon-shape-${settings.rankingMedalRibbonShape || "classic"} ribbon-${settings.rankingMedalRibbonPattern || "solid"} depth-${settings.rankingMedalDepth || "soft"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}
                   style={isMedalMarker ? {

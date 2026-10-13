@@ -134,6 +134,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
         amountSuffixColor:index === 0 ? '#2468ac' : undefined,
         hideMarker:index === 0,
       })),
+      rankingHiddenRankMarkers:[true,false,false],
       fullRankingUseStandardSettings:false,
       fullRankingSettings:{
         ...result.data,
@@ -180,6 +181,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(isolatedWidgetForIsolation.settings.rankingTitle,'다른 계정에서 다시 변경');
     assert.equal(isolatedWidgetForIsolation.settings.rankingRowGap,19);
     assert.equal(memberWidgetForIsolation.settings.rankingRowGap,memberAfterOtherSave.rankingRowGap);
+    assert.equal(memberWidgetForIsolation.settings.rankingHiddenRankMarkers[0],true);
     assert.notEqual(memberWidgetForIsolation.settings.rankingTitle,isolatedWidgetForIsolation.settings.rankingTitle);
     assert.equal(result.data.minimumDonationAmount,1000);
     assert.equal(result.data.durationMs,30000);
@@ -207,6 +209,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.rankingRankStyles[0].amountSuffixColor,'#2468ac');
     assert.equal(result.data.rankingRankStyles[0].hideMarker,true);
     assert.equal(result.data.rankingRankStyles[1].hideMarker,false);
+    assert.deepEqual(result.data.rankingHiddenRankMarkers,[true,false,false]);
     assert.equal(result.data.rankingRankStyles[1].motion,'none');
     assert.equal((await request('/api/settings',{cookie:memberCookie})).data.rankingRankStyles[0].motion,'gradient-flow');
     assert.equal(result.data.toonationUseOwnAlert,true);

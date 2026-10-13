@@ -533,7 +533,11 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.rankingRowsPerColumn = Math.max(1,Math.min(30,Math.floor(Number(settings.rankingRowsPerColumn)||DEFAULT_SETTINGS.rankingRowsPerColumn)));
   settings.rankingAnimation = ['none','fade','slide-up','slide-left','zoom','stagger'].includes(settings.rankingAnimation)?settings.rankingAnimation:'fade';
   settings.rankingRankHighlightEnabled = settings.rankingRankHighlightEnabled !== false;
+  settings.rankingHiddenRankMarkers = Array.from({length:3},(_,index)=>Array.isArray(input?.rankingHiddenRankMarkers)
+    ? input.rankingHiddenRankMarkers[index] === true
+    : input?.rankingRankStyles?.[index]?.hideMarker === true);
   settings.rankingRankStyles = Array.from({length:4},(_,index)=>{const source=Array.isArray(settings.rankingRankStyles)?settings.rankingRankStyles[index]||{}:{};const fallback=DEFAULT_SETTINGS.rankingRankStyles[index];return {color:String(source.color||fallback.color).slice(0,20),amountColor:String(source.amountColor||settings.rankingAmountColor||fallback.amountColor||DEFAULT_SETTINGS.rankingAmountColor).slice(0,20),nameSuffixColor:String(source.nameSuffixColor||settings.rankingNameSuffixColor||source.color||fallback.color).slice(0,20),amountSuffixColor:String(source.amountSuffixColor||settings.rankingAmountSuffixColor||source.amountColor||settings.rankingAmountColor).slice(0,20),badge:String(source.badge||fallback.badge).slice(0,20),size:Math.max(70,Math.min(160,Number(source.size)||fallback.size)),weight:Math.max(100,Math.min(900,Number(source.weight)||fallback.weight)),motion:['none','pulse','float','sway','glow','ambient','border-pulse','border-spin','gradient-flow','spotlight','aura','underline-run','sparkle-bg'].includes(source.motion)?source.motion:'none',effectColor:String(source.effectColor||fallback.effectColor||source.color||fallback.color).slice(0,20),effectColor2:String(source.effectColor2||fallback.effectColor2||'#ffffff').slice(0,20),effectBackground:String(source.effectBackground||fallback.effectBackground||'#111827').slice(0,20),effectBackgroundEnabled:source.effectBackgroundEnabled!==false,effectSpeed:['slow','normal','fast'].includes(source.effectSpeed)?source.effectSpeed:'normal',effectIntensity:Math.max(20,Math.min(100,Number(source.effectIntensity)||60)),staggerCharacters:source.staggerCharacters===true,hideMarker:source.hideMarker===true};});
+  settings.rankingRankStyles = settings.rankingRankStyles.map((style,index)=>index < 3 ? {...style,hideMarker:settings.rankingHiddenRankMarkers[index]} : style);
   settings.rankingShowRank = Boolean(settings.rankingShowRank);
   settings.rankingRankPlacement = settings.rankingRankPlacement === 'gutter' ? 'gutter' : 'inline';
   settings.rankingShowCount = Boolean(settings.rankingShowCount);
@@ -546,7 +550,7 @@ function cleanSettings(input, skipFullRanking = false) {
     const fullSource = input?.fullRankingSettings && typeof input.fullRankingSettings === 'object' && Object.keys(input.fullRankingSettings).length
       ? input.fullRankingSettings
       : Object.fromEntries(RANKING_SETTING_KEYS.map(key => [key, settings[key]]));
-    const fullClean = cleanSettings({ ...DEFAULT_SETTINGS, ...fullSource }, true);
+    const fullClean = cleanSettings(fullSource, true);
     settings.fullRankingSettings = Object.fromEntries(
       RANKING_SETTING_KEYS.map(key => [key, fullClean[key]]),
     );

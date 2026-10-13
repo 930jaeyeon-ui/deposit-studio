@@ -152,6 +152,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingRankPlacement: 'inline',
   rankingShowCount: false,
   rankingRankHighlightEnabled: true,
+  rankingHiddenRankMarkers: [false, false, false],
   rankingRankStyles: [
     { color:'#ffd76a', amountColor:'#b9dcff', nameSuffixColor:'#ffd76a', amountSuffixColor:'#b9dcff', badge:'#8a6414', size:110, weight:900, motion:'none', effectColor:'#ffe45c', effectColor2:'#ffffff', effectBackground:'#3a2a08', effectBackgroundEnabled:true, effectSpeed:'normal', effectIntensity:60, staggerCharacters:false, hideMarker:false },
     { color:'#dce8f5', amountColor:'#b9dcff', nameSuffixColor:'#dce8f5', amountSuffixColor:'#b9dcff', badge:'#60758b', size:105, weight:800, motion:'none', effectColor:'#9fdbff', effectColor2:'#ffffff', effectBackground:'#132538', effectBackgroundEnabled:true, effectSpeed:'normal', effectIntensity:60, staggerCharacters:false, hideMarker:false },
