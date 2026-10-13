@@ -935,6 +935,7 @@ function VirtualDonorList({
   kicker,
   totalLabel = "명",
   className = "",
+  maskAmounts = false,
 }) {
   const viewportRef = useRef(null);
   const loadedPages = useRef(new Set());
@@ -1045,7 +1046,7 @@ function VirtualDonorList({
               {item.donorName}
               <small>{item.count}회 후원</small>
             </strong>
-            <span>{formatWon(item.amount)}원</span>
+            <span>{maskAmounts ? "••••••원" : `${formatWon(item.amount)}원`}</span>
           </>
         ) : (
           <strong>
@@ -1099,7 +1100,7 @@ function VirtualDonorList({
                 {searchResult.donorName}
                 <small>{searchResult.count}회 후원</small>
               </strong>
-              <span>{formatWon(searchResult.amount)}원</span>
+              <span>{maskAmounts ? "••••••원" : `${formatWon(searchResult.amount)}원`}</span>
             </li>
           </ol>
         ) : (
@@ -2814,6 +2815,7 @@ function Dashboard() {
   const [message, setMessage] = useState("");
   const [savingGrades, setSavingGrades] = useState(false);
   const [isGradeEditing, setIsGradeEditing] = useState(false);
+  const [maskAmounts, setMaskAmounts] = useState(false);
   const load = () =>
     api("/api/dashboard")
       .then(setData)
@@ -2924,7 +2926,7 @@ function Dashboard() {
   return (
     <PageLayout>
       <div className="shell">
-        <header>
+        <header className="crew-dashboard-header">
           <div>
             <span className="eyebrow">CREW DONATION OVERVIEW</span>
             <h1>크루 후원 현황</h1>
@@ -2932,12 +2934,21 @@ function Dashboard() {
               크루 전체 후원자의 누적 현황을 확인합니다.
             </p>
           </div>
+          <label className="toggle-label crew-amount-mask-toggle">
+            금액 마스킹
+            <input
+              type="checkbox"
+              checked={maskAmounts}
+              onChange={(event) => setMaskAmounts(event.target.checked)}
+            />
+            <i />
+          </label>
         </header>
         <section className="dashboard-kpis">
           <article className="kpi primary">
             <span>전체 후원금</span>
             <strong>
-              {formatWon(total)}
+              {maskAmounts ? "••••••" : formatWon(total)}
               <small>원</small>
             </strong>
           </article>
@@ -2952,7 +2963,7 @@ function Dashboard() {
           <article className="kpi">
             <span>후원 1건당 평균 금액</span>
             <strong>
-              {formatWon(average)}
+              {maskAmounts ? "••••••" : formatWon(average)}
               <small>원</small>
             </strong>
             <p>전체 후원 건수 기준</p>
@@ -3038,10 +3049,13 @@ function Dashboard() {
                         />
                       </label>
                       <small>
-                        {formatKoreanWon(grade.minAmount)} ~{" "}
-                        {grade.maxAmount == null
-                          ? "제한 없음"
-                          : formatKoreanWon(grade.maxAmount)}
+                        {maskAmounts
+                          ? "•••••• ~ ••••••"
+                          : `${formatKoreanWon(grade.minAmount)} ~ ${
+                              grade.maxAmount == null
+                                ? "제한 없음"
+                                : formatKoreanWon(grade.maxAmount)
+                            }`}
                       </small>
                     </div>
                     <label className="grade-file">
@@ -3076,10 +3090,13 @@ function Dashboard() {
                     <div className="grade-readonly-amount">
                       <small>누적 금액 구간</small>
                       <b>
-                        {formatKoreanWon(grade.minAmount)} ~{" "}
-                        {grade.maxAmount == null
-                          ? "제한 없음"
-                          : formatKoreanWon(grade.maxAmount)}
+                        {maskAmounts
+                          ? "•••••• ~ ••••••"
+                          : `${formatKoreanWon(grade.minAmount)} ~ ${
+                              grade.maxAmount == null
+                                ? "제한 없음"
+                                : formatKoreanWon(grade.maxAmount)
+                            }`}
                       </b>
                     </div>
                   </>
@@ -3108,6 +3125,7 @@ function Dashboard() {
             title="후원자 목록"
             kicker="CREW DONORS"
             className="crew-donor-list"
+            maskAmounts={maskAmounts}
           />
         </main>
       </div>
