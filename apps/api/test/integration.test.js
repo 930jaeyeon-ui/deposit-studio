@@ -132,6 +132,7 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
         staggerCharacters:index === 0,
         nameSuffixColor:index === 0 ? '#135790' : undefined,
         amountSuffixColor:index === 0 ? '#2468ac' : undefined,
+        hideMarker:index === 0,
       })),
       fullRankingUseStandardSettings:false,
       fullRankingSettings:{
@@ -204,6 +205,8 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     assert.equal(result.data.rankingRankStyles[0].staggerCharacters,true);
     assert.equal(result.data.rankingRankStyles[0].nameSuffixColor,'#135790');
     assert.equal(result.data.rankingRankStyles[0].amountSuffixColor,'#2468ac');
+    assert.equal(result.data.rankingRankStyles[0].hideMarker,true);
+    assert.equal(result.data.rankingRankStyles[1].hideMarker,false);
     assert.equal(result.data.rankingRankStyles[1].motion,'none');
     assert.equal((await request('/api/settings',{cookie:memberCookie})).data.rankingRankStyles[0].motion,'gradient-flow');
     assert.equal(result.data.toonationUseOwnAlert,true);

@@ -833,3 +833,5 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 .rank-placement-gutter .widget-row.row-left .rank-text-effect{justify-self:start}
 .rank-placement-gutter .widget-row.row-center .rank-text-effect{justify-self:center}
 .rank-placement-gutter .widget-row.row-right .rank-text-effect{justify-self:end}
+.rank-marker-visibility{grid-column:1/-1;display:flex!important;min-height:42px;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--n9-border);border-radius:8px;background:var(--n9-soft)}
+.rank-marker-visibility .inline-setting-check{flex:none}

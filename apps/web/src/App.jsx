@@ -7047,6 +7047,17 @@ function Settings({ mode }) {
                                 <option value="sparkle-bg">반짝이는 배경</option>
                               </select>
                             </label>
+                            <label className="rank-marker-visibility">
+                              순위 표시
+                              <span className="inline-setting-check">
+                                <input
+                                  type="checkbox"
+                                  checked={rankStyle.hideMarker !== true}
+                                  onChange={(e)=>changeRankStyle(index,"hideMarker",!e.target.checked)}
+                                />
+                                {rankStyle.hideMarker === true ? "숨김" : "표시"}
+                              </span>
+                            </label>
                             <div className="rank-suffix-color-settings">
                               <label>
                                 ‘님’ 색상
@@ -7571,7 +7582,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const rankMotion = rankHighlight && index < 3 ? (rankStyle.motion || "none") : "none";
               const isTextMotion = ["pulse","float","sway","glow"].includes(rankMotion);
               const staggerCharacters = isTextMotion && rankStyle.staggerCharacters === true;
-              const rankMarkerNode = index < rankNumberLimit ? (
+              const rankMarkerNode = index < rankNumberLimit && rankStyle.hideMarker !== true ? (
                 <em
                   className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"} ribbon-shape-${settings.rankingMedalRibbonShape || "classic"} ribbon-${settings.rankingMedalRibbonPattern || "solid"} depth-${settings.rankingMedalDepth || "soft"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}
                   style={isMedalMarker ? {
