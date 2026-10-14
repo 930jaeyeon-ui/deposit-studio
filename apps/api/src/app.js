@@ -18,6 +18,7 @@ function publishPhoneTest(userId, data) {
 }
 const overlayClients = new Set();
 const dataChangeClients = new Set();
+const dataChangeRevisions = new Map();
 const ttsRateWindows = new Map();
 const overlayPreviewSessions = new Map();
 const pendingBankAlertTimers = new Map();
@@ -75,7 +76,9 @@ function sendOverlayEvent(res, event, data, id) {
 }
 
 function publishDataChange(userId, reason = 'updated') {
-  const payload = { reason, changedAt:new Date().toISOString() };
+  const revision = (dataChangeRevisions.get(Number(userId)) || 0) + 1;
+  dataChangeRevisions.set(Number(userId), revision);
+  const payload = { reason, revision, changedAt:new Date().toISOString() };
   for (const client of dataChangeClients) {
     if (Number(client.userId) !== Number(userId)) continue;
     sendOverlayEvent(client.res, 'change', payload);
@@ -92,8 +95,8 @@ function openDataChangeStream(req, res, userId) {
   res.flushHeaders();
   const client = { res, userId };
   dataChangeClients.add(client);
-  sendOverlayEvent(res, 'ready', { connected:true });
-  const heartbeat = setInterval(() => res.write(': heartbeat\n\n'), 15000);
+  sendOverlayEvent(res, 'ready', { connected:true, revision:dataChangeRevisions.get(Number(userId)) || 0 });
+  const heartbeat = setInterval(() => sendOverlayEvent(res, 'heartbeat', { revision:dataChangeRevisions.get(Number(userId)) || 0 }), 15000);
   res.on('close', () => {
     clearInterval(heartbeat);
     dataChangeClients.delete(client);
@@ -1252,9 +1255,9 @@ app.post('/api/notifications', async (req, res) => {
     await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, donation_id, status) VALUES (?, ?, ?, ?, ?, ?)`, args:[packageName,title,content,packageName,donationId,operationalTest?'test_created':'created'] });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[donationId] });
     const donation = await donationWithCrewGrade(saved.rows[0], apiUser.id, settings);
+    publishDataChange(apiUser.id, 'deposit-created');
     const delivered = operationalTest ? publishOverlayTest(bankTestOverlayDonation(donation), apiUser.id) : null;
     if (!operationalTest) await queueBankDonationAlert(donationId, apiUser.id, settings);
-    publishDataChange(apiUser.id, 'deposit-created');
     res.status(201).json({ ok:true, donation, operationalTest, delivered, packageName, recipient:{ loginId:apiUser.loginId, displayName:apiUser.displayName } });
   } catch (error) {
     await db.execute({ sql:`INSERT INTO notification_events (package_name, title, content, rule_package_name, status, error) VALUES (?, ?, ?, ?, 'parse_error', ?)`, args:[packageName,title,content,packageName,String(error.message).slice(0,500)] });

@@ -7707,33 +7707,50 @@ function Widget({ token, full = false }) {
   useEffect(() => {
     const load = () =>
       token
-        ? api(`/api/widgets/${encodeURIComponent(token)}${full ? "/full" : ""}`).then((value) =>
+        ? api(`/api/widgets/${encodeURIComponent(token)}${full ? "/full" : ""}`, { cache: "no-store" }).then((value) =>
             setData({ ranking: value.ranking, settings: value.settings }),
           )
-        : Promise.all([api("/api/widgets"), api("/api/settings")]).then(
+        : Promise.all([api("/api/widgets", { cache: "no-store" }), api("/api/settings", { cache: "no-store" })]).then(
             ([widgets, settings]) =>
               setData({ ranking: widgets.ranking, settings }),
           );
     const safelyLoad = () => load().catch(() => {});
     safelyLoad();
-    let fallbackTimer = null;
     const eventPath = token
       ? `/api/widgets/${encodeURIComponent(token)}/events`
       : "/api/my/deposits/events";
-    const stream = new EventSource(apiUrl(eventPath), { withCredentials:true });
-    stream.addEventListener("change", safelyLoad);
-    stream.addEventListener("ready", safelyLoad);
-    stream.onopen = () => {
-      safelyLoad();
-      if (fallbackTimer) clearInterval(fallbackTimer);
-      fallbackTimer = null;
+    let stream;
+    let lastSignalAt = Date.now();
+    let knownRevision = null;
+    const onSignal = (event) => {
+      lastSignalAt = Date.now();
+      const revision = Number(JSON.parse(event.data).revision);
+      if (knownRevision !== revision) {
+        knownRevision = revision;
+        load().catch(() => { knownRevision = null; });
+      }
     };
-    stream.onerror = () => {
-      if (!fallbackTimer) fallbackTimer = setInterval(safelyLoad, 5000);
+    const connect = () => {
+      stream = new EventSource(apiUrl(eventPath), { withCredentials:true });
+      stream.addEventListener("change", onSignal);
+      stream.addEventListener("ready", onSignal);
+      stream.addEventListener("heartbeat", onSignal);
+      stream.onopen = () => {
+        lastSignalAt = Date.now();
+        safelyLoad();
+      };
     };
+    connect();
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastSignalAt < 45000) return;
+      stream.close();
+      lastSignalAt = Date.now();
+      knownRevision = null;
+      connect();
+    }, 15000);
     return () => {
       stream.close();
-      if (fallbackTimer) clearInterval(fallbackTimer);
+      clearInterval(watchdog);
     };
   }, [token, full]);
   useEffect(() => {
