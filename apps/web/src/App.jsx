@@ -4038,6 +4038,7 @@ function Settings({ mode }) {
   const [youtubeStatus, setYoutubeStatus] = useState({ state:"disabled", text:"유튜브 채팅 수신 꺼짐" });
   const [saved, setSaved] = useState("");
   const [previewRun, setPreviewRun] = useState(0);
+  const crewGradeAutoSaveReady = useRef(false);
   const [rankingPreviewCount, setRankingPreviewCount] = useState(10);
   const rankingPreviewRows = Math.max(1, Math.min(30, Number(settings.rankingRowsPerColumn) || 10));
   const rankingPreviewColumns = Math.max(1, Math.min(2, Number(settings.rankingColumns) || 1));
@@ -4143,7 +4144,7 @@ function Settings({ mode }) {
     setSettings((current) => {
       const effects=[...(current.rankingCrewGradeEffects||[])];
       const index=effects.findIndex(item=>item.gradeId===gradeId);
-      const base=index>=0?effects[index]:{gradeId,effect:"none",palette:"classic",color:"#facc15",color2:"#ffffff",background:"#241b05",intensity:65,speed:"normal"};
+      const base=index>=0?effects[index]:{gradeId,effect:"none",palette:"classic",direction:"rtl",color:"#facc15",color2:"#ffffff",background:"#241b05",backgroundEnabled:true,intensity:65,speed:"normal"};
       const next={...base,[key]:value};
       if(index>=0)effects[index]=next;else effects.push(next);
       return {...current,rankingCrewGradeEffects:effects};
@@ -4197,6 +4198,46 @@ function Settings({ mode }) {
     setSavedSettings(hydratedNext);
     return hydratedNext;
   }
+  const crewGradeAutoSaveSignature = JSON.stringify({
+    enabled:settings.rankingCrewGradeEnabled,
+    position:settings.rankingCrewGradePosition,
+    displayMode:settings.rankingCrewGradeDisplayMode,
+    size:settings.rankingCrewGradeSize,
+    effects:settings.rankingCrewGradeEffects,
+  });
+  useEffect(() => {
+    if (mode !== "ranking" || !settingsLoaded) return undefined;
+    if (!crewGradeAutoSaveReady.current) {
+      crewGradeAutoSaveReady.current = true;
+      return undefined;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const next = await api("/api/settings/ranking-crew-grade", {
+          method:"PATCH",
+          body:JSON.stringify({
+            rankingCrewGradeEnabled:settings.rankingCrewGradeEnabled,
+            rankingCrewGradePosition:settings.rankingCrewGradePosition,
+            rankingCrewGradeDisplayMode:settings.rankingCrewGradeDisplayMode,
+            rankingCrewGradeSize:settings.rankingCrewGradeSize,
+            rankingCrewGradeEffects:settings.rankingCrewGradeEffects,
+          }),
+        });
+        setSavedSettings((current) => ({
+          ...current,
+          rankingCrewGradeEnabled:next.rankingCrewGradeEnabled,
+          rankingCrewGradePosition:next.rankingCrewGradePosition,
+          rankingCrewGradeDisplayMode:next.rankingCrewGradeDisplayMode,
+          rankingCrewGradeSize:next.rankingCrewGradeSize,
+          rankingCrewGradeEffects:next.rankingCrewGradeEffects,
+        }));
+        setSaved("크루 등급 표시 설정이 자동 저장되어 OBS에 적용됐습니다.");
+      } catch (error) {
+        setSaved(error.message || "크루 등급 표시 설정을 자동 저장하지 못했습니다.");
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [crewGradeAutoSaveSignature, mode, settingsLoaded]);
   function restoreSettings() {
     setStoredSettings(savedSettings);
     setPreviewRun((current) => current + 1);
@@ -6913,12 +6954,12 @@ function Settings({ mode }) {
                     <div className="ranking-grade-effect-list">
                       <div className="ranking-grade-effect-heading"><b>등급별 닉네임 효과</b><small>순위가 아니라 현재 크루 등급을 기준으로 닉네임에 적용됩니다.</small></div>
                       {(settings.crewGrades||[]).map((grade)=>{
-                        const effect=(settings.rankingCrewGradeEffects||[]).find(item=>item.gradeId===grade.id)||{gradeId:grade.id,effect:"none",palette:"classic",color:"#facc15",color2:"#ffffff",background:"#241b05",intensity:65,speed:"normal"};
+                        const effect=(settings.rankingCrewGradeEffects||[]).find(item=>item.gradeId===grade.id)||{gradeId:grade.id,effect:"none",palette:"classic",direction:"rtl",color:"#facc15",color2:"#ffffff",background:"#241b05",backgroundEnabled:true,intensity:65,speed:"normal"};
                         return <article key={grade.id} className="ranking-grade-effect-card">
                           <header>{grade.imageData?<img src={grade.imageData} alt=""/>:<span/>}<b>{grade.name}</b><small>{grade.minRank}~{grade.maxRank??"∞"}위</small></header>
                           <label>닉네임 효과<select value={effect.effect} onChange={(e)=>changeCrewGradeEffect(grade.id,"effect",e.target.value)}><option value="none">효과 없음</option><option value="rainbow">RGB 색상 순환</option><option value="glow">등급색 글로우</option><option value="gradient">2색 그라데이션</option><option value="aura">등급 오라</option><option value="shine">홀로그램 광택</option><option value="outline">에너지 테두리</option><option value="badge">캡슐형 명찰</option><option value="sparkle">별빛 반짝임</option></select></label>
-                          {effect.effect === "rainbow" && <label>RGB 팔레트<select value={effect.palette||"classic"} onChange={(e)=>changeCrewGradeEffect(grade.id,"palette",e.target.value)}>{Object.entries(CREW_GRADE_RGB_PALETTES).map(([value,item])=><option value={value} key={value}>{item.label}</option>)}</select><i className="rgb-palette-preview" style={{background:`linear-gradient(90deg,${CREW_GRADE_RGB_PALETTES[effect.palette||"classic"].gradient})`}}/></label>}
-                          {effect.effect !== "none" && effect.effect !== "rainbow" && <><label>효과색 1<span className="grade-effect-color"><input type="color" value={effect.color} onChange={(e)=>changeCrewGradeEffect(grade.id,"color",e.target.value)}/><input value={effect.color} onChange={(e)=>changeCrewGradeEffect(grade.id,"color",e.target.value)}/></span></label><label>효과색 2<span className="grade-effect-color"><input type="color" value={effect.color2} onChange={(e)=>changeCrewGradeEffect(grade.id,"color2",e.target.value)}/><input value={effect.color2} onChange={(e)=>changeCrewGradeEffect(grade.id,"color2",e.target.value)}/></span></label><label>배경색<span className="grade-effect-color"><input type="color" value={effect.background} onChange={(e)=>changeCrewGradeEffect(grade.id,"background",e.target.value)}/><input value={effect.background} onChange={(e)=>changeCrewGradeEffect(grade.id,"background",e.target.value)}/></span></label></>}
+                          {effect.effect === "rainbow" && <><label>RGB 팔레트<select value={effect.palette||"classic"} onChange={(e)=>changeCrewGradeEffect(grade.id,"palette",e.target.value)}>{Object.entries(CREW_GRADE_RGB_PALETTES).map(([value,item])=><option value={value} key={value}>{item.label}</option>)}</select><i className="rgb-palette-preview" style={{background:`linear-gradient(90deg,${CREW_GRADE_RGB_PALETTES[effect.palette||"classic"].gradient})`}}/></label><label>흐르는 방향<select value={effect.direction||"rtl"} onChange={(e)=>changeCrewGradeEffect(grade.id,"direction",e.target.value)}><option value="rtl">오른쪽 → 왼쪽</option><option value="ltr">왼쪽 → 오른쪽</option></select></label></>}
+                          {effect.effect !== "none" && effect.effect !== "rainbow" && <><label>효과색 1<span className="grade-effect-color"><input type="color" value={effect.color} onChange={(e)=>changeCrewGradeEffect(grade.id,"color",e.target.value)}/><input value={effect.color} onChange={(e)=>changeCrewGradeEffect(grade.id,"color",e.target.value)}/></span></label><label>효과색 2<span className="grade-effect-color"><input type="color" value={effect.color2} onChange={(e)=>changeCrewGradeEffect(grade.id,"color2",e.target.value)}/><input value={effect.color2} onChange={(e)=>changeCrewGradeEffect(grade.id,"color2",e.target.value)}/></span></label><label>배경색<span className="inline-setting-check"><input type="checkbox" checked={effect.backgroundEnabled!==false} onChange={(e)=>changeCrewGradeEffect(grade.id,"backgroundEnabled",e.target.checked)}/>{effect.backgroundEnabled!==false?"배경 사용":"배경 없음"}</span>{effect.backgroundEnabled!==false&&<span className="grade-effect-color"><input type="color" value={effect.background} onChange={(e)=>changeCrewGradeEffect(grade.id,"background",e.target.value)}/><input value={effect.background} onChange={(e)=>changeCrewGradeEffect(grade.id,"background",e.target.value)}/></span>}</label></>}
                           {effect.effect !== "none" && <><label>효과 강도<input type="range" min="20" max="100" step="5" value={effect.intensity} onChange={(e)=>changeCrewGradeEffect(grade.id,"intensity",Number(e.target.value))}/><small>{effect.intensity}%</small></label><label>움직임 속도<select value={effect.speed} onChange={(e)=>changeCrewGradeEffect(grade.id,"speed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label></>}
                         </article>;
                       })}
@@ -7533,12 +7574,13 @@ function RankingPreview({ settings, count = 60 }) {
     "둥이운동",
     "피스",
   ];
+  const previewGrades = settings.crewGrades || [];
   const sample = Array.from({ length: count }, (_, index) => ({
     donorName:
       sampleNames[index] || `후원자 ${String(index + 1).padStart(2, "0")}`,
     amount: Math.max(10000, 180000 - index * 2800),
     count: (index % 4) + 1,
-    crewGradeId: (settings.crewGrades || [])[index % Math.max(1,(settings.crewGrades || []).length)]?.id || null,
+    crewGradeId: index >= 3 ? previewGrades[index - 3]?.id || null : null,
   }));
   return (
     <RankingOutputCanvas preview>
@@ -7687,7 +7729,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const crewEffect=(settings.rankingCrewGradeEffects||[]).find(effect=>effect.gradeId===crewGrade?.id);
               const crewNicknameEffect=settings.rankingCrewGradeEnabled !== false ? (crewEffect?.effect || "none") : "none";
               const crewPalette=CREW_GRADE_RGB_PALETTES[crewEffect?.palette||"classic"]||CREW_GRADE_RGB_PALETTES.classic;
-              const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":crewEffect?.speed==="slow"?"4.8s":crewEffect?.speed==="fast"?"1.6s":"2.8s","--crew-rgb-gradient":crewPalette.gradient} : undefined;
+              const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.backgroundEnabled===false?"transparent":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":crewEffect?.speed==="slow"?"4.8s":crewEffect?.speed==="fast"?"1.6s":"2.8s","--crew-rgb-gradient":crewPalette.gradient,"--crew-rgb-direction":crewEffect?.direction==="ltr"?"reverse":"normal"} : undefined;
               const crewGradeNode=settings.rankingCrewGradeEnabled !== false && crewGrade && settings.rankingCrewGradeDisplayMode !== "none" && (settings.rankingCrewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:`${(settings.rankingCrewGradeSize||80)/100}em`}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`} style={{width:`${(settings.rankingCrewGradeSize||80)/100}em`,height:`${(settings.rankingCrewGradeSize||80)/100}em`}}/> : null);
               const rankMarkerNode = index < rankNumberLimit && !markerHidden ? (
                 <em
@@ -7824,9 +7866,19 @@ function Widget({ token, full = false }) {
         load().catch(() => { knownRevision = null; });
       }
     };
+    const onSettings = (event) => {
+      lastSignalAt = Date.now();
+      try {
+        const settings = JSON.parse(event.data);
+        setData((current) => ({ ...current, settings }));
+      } catch {
+        safelyLoad();
+      }
+    };
     const connect = () => {
       stream = new EventSource(apiUrl(eventPath), { withCredentials:true });
       stream.addEventListener("change", onSignal);
+      stream.addEventListener("settings", onSettings);
       stream.addEventListener("ready", onSignal);
       stream.addEventListener("heartbeat", onSignal);
       stream.onopen = () => {
