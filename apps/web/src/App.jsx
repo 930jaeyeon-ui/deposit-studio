@@ -2822,9 +2822,35 @@ function ObsSetup() {
   );
 }
 
+const defaultCrewGradeRankingEffect = (gradeId) => ({gradeId,effect:"none",palette:"classic",direction:"rtl",amountEnabled:false,color:"#facc15",color2:"#ffffff",background:"#241b05",backgroundEnabled:true,intensity:65,speed:"normal"});
+
+function CrewGradeRankingDisplaySettings({settings,onUpdate,onChangeEffect}) {
+  return <section className="crew-grade-ranking-settings">
+    <div className="ranking-grade-effect-heading"><b>후원 순위표 크루 등급 표시</b><small>여기서 저장한 표시 방식과 효과가 모든 크루의 후원 순위표에 공통 적용됩니다.</small></div>
+    <label className="toggle-label">후원 순위표에 등급 표시<input type="checkbox" checked={settings.rankingCrewGradeEnabled!==false} onChange={(e)=>onUpdate("rankingCrewGradeEnabled",e.target.checked)}/><i/></label>
+    {settings.rankingCrewGradeEnabled!==false&&<>
+      <div className="crew-grade-ranking-display-row">
+        <label>표시 방식<select value={settings.rankingCrewGradeDisplayMode||"image"} onChange={(e)=>onUpdate("rankingCrewGradeDisplayMode",e.target.value)}><option value="image">등급 이미지</option><option value="text">등급명</option><option value="none">표시 없음 · 닉네임 효과만</option></select></label>
+        {settings.rankingCrewGradeDisplayMode!=="none"&&<><label>표시 위치<select value={settings.rankingCrewGradePosition||"right"} onChange={(e)=>onUpdate("rankingCrewGradePosition",e.target.value)}><option value="right">닉네임 오른쪽</option><option value="left">닉네임 왼쪽</option></select></label><label>{settings.rankingCrewGradeDisplayMode==="text"?"등급명 크기":"등급 이미지 크기"}<input type="range" min="30" max="180" step="5" value={settings.rankingCrewGradeSize||80} onChange={(e)=>onUpdate("rankingCrewGradeSize",Number(e.target.value))}/><span>{settings.rankingCrewGradeSize||80}%</span></label></>}
+      </div>
+      <div className="ranking-grade-effect-list">
+        <div className="ranking-grade-effect-heading"><b>등급별 닉네임 효과</b><small>현재 크루 등급을 기준으로 닉네임과 금액에 공통 효과가 적용됩니다.</small></div>
+        {(settings.crewGrades||[]).map((grade)=>{const effect=(settings.rankingCrewGradeEffects||[]).find(item=>item.gradeId===grade.id)||defaultCrewGradeRankingEffect(grade.id);return <article key={grade.id} className="ranking-grade-effect-card">
+          <header>{grade.imageData?<img src={grade.imageData} alt=""/>:<span/>}<b>{grade.name}</b><small>{grade.minRank}~{grade.maxRank??"∞"}위</small></header>
+          <label>닉네임 효과<select value={effect.effect} onChange={(e)=>onChangeEffect(grade.id,"effect",e.target.value)}><option value="none">효과 없음</option><option value="rainbow">RGB 색상 순환</option><option value="glow">등급색 글로우</option><option value="gradient">2색 그라데이션</option><option value="verticalGradient">위→아래 고정 그라데이션</option><option value="aura">등급 오라</option><option value="shine">홀로그램 광택</option><option value="outline">에너지 테두리</option><option value="badge">캡슐형 명찰</option><option value="sparkle">별빛 반짝임</option></select></label>
+          {effect.effect==="rainbow"&&<><label>RGB 팔레트<select value={effect.palette||"classic"} onChange={(e)=>onChangeEffect(grade.id,"palette",e.target.value)}>{Object.entries(CREW_GRADE_RGB_PALETTES).map(([value,item])=><option value={value} key={value}>{item.label}</option>)}</select><i className="rgb-palette-preview" style={{background:`linear-gradient(90deg,${CREW_GRADE_RGB_PALETTES[effect.palette||"classic"].gradient})`}}/></label><label>흐르는 방향<select value={effect.direction||"rtl"} onChange={(e)=>onChangeEffect(grade.id,"direction",e.target.value)}><option value="rtl">오른쪽 → 왼쪽</option><option value="ltr">왼쪽 → 오른쪽</option></select></label></>}
+          {effect.effect!=="none"&&effect.effect!=="rainbow"&&<><label>효과색 1<span className="grade-effect-color"><input type="color" value={effect.color} onChange={(e)=>onChangeEffect(grade.id,"color",e.target.value)}/><input value={effect.color} onChange={(e)=>onChangeEffect(grade.id,"color",e.target.value)}/></span></label><label>효과색 2<span className="grade-effect-color"><input type="color" value={effect.color2} onChange={(e)=>onChangeEffect(grade.id,"color2",e.target.value)}/><input value={effect.color2} onChange={(e)=>onChangeEffect(grade.id,"color2",e.target.value)}/></span></label><label>배경색<span className="inline-setting-check"><input type="checkbox" checked={effect.backgroundEnabled!==false} onChange={(e)=>onChangeEffect(grade.id,"backgroundEnabled",e.target.checked)}/>{effect.backgroundEnabled!==false?"배경 사용":"배경 없음"}</span>{effect.backgroundEnabled!==false&&<span className="grade-effect-color"><input type="color" value={effect.background} onChange={(e)=>onChangeEffect(grade.id,"background",e.target.value)}/><input value={effect.background} onChange={(e)=>onChangeEffect(grade.id,"background",e.target.value)}/></span>}</label></>}
+          {effect.effect==="gradient"&&<label>흐르는 방향<select value={effect.direction||"rtl"} onChange={(e)=>onChangeEffect(grade.id,"direction",e.target.value)}><option value="rtl">오른쪽 → 왼쪽</option><option value="ltr">왼쪽 → 오른쪽</option></select></label>}
+          {effect.effect!=="none"&&<>{effect.effect!=="verticalGradient"&&<><label>효과 강도<input type="range" min="20" max="100" step="5" value={effect.intensity} onChange={(e)=>onChangeEffect(grade.id,"intensity",Number(e.target.value))}/><small>{effect.intensity}%</small></label><label>움직임 속도<select value={effect.speed} onChange={(e)=>onChangeEffect(grade.id,"speed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label></>}<label>금액 색상<span className="inline-setting-check"><input type="checkbox" checked={effect.amountEnabled===true} onChange={(e)=>onChangeEffect(grade.id,"amountEnabled",e.target.checked)}/>{effect.amountEnabled===true?"금액 + 원에도 적용":"닉네임에만 적용"}</span></label></>}
+        </article>})}
+      </div>
+    </>}
+  </section>;
+}
+
 function Dashboard() {
   const { user } = useAuth();
-  const canManageGrades = user.role === "super";
+  const canManageGrades = ["super","admin"].includes(user.role);
   const [data, setData] = useState({
     session: {},
     donations: [],
@@ -2873,6 +2899,14 @@ function Dashboard() {
         grade.id === id ? { ...grade, [key]: value } : grade,
       ),
     );
+  const updateCrewGradeRankingSetting = (key,value) => setData(current=>({...current,settings:{...current.settings,[key]:value}}));
+  const changeCrewGradeRankingEffect = (gradeId,key,value) => setData(current=>{
+    const effects=[...(current.settings.rankingCrewGradeEffects||[])];
+    const index=effects.findIndex(item=>item.gradeId===gradeId);
+    const next={...(index>=0?effects[index]:defaultCrewGradeRankingEffect(gradeId)),[key]:value};
+    if(index>=0)effects[index]=next;else effects.push(next);
+    return {...current,settings:{...current.settings,rankingCrewGradeEffects:effects}};
+  });
   async function loadGradeImage(id, event) {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -2927,7 +2961,7 @@ function Dashboard() {
     setSavingGrades(true);
     setMessage("");
     try {
-      const settings = await api("/api/settings", {
+      const settings = await api("/api/crew/settings", {
         method: "PUT",
         body: JSON.stringify(data.settings),
       });
@@ -2935,7 +2969,7 @@ function Dashboard() {
       await load(selectedGradePeriod);
       setIsGradeEditing(false);
       setMessage(
-        "크루 등급표를 저장했습니다. 후원 알림에서 자동으로 사용됩니다.",
+        "크루 등급표와 표시 효과를 저장했습니다. 모든 후원 순위표에 공통 적용됩니다.",
       );
     } catch (error) {
       setMessage(error.message);
@@ -3030,6 +3064,7 @@ function Dashboard() {
               <small>예: 11/1 시작 시 11/1~12/31, 1/1~2/28 순서로 자동 전환됩니다.</small>
             </label>
           )}
+          {canManageGrades&&isGradeEditing&&<CrewGradeRankingDisplaySettings settings={data.settings} onUpdate={updateCrewGradeRankingSetting} onChangeEffect={changeCrewGradeRankingEffect}/>}
           <div className="crew-grade-list">
             {visibleGrades.map((grade) => {
               const members=(data.gradeRanking || []).filter(item=>Number(item.rank)>=Number(grade.minRank||1)&&(grade.maxRank==null||Number(item.rank)<=Number(grade.maxRank)));
@@ -4148,17 +4183,6 @@ function Settings({ mode }) {
   const update = (key, value) => {
     setSettings((current) => ({ ...current, [key]: value }));
     setPreviewRun((current) => current + 1);
-  };
-  const changeCrewGradeEffect = (gradeId, key, value) => {
-    setSettings((current) => {
-      const effects=[...(current.rankingCrewGradeEffects||[])];
-      const index=effects.findIndex(item=>item.gradeId===gradeId);
-      const base=index>=0?effects[index]:{gradeId,effect:"none",palette:"classic",direction:"rtl",amountEnabled:false,color:"#facc15",color2:"#ffffff",background:"#241b05",backgroundEnabled:true,intensity:65,speed:"normal"};
-      const next={...base,[key]:value};
-      if(index>=0)effects[index]=next;else effects.push(next);
-      return {...current,rankingCrewGradeEffects:effects};
-    });
-    setPreviewRun((current)=>current+1);
   };
   const toggleFullRankingUseStandard = (useStandard) => {
     setStoredSettings((current) => {
@@ -6885,59 +6909,6 @@ function Settings({ mode }) {
                   </>}
                 </AlertSettingSection>
                 <AlertSettingSection
-                  id="ranking-crew-grade"
-                  title="크루 등급 표시"
-                  description="닉네임 옆 등급 이미지·위치·크기"
-                  open={Boolean(openAlertSections["ranking-crew-grade"])}
-                  onToggle={() => toggleAlertSection("ranking-crew-grade")}
-                >
-                  <label className="toggle-label">
-                    후원 순위표에 등급 표시
-                    <input type="checkbox" checked={settings.rankingCrewGradeEnabled !== false} onChange={(e)=>update("rankingCrewGradeEnabled",e.target.checked)}/>
-                    <i />
-                  </label>
-                  {settings.rankingCrewGradeEnabled !== false && <>
-                    <label>
-                      표시 방식
-                      <select value={settings.rankingCrewGradeDisplayMode || "image"} onChange={(e)=>update("rankingCrewGradeDisplayMode",e.target.value)}>
-                        <option value="image">등급 이미지</option>
-                        <option value="text">등급명</option>
-                        <option value="none">표시 없음 · 닉네임 효과만</option>
-                      </select>
-                    </label>
-                    {settings.rankingCrewGradeDisplayMode !== "none" && <>
-                      <label>
-                        표시 위치
-                        <select value={settings.rankingCrewGradePosition || "right"} onChange={(e)=>update("rankingCrewGradePosition",e.target.value)}>
-                          <option value="right">닉네임 오른쪽</option>
-                          <option value="left">닉네임 왼쪽</option>
-                        </select>
-                      </label>
-                      <label>
-                        {settings.rankingCrewGradeDisplayMode === "text" ? "등급명 크기" : "등급 이미지 크기"}
-                        <input type="range" min="30" max="180" step="5" value={settings.rankingCrewGradeSize || 80} onChange={(e)=>update("rankingCrewGradeSize",Number(e.target.value))}/>
-                        <span>{settings.rankingCrewGradeSize || 80}%</span>
-                        <small>순위표 닉네임 글자 크기를 기준으로 조절됩니다.</small>
-                      </label>
-                    </>}
-                    <div className="ranking-grade-effect-list">
-                      <div className="ranking-grade-effect-heading"><b>등급별 닉네임 효과</b><small>순위가 아니라 현재 크루 등급을 기준으로 닉네임에 적용됩니다.</small></div>
-                      {(settings.crewGrades||[]).map((grade)=>{
-                        const effect=(settings.rankingCrewGradeEffects||[]).find(item=>item.gradeId===grade.id)||{gradeId:grade.id,effect:"none",palette:"classic",direction:"rtl",amountEnabled:false,color:"#facc15",color2:"#ffffff",background:"#241b05",backgroundEnabled:true,intensity:65,speed:"normal"};
-                        return <article key={grade.id} className="ranking-grade-effect-card">
-                          <header>{grade.imageData?<img src={grade.imageData} alt=""/>:<span/>}<b>{grade.name}</b><small>{grade.minRank}~{grade.maxRank??"∞"}위</small></header>
-                          <label>닉네임 효과<select value={effect.effect} onChange={(e)=>changeCrewGradeEffect(grade.id,"effect",e.target.value)}><option value="none">효과 없음</option><option value="rainbow">RGB 색상 순환</option><option value="glow">등급색 글로우</option><option value="gradient">2색 그라데이션</option><option value="verticalGradient">위→아래 고정 그라데이션</option><option value="aura">등급 오라</option><option value="shine">홀로그램 광택</option><option value="outline">에너지 테두리</option><option value="badge">캡슐형 명찰</option><option value="sparkle">별빛 반짝임</option></select></label>
-                          {effect.effect === "rainbow" && <><label>RGB 팔레트<select value={effect.palette||"classic"} onChange={(e)=>changeCrewGradeEffect(grade.id,"palette",e.target.value)}>{Object.entries(CREW_GRADE_RGB_PALETTES).map(([value,item])=><option value={value} key={value}>{item.label}</option>)}</select><i className="rgb-palette-preview" style={{background:`linear-gradient(90deg,${CREW_GRADE_RGB_PALETTES[effect.palette||"classic"].gradient})`}}/></label><label>흐르는 방향<select value={effect.direction||"rtl"} onChange={(e)=>changeCrewGradeEffect(grade.id,"direction",e.target.value)}><option value="rtl">오른쪽 → 왼쪽</option><option value="ltr">왼쪽 → 오른쪽</option></select></label></>}
-                          {effect.effect !== "none" && effect.effect !== "rainbow" && <><label>효과색 1<span className="grade-effect-color"><input type="color" value={effect.color} onChange={(e)=>changeCrewGradeEffect(grade.id,"color",e.target.value)}/><input value={effect.color} onChange={(e)=>changeCrewGradeEffect(grade.id,"color",e.target.value)}/></span></label><label>효과색 2<span className="grade-effect-color"><input type="color" value={effect.color2} onChange={(e)=>changeCrewGradeEffect(grade.id,"color2",e.target.value)}/><input value={effect.color2} onChange={(e)=>changeCrewGradeEffect(grade.id,"color2",e.target.value)}/></span></label><label>배경색<span className="inline-setting-check"><input type="checkbox" checked={effect.backgroundEnabled!==false} onChange={(e)=>changeCrewGradeEffect(grade.id,"backgroundEnabled",e.target.checked)}/>{effect.backgroundEnabled!==false?"배경 사용":"배경 없음"}</span>{effect.backgroundEnabled!==false&&<span className="grade-effect-color"><input type="color" value={effect.background} onChange={(e)=>changeCrewGradeEffect(grade.id,"background",e.target.value)}/><input value={effect.background} onChange={(e)=>changeCrewGradeEffect(grade.id,"background",e.target.value)}/></span>}</label></>}
-                          {effect.effect === "gradient" && <label>흐르는 방향<select value={effect.direction||"rtl"} onChange={(e)=>changeCrewGradeEffect(grade.id,"direction",e.target.value)}><option value="rtl">오른쪽 → 왼쪽</option><option value="ltr">왼쪽 → 오른쪽</option></select></label>}
-                          {effect.effect !== "none" && <>{effect.effect !== "verticalGradient"&&<><label>효과 강도<input type="range" min="20" max="100" step="5" value={effect.intensity} onChange={(e)=>changeCrewGradeEffect(grade.id,"intensity",Number(e.target.value))}/><small>{effect.intensity}%</small></label><label>움직임 속도<select value={effect.speed} onChange={(e)=>changeCrewGradeEffect(grade.id,"speed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label></>}<label>금액 색상<span className="inline-setting-check"><input type="checkbox" checked={effect.amountEnabled===true} onChange={(e)=>changeCrewGradeEffect(grade.id,"amountEnabled",e.target.checked)}/>{effect.amountEnabled===true?"금액 + 원에도 적용":"닉네임에만 적용"}</span></label></>}
-                        </article>;
-                      })}
-                      {!(settings.crewGrades||[]).length&&<p className="empty">크루 후원 현황에서 등급을 먼저 등록해주세요.</p>}
-                    </div>
-                  </>}
-                </AlertSettingSection>
-                <AlertSettingSection
                   id="ranking-layout"
                   title="목록 배치"
                   description="정렬·열 수·표시 효과"
@@ -7785,11 +7756,10 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     style={{
                       ...(crewAmountEffect !== "none" ? crewEffectStyle : {}),
                       textAlign: settings.rankingAmountAlign,
-                      fontSize: rankHighlight && index < 3 ? "1em" : undefined,
                     }}
                   >
-                    <AnimatedRankText text={formatWon(item.amount)} stagger={staggerCharacters} offset={Array.from(String(item.donorName)).length + 2}/>
-                    {settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.amountSuffixColor || settings.rankingAmountSuffixColor || rankStyle.amountColor) : (settings.rankingAmountSuffixColor || settings.rankingAmountColor) }}>{settings.rankingAmountSuffix}</span>}
+                    <AnimatedRankText text={`${formatWon(item.amount)}${crewAmountEffect !== "none" ? settings.rankingAmountSuffix || "" : ""}`} stagger={staggerCharacters} offset={Array.from(String(item.donorName)).length + 2}/>
+                    {crewAmountEffect === "none" && settings.rankingAmountSuffix && <span className="donor-amount-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.amountSuffixColor || settings.rankingAmountSuffixColor || rankStyle.amountColor) : (settings.rankingAmountSuffixColor || settings.rankingAmountColor) }}>{settings.rankingAmountSuffix}</span>}
                   </OutlinedText>
                     </span>
                   </b>

@@ -411,18 +411,23 @@ async function getUserSettings(userId) {
     settings.crewGrades=shared.crewGrades;
     settings.crewGradePeriodStart=shared.crewGradePeriodStart;
     settings.crewTtsWordReplacements=shared.crewTtsWordReplacements;
+    settings.rankingCrewGradeEnabled=shared.rankingCrewGradeEnabled;
+    settings.rankingCrewGradePosition=shared.rankingCrewGradePosition;
+    settings.rankingCrewGradeDisplayMode=shared.rankingCrewGradeDisplayMode;
+    settings.rankingCrewGradeSize=shared.rankingCrewGradeSize;
+    settings.rankingCrewGradeEffects=shared.rankingCrewGradeEffects;
   }
   return settings;
 }
 
 async function getSharedCrewSettings() {
   const result=await db.execute(`SELECT s.value FROM users u JOIN user_settings s ON s.user_id = u.id WHERE u.role = 'super' AND u.is_active = 1 ORDER BY u.id LIMIT 1`);
-  if(!result.rows.length)return { crewGrades:[], crewGradePeriodStart:'', crewTtsWordReplacements:[] };
+  if(!result.rows.length)return { crewGrades:[], crewGradePeriodStart:'', crewTtsWordReplacements:[], rankingCrewGradeEnabled:true, rankingCrewGradePosition:'right', rankingCrewGradeDisplayMode:'image', rankingCrewGradeSize:80, rankingCrewGradeEffects:[] };
   try {
     const settings=cleanSettings(JSON.parse(result.rows[0].value));
-    return { crewGrades:settings.crewGrades, crewGradePeriodStart:settings.crewGradePeriodStart, crewTtsWordReplacements:settings.crewTtsWordReplacements };
+    return { crewGrades:settings.crewGrades, crewGradePeriodStart:settings.crewGradePeriodStart, crewTtsWordReplacements:settings.crewTtsWordReplacements, rankingCrewGradeEnabled:settings.rankingCrewGradeEnabled, rankingCrewGradePosition:settings.rankingCrewGradePosition, rankingCrewGradeDisplayMode:settings.rankingCrewGradeDisplayMode, rankingCrewGradeSize:settings.rankingCrewGradeSize, rankingCrewGradeEffects:settings.rankingCrewGradeEffects };
   } catch {
-    return { crewGrades:[], crewGradePeriodStart:'', crewTtsWordReplacements:[] };
+    return { crewGrades:[], crewGradePeriodStart:'', crewTtsWordReplacements:[], rankingCrewGradeEnabled:true, rankingCrewGradePosition:'right', rankingCrewGradeDisplayMode:'image', rankingCrewGradeSize:80, rankingCrewGradeEffects:[] };
   }
 }
 
@@ -1748,6 +1753,29 @@ app.delete('/api/youtube/donor-links/:id', requireAuth, async (req, res) => {
   res.json({ ok:true });
 });
 
+app.put('/api/crew/settings', requireAuth, requireManager, async (req,res) => {
+  try {
+    const ranges=(Array.isArray(req.body?.crewGrades)?req.body.crewGrades:[]).map(grade=>({min:Number(grade.minRank)||1,max:grade.maxRank==null||grade.maxRank===''?null:Number(grade.maxRank)})).sort((a,b)=>a.min-b.min);
+    if(ranges.some(range=>range.max!=null&&range.max<range.min))return res.status(400).json({error:'크루 등급의 마지막 순위는 시작 순위보다 크거나 같아야 합니다.'});
+    if(ranges.some((range,index)=>index>0&&(ranges[index-1].max==null||range.min<=ranges[index-1].max)))return res.status(400).json({error:'크루 등급의 순위 구간이 서로 겹치지 않게 입력해주세요.'});
+    const owner=await db.execute(`SELECT u.id, s.value FROM users u LEFT JOIN user_settings s ON s.user_id = u.id WHERE u.role = 'super' AND u.is_active = 1 ORDER BY u.id LIMIT 1`);
+    if(!owner.rows.length)return res.status(503).json({error:'크루 공통 설정을 저장할 슈퍼 계정을 찾을 수 없습니다.'});
+    const current=cleanSettings(owner.rows[0].value?JSON.parse(owner.rows[0].value):DEFAULT_SETTINGS);
+    const shared=cleanSettings({...current,crewGrades:req.body?.crewGrades,crewGradePeriodStart:req.body?.crewGradePeriodStart,rankingCrewGradeEnabled:req.body?.rankingCrewGradeEnabled,rankingCrewGradePosition:req.body?.rankingCrewGradePosition,rankingCrewGradeDisplayMode:req.body?.rankingCrewGradeDisplayMode,rankingCrewGradeSize:req.body?.rankingCrewGradeSize,rankingCrewGradeEffects:req.body?.rankingCrewGradeEffects});
+    await db.execute({sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`,args:[owner.rows[0].id,JSON.stringify(shared)]});
+    const users=await db.execute(`SELECT id FROM users WHERE is_active = 1`);
+    for(const user of users.rows){
+      const userSettings=await getUserSettings(user.id);
+      publishOverlaySettings(userSettings,user.id);
+      publishWidgetSettings(userSettings,user.id);
+      publishDataChange(user.id,'shared-crew-grade-settings-updated');
+    }
+    res.json(await getUserSettings(req.user.id));
+  } catch(error) {
+    res.status(400).json({error:error.message});
+  }
+});
+
 app.put('/api/settings', requireAuth, async (req, res) => {
   try {
     validateAmountTiers(req.body?.amountTiers);
@@ -1782,10 +1810,25 @@ app.put('/api/settings', requireAuth, async (req, res) => {
     settings.crewGrades=shared.crewGrades;
     settings.crewGradePeriodStart=shared.crewGradePeriodStart;
     settings.crewTtsWordReplacements=shared.crewTtsWordReplacements;
+    settings.rankingCrewGradeEnabled=shared.rankingCrewGradeEnabled;
+    settings.rankingCrewGradePosition=shared.rankingCrewGradePosition;
+    settings.rankingCrewGradeDisplayMode=shared.rankingCrewGradeDisplayMode;
+    settings.rankingCrewGradeSize=shared.rankingCrewGradeSize;
+    settings.rankingCrewGradeEffects=shared.rankingCrewGradeEffects;
   }
   const savedSettings = await settingsWithCrewPreview(req.user);
-  publishOverlaySettings(savedSettings, req.user.id);
-  publishWidgetSettings(savedSettings, req.user.id);
+  if(req.user.role==='super') {
+    const users=await db.execute(`SELECT id FROM users WHERE is_active = 1`);
+    for(const user of users.rows) {
+      const userSettings=await getUserSettings(user.id);
+      publishOverlaySettings(userSettings,user.id);
+      publishWidgetSettings(userSettings,user.id);
+      publishDataChange(user.id,'shared-crew-grade-settings-updated');
+    }
+  } else {
+    publishOverlaySettings(savedSettings, req.user.id);
+    publishWidgetSettings(savedSettings, req.user.id);
+  }
   publishDataChange(req.user.id, 'settings-updated');
   res.json(savedSettings);
 });
