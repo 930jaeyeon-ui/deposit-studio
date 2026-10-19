@@ -7706,8 +7706,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       rankMarkerNode
                     ) : null}
                     <span className={`rank-text-effect${!isTextMotion && rankMotion !== "none" ? ` rank-motion-${rankMotion}` : ""}`}>
-                    <span className="rank-name-group">
-                    {settings.rankingCrewGradePosition === "left" && crewGradeNode}
+                    <span className={`rank-name-group crew-grade-${settings.rankingCrewGradePosition === "left" ? "left" : "right"}`}>
                     <OutlinedText
                       className="donor-name"
                       enabled={settings.rankingNameOutlineEnabled}
@@ -7718,7 +7717,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       <AnimatedRankText text={item.donorName} stagger={staggerCharacters}/>
                       {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.nameSuffixColor || settings.rankingNameSuffixColor || rankStyle.color) : (settings.rankingNameSuffixColor || settings.rankingNameColor) }}>{settings.rankingNameSuffix}</span>}
                     </OutlinedText>
-                    {settings.rankingCrewGradePosition !== "left" && crewGradeNode}
+                    {crewGradeNode}
                     {settings.rankingShowCount && <small>{item.count}회</small>}
                     </span>
                   <OutlinedText
