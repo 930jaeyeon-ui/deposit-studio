@@ -849,3 +849,7 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 .rank-placement-inline .widget-row.row-spread>.rank-line{display:grid;grid-template-columns:var(--rank-lane-width,calc(var(--ranking-size,30px) * 1.3)) minmax(0,1fr);column-gap:0;width:100%}.rank-placement-inline .widget-row.row-spread>.rank-line>em{grid-column:1;justify-self:center;align-self:center;margin-inline-start:0}.rank-placement-inline .widget-row.row-spread>.rank-line>.rank-text-effect{grid-column:2;width:100%}
 .rank-placement-gutter .rank-marker-slot{justify-content:center}
 .widget-row .rank-name-group{justify-self:start;font-size:calc(1em * var(--rank-scale,1));transform-origin:left center}.widget-row .rank-text-effect>.donor-amount{justify-self:end;text-align:right;font-size:calc(.92em * var(--rank-scale,1));transform-origin:right center}.widget-row:is(.rank-1,.rank-2,.rank-3) .rank-text-effect>.donor-amount{font-size:calc(1em * var(--rank-scale,1))}
+.crew-effect-rainbow>.broadcast-text-fill,.crew-grade-amount.crew-amount-rainbow>.broadcast-text-fill{background-size:var(--crew-rgb-cycle-size,432px) 100%;background-repeat:repeat-x}
+@keyframes crewGradeRainbowRtl{from{background-position:0 0}to{background-position:calc(-1 * var(--crew-rgb-cycle-size,432px)) 0}}
+@keyframes crewGradeRainbowLtr{from{background-position:calc(-1 * var(--crew-rgb-cycle-size,432px)) 0}to{background-position:0 0}}
+.widget-row .rank-text-effect>.donor-amount>.broadcast-text-fill{display:block;text-align:right}

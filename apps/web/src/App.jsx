@@ -7554,10 +7554,6 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
   // shrink it based on row count; only the explicit top-rank scale is applied.
   const effectiveFontSize = settings.rankingFontSize * renderScale;
   const rankNumberLimit = Number(settings.rankingLimit) === 1 ? 1 : 3;
-  const highlightedRankStyles = (settings.rankingRankStyles || DEFAULT_SETTINGS.rankingRankStyles).slice(0, rankNumberLimit);
-  const maxRankScale = settings.rankingRankHighlightEnabled === false
-    ? 1
-    : Math.max(1, ...highlightedRankStyles.map((style) => Math.max(0.7, Math.min(2.4, (style?.size || 100) / 100))));
   const markerLaneEm = settings.rankingTheme === "rose"
     ? 2.7
     : settings.rankingTheme === "ocean"
@@ -7571,7 +7567,9 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               0.55 * 1.12 * ((settings.rankingMedalRibbonSize || 100) / 100),
             )
           : 1.3;
-  const rankLaneWidth = `${effectiveFontSize * markerLaneEm * maxRankScale}px`;
+  // Highlighted text never changes the rank lane. Ranks 1-3 therefore share
+  // one center point and every donor name starts on the same pixel.
+  const rankLaneWidth = `${effectiveFontSize * markerLaneEm}px`;
   const firstGridColumn = 2;
   const singleColumnPosition = "1 / 4";
   const cardStyle = {
@@ -7672,7 +7670,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const crewAmountEffect=crewEffect?.amountEnabled===true ? crewNicknameEffect : "none";
               const crewPalette=CREW_GRADE_RGB_PALETTES[crewEffect?.palette||"classic"]||CREW_GRADE_RGB_PALETTES.classic;
               const crewEffectDurationMs=crewEffect?.speed==="slow"?4800:crewEffect?.speed==="fast"?1600:2800;
-              const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.backgroundEnabled===false?"transparent":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":`${crewEffectDurationMs}ms`,"--crew-effect-delay":`-${Date.now()%crewEffectDurationMs}ms`,"--crew-rgb-gradient":crewPalette.gradient} : undefined;
+              const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.backgroundEnabled===false?"transparent":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":`${crewEffectDurationMs}ms`,"--crew-effect-delay":`-${Date.now()%crewEffectDurationMs}ms`,"--crew-rgb-gradient":crewPalette.gradient,"--crew-rgb-cycle-size":`${effectiveFontSize*12}px`} : undefined;
               const crewGradeNode=settings.rankingCrewGradeEnabled !== false && crewGrade && settings.rankingCrewGradeDisplayMode !== "none" && (settings.rankingCrewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:`${(settings.rankingCrewGradeSize||80)/100}em`}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`} style={{width:`${(settings.rankingCrewGradeSize||80)/100}em`,height:`${(settings.rankingCrewGradeSize||80)/100}em`}}/> : null);
               const rankMarkerNode = index < rankNumberLimit && !markerHidden ? (
                 <em
@@ -7741,8 +7739,8 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       color={settings.rankingNameOutlineColor}
                       style={crewEffectStyle}
                     >
-                      <AnimatedRankText text={item.donorName} stagger={staggerCharacters}/>
-                      {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.nameSuffixColor || settings.rankingNameSuffixColor || rankStyle.color) : (settings.rankingNameSuffixColor || settings.rankingNameColor) }}>{settings.rankingNameSuffix}</span>}
+                      <AnimatedRankText text={`${item.donorName}${crewNicknameEffect!=="none"?settings.rankingNameSuffix||"":""}`} stagger={staggerCharacters}/>
+                      {crewNicknameEffect==="none"&&settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.nameSuffixColor || settings.rankingNameSuffixColor || rankStyle.color) : (settings.rankingNameSuffixColor || settings.rankingNameColor) }}>{settings.rankingNameSuffix}</span>}
                     </OutlinedText>
                     {crewGradeNode}
                     {settings.rankingShowCount && <small>{item.count}회</small>}
