@@ -4038,7 +4038,6 @@ function Settings({ mode }) {
   const [youtubeStatus, setYoutubeStatus] = useState({ state:"disabled", text:"유튜브 채팅 수신 꺼짐" });
   const [saved, setSaved] = useState("");
   const [previewRun, setPreviewRun] = useState(0);
-  const crewGradeAutoSaveReady = useRef(false);
   const [rankingPreviewCount, setRankingPreviewCount] = useState(10);
   const rankingPreviewRows = Math.max(1, Math.min(30, Number(settings.rankingRowsPerColumn) || 10));
   const rankingPreviewColumns = Math.max(1, Math.min(2, Number(settings.rankingColumns) || 1));
@@ -4198,46 +4197,6 @@ function Settings({ mode }) {
     setSavedSettings(hydratedNext);
     return hydratedNext;
   }
-  const crewGradeAutoSaveSignature = JSON.stringify({
-    enabled:settings.rankingCrewGradeEnabled,
-    position:settings.rankingCrewGradePosition,
-    displayMode:settings.rankingCrewGradeDisplayMode,
-    size:settings.rankingCrewGradeSize,
-    effects:settings.rankingCrewGradeEffects,
-  });
-  useEffect(() => {
-    if (mode !== "ranking" || !settingsLoaded) return undefined;
-    if (!crewGradeAutoSaveReady.current) {
-      crewGradeAutoSaveReady.current = true;
-      return undefined;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const next = await api("/api/settings/ranking-crew-grade", {
-          method:"PATCH",
-          body:JSON.stringify({
-            rankingCrewGradeEnabled:settings.rankingCrewGradeEnabled,
-            rankingCrewGradePosition:settings.rankingCrewGradePosition,
-            rankingCrewGradeDisplayMode:settings.rankingCrewGradeDisplayMode,
-            rankingCrewGradeSize:settings.rankingCrewGradeSize,
-            rankingCrewGradeEffects:settings.rankingCrewGradeEffects,
-          }),
-        });
-        setSavedSettings((current) => ({
-          ...current,
-          rankingCrewGradeEnabled:next.rankingCrewGradeEnabled,
-          rankingCrewGradePosition:next.rankingCrewGradePosition,
-          rankingCrewGradeDisplayMode:next.rankingCrewGradeDisplayMode,
-          rankingCrewGradeSize:next.rankingCrewGradeSize,
-          rankingCrewGradeEffects:next.rankingCrewGradeEffects,
-        }));
-        setSaved("크루 등급 표시 설정이 자동 저장되어 OBS에 적용됐습니다.");
-      } catch (error) {
-        setSaved(error.message || "크루 등급 표시 설정을 자동 저장하지 못했습니다.");
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [crewGradeAutoSaveSignature, mode, settingsLoaded]);
   function restoreSettings() {
     setStoredSettings(savedSettings);
     setPreviewRun((current) => current + 1);
@@ -7729,7 +7688,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const crewEffect=(settings.rankingCrewGradeEffects||[]).find(effect=>effect.gradeId===crewGrade?.id);
               const crewNicknameEffect=settings.rankingCrewGradeEnabled !== false ? (crewEffect?.effect || "none") : "none";
               const crewPalette=CREW_GRADE_RGB_PALETTES[crewEffect?.palette||"classic"]||CREW_GRADE_RGB_PALETTES.classic;
-              const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.backgroundEnabled===false?"transparent":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":crewEffect?.speed==="slow"?"4.8s":crewEffect?.speed==="fast"?"1.6s":"2.8s","--crew-rgb-gradient":crewPalette.gradient,"--crew-rgb-direction":crewEffect?.direction==="ltr"?"reverse":"normal"} : undefined;
+              const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.backgroundEnabled===false?"transparent":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":crewEffect?.speed==="slow"?"4.8s":crewEffect?.speed==="fast"?"1.6s":"2.8s","--crew-rgb-gradient":crewPalette.gradient} : undefined;
               const crewGradeNode=settings.rankingCrewGradeEnabled !== false && crewGrade && settings.rankingCrewGradeDisplayMode !== "none" && (settings.rankingCrewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:`${(settings.rankingCrewGradeSize||80)/100}em`}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`} style={{width:`${(settings.rankingCrewGradeSize||80)/100}em`,height:`${(settings.rankingCrewGradeSize||80)/100}em`}}/> : null);
               const rankMarkerNode = index < rankNumberLimit && !markerHidden ? (
                 <em
@@ -7791,7 +7750,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     <span className={`rank-text-effect${!isTextMotion && rankMotion !== "none" ? ` rank-motion-${rankMotion}` : ""}`}>
                     <span className={`rank-name-group crew-grade-${settings.rankingCrewGradePosition === "left" ? "left" : "right"}`}>
                     <OutlinedText
-                      className={`donor-name${crewNicknameEffect !== "none" ? ` crew-nickname-effect crew-effect-${crewNicknameEffect}` : ""}`}
+                      className={`donor-name${crewNicknameEffect !== "none" ? ` crew-nickname-effect crew-effect-${crewNicknameEffect}${crewNicknameEffect === "rainbow" ? ` crew-rgb-${crewEffect?.direction === "ltr" ? "ltr" : "rtl"}` : ""}` : ""}`}
                       enabled={settings.rankingNameOutlineEnabled}
                       singlePass
                       width={`${Math.min(0.12, settings.rankingNameOutlineWidth / Math.max(1, settings.rankingFontSize))}em`}
@@ -7860,7 +7819,12 @@ function Widget({ token, full = false }) {
     let knownRevision = null;
     const onSignal = (event) => {
       lastSignalAt = Date.now();
-      const revision = Number(JSON.parse(event.data).revision);
+      const payload = JSON.parse(event.data);
+      if (payload.reason === "settings-updated") {
+        window.location.reload();
+        return;
+      }
+      const revision = Number(payload.revision);
       if (knownRevision !== revision) {
         knownRevision = revision;
         load().catch(() => { knownRevision = null; });

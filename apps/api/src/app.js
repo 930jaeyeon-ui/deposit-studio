@@ -1583,29 +1583,6 @@ app.get('/api/settings', requireAuth, async (req, res) => {
   res.json(await settingsWithCrewPreview(req.user));
 });
 
-app.patch('/api/settings/ranking-crew-grade', requireAuth, async (req, res) => {
-  const current = await getUserSettings(req.user.id);
-  const settings = cleanSettings({
-    ...current,
-    rankingCrewGradeEnabled:req.body?.rankingCrewGradeEnabled ?? current.rankingCrewGradeEnabled,
-    rankingCrewGradePosition:req.body?.rankingCrewGradePosition ?? current.rankingCrewGradePosition,
-    rankingCrewGradeDisplayMode:req.body?.rankingCrewGradeDisplayMode ?? current.rankingCrewGradeDisplayMode,
-    rankingCrewGradeSize:req.body?.rankingCrewGradeSize ?? current.rankingCrewGradeSize,
-    rankingCrewGradeEffects:req.body?.rankingCrewGradeEffects ?? current.rankingCrewGradeEffects,
-  });
-  if(req.user.role!=='super') {
-    settings.crewGrades=[];
-    settings.crewGradePeriodStart='';
-    settings.crewTtsWordReplacements=[];
-  }
-  await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
-  const savedSettings = await settingsWithCrewPreview(req.user);
-  publishOverlaySettings(savedSettings, req.user.id);
-  publishWidgetSettings(savedSettings, req.user.id);
-  publishDataChange(req.user.id, 'ranking-crew-grade-updated');
-  res.json(savedSettings);
-});
-
 app.get('/api/widgets/:token/full', async (req, res) => {
   const user = await getObsUser(req.params.token);
   if (!user) return res.status(404).json({ error:'유효하지 않은 OBS 주소입니다.' });
