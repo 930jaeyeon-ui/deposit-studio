@@ -41,6 +41,7 @@ const CREW_GRADE_RGB_PALETTES = {
   neon:{label:"네온",gradient:"#ff2bd6,#9b5cff,#247bff,#00f5d4,#ff2bd6"},
   aurora:{label:"오로라",gradient:"#7c3aed,#2563eb,#06b6d4,#84cc16,#7c3aed"},
   pastel:{label:"파스텔",gradient:"#ff9ecf,#ffbc8b,#fff08a,#9ff5cf,#9ed8ff,#c7a6ff,#ff9ecf"},
+  vividPastel:{label:"비비드 파스텔",gradient:"#ff6fae,#ff9f5a,#ffe35a,#64e6aa,#62cfff,#a985ff,#ff6fae"},
   softPastel:{label:"소프트 파스텔",gradient:"#ffd9e8,#ffe4d1,#fff6c7,#d9f7e8,#d8efff,#e8ddff,#ffd9e8"},
   deepRedPastel:{label:"딥 레드 파스텔",gradient:"#ff9eb5,#ff6f91,#e63956,#ff8a80,#ffc2d1,#d9b8ff,#ff9eb5"},
   monochrome:{label:"모노크롬",gradient:"#ffffff,#d9d9d9,#8a8a8a,#242424,#000000,#6b6b6b,#ffffff"},
