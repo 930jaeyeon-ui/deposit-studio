@@ -38,28 +38,34 @@ test('streamList 연결은 기존 채팅을 건너뛰고 새 명령을 중복 �
     ok:true,
     json:async () => ({ items:[{ liveStreamingDetails:{ activeLiveChatId:'live-chat-1' } }] }),
   });
-  const connection = new YouTubeChatConnection(7,'api-key','abcdefghijk',async (_userId, command) => commands.push(command),(_userId,status)=>statuses.push(status),{ streamFactory,fetchImpl,retryDelayMs:1 });
+  const connection = new YouTubeChatConnection(7,'api-key','abcdefghijk',async (_userId, command) => commands.push(command),(_userId,status)=>statuses.push(status),{ streamFactory,fetchImpl,retryDelayMs:1,retryStatusDelayMs:25 });
   await connection.connect();
   assert.equal(streams.length,1);
   streams[0].stream.emit('data',{ nextPageToken:'page-1',items:[{
     id:'history',snippet:{type:'TEXT_MESSAGE_EVENT',displayMessage:'!후원 과거 과거 메시지'},authorDetails:{channelId:'old',displayName:'과거'}
+  },{
+    id:'fresh-registration',snippet:{type:'TEXT_MESSAGE_EVENT',publishedAt:new Date(Date.now()+1000).toISOString(),displayMessage:'!후원등록 폴조지'},authorDetails:{channelId:'fresh',displayName:'신규 시청자'}
   }] });
   streams[0].stream.emit('data',{ nextPageToken:'page-2',items:[{
     id:'new-1',snippet:{type:'TEXT_MESSAGE_EVENT',displayMessage:'!후원 홍길동 새 메시지'},authorDetails:{channelId:'channel-1',displayName:'시청자'}
   }] });
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(commands.length,1);
-  assert.equal(commands[0].text,'!후원 홍길동 새 메시지');
+  assert.equal(commands.length,2);
+  assert.equal(commands[0].text,'!후원등록 폴조지');
+  assert.equal(commands[1].text,'!후원 홍길동 새 메시지');
   streams[0].stream.emit('data',{ nextPageToken:'page-3',items:[{
     id:'new-1',snippet:{type:'TEXT_MESSAGE_EVENT',displayMessage:'!후원 홍길동 새 메시지'},authorDetails:{channelId:'channel-1',displayName:'시청자'}
   }] });
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(commands.length,1);
+  assert.equal(commands.length,2);
   assert.ok(statuses.some(status=>status.state==='connected'));
   streams[0].stream.emit('end');
   await new Promise(resolve=>setTimeout(resolve,10));
   assert.equal(streams.length,2);
   assert.equal(streams[1].input.pageToken,'page-3');
+  assert.notEqual(statuses.at(-1).state,'retrying');
+  await new Promise(resolve=>setTimeout(resolve,20));
+  assert.equal(statuses.at(-1).state,'retrying');
   connection.stop();
 });
 

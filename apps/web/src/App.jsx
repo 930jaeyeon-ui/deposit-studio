@@ -2811,18 +2811,25 @@ function Dashboard() {
     donations: [],
     summary: { totalAmount: 0, donationCount: 0, donorCount: 0 },
     settings: DEFAULT_SETTINGS,
+    gradePeriod: null,
+    gradeRanking: [],
   });
   const [message, setMessage] = useState("");
   const [savingGrades, setSavingGrades] = useState(false);
   const [isGradeEditing, setIsGradeEditing] = useState(false);
   const [maskAmounts, setMaskAmounts] = useState(false);
-  const load = () =>
-    api("/api/dashboard")
+  const [selectedGradePeriod, setSelectedGradePeriod] = useState("");
+  const load = (gradePeriod = "") =>
+    api(`/api/dashboard${gradePeriod ? `?gradePeriod=${encodeURIComponent(gradePeriod)}` : ""}`)
       .then(setData)
       .catch((e) => setMessage(e.message));
   useEffect(() => {
-    load();
-  }, []);
+    load(selectedGradePeriod);
+    const stream=new EventSource(apiUrl("/api/dashboard/events"),{withCredentials:true});
+    stream.addEventListener("change",()=>load(selectedGradePeriod));
+    stream.onerror=()=>setMessage("실시간 연결이 끊어졌습니다. 화면을 새로고침하면 다시 연결됩니다.");
+    return ()=>stream.close();
+  }, [selectedGradePeriod]);
 
   const setGrades = (crewGrades) =>
     setData((current) => ({
@@ -2835,8 +2842,8 @@ function Dashboard() {
       {
         id: crypto.randomUUID(),
         name: "새 등급",
-        minAmount: 100000,
-        maxAmount: 1000000,
+        minRank: 1,
+        maxRank: 5,
         imageName: "",
         imageData: "",
       },
@@ -2871,11 +2878,11 @@ function Dashboard() {
     const ranges = [...(data.settings.crewGrades || [])]
       .map((grade) => ({
         name: grade.name,
-        min: Number(grade.minAmount) || 0,
+        min: Number(grade.minRank) || 1,
         max:
-          grade.maxAmount == null || grade.maxAmount === ""
+          grade.maxRank == null || grade.maxRank === ""
             ? null
-            : Number(grade.maxAmount),
+            : Number(grade.maxRank),
       }))
       .sort((a, b) => a.min - b.min);
     const invalid = ranges.find(
@@ -2883,7 +2890,7 @@ function Dashboard() {
     );
     if (invalid) {
       setMessage(
-        `${invalid.name} 등급의 최대 누적 금액은 최소 누적 금액보다 크거나 같아야 합니다.`,
+        `${invalid.name} 등급의 마지막 순위는 시작 순위보다 크거나 같아야 합니다.`,
       );
       return;
     }
@@ -2894,7 +2901,7 @@ function Dashboard() {
     );
     if (overlap) {
       setMessage(
-        `${overlap.name} 등급의 누적 금액 구간이 다른 등급과 겹칩니다.`,
+        `${overlap.name} 등급의 순위 구간이 다른 등급과 겹칩니다.`,
       );
       return;
     }
@@ -2906,6 +2913,7 @@ function Dashboard() {
         body: JSON.stringify(data.settings),
       });
       setData((current) => ({ ...current, settings }));
+      await load(selectedGradePeriod);
       setIsGradeEditing(false);
       setMessage(
         "크루 등급표를 저장했습니다. 후원 알림에서 자동으로 사용됩니다.",
@@ -2921,7 +2929,7 @@ function Dashboard() {
   const donationCount = Number(data.summary?.donationCount || 0);
   const average = donationCount ? Math.round(total / donationCount) : 0;
   const visibleGrades = [...(data.settings.crewGrades || [])].sort(
-    (a, b) => Number(b.minAmount || 0) - Number(a.minAmount || 0),
+    (a, b) => Number(a.minRank || 1) - Number(b.minRank || 1),
   );
   return (
     <PageLayout>
@@ -2977,8 +2985,8 @@ function Dashboard() {
               <h3>크루 누적 등급표</h3>
               {canManageGrades && (
                 <p className="account-explain">
-                  누적 후원 구간과 이미지를 등록하면 모든 크루 계정의 후원
-                  알림에 공통으로 적용됩니다.
+                  2개월 동안의 실시간 후원 순위 구간과 이미지를 설정합니다.
+                  설정은 다음 기간에도 그대로 적용됩니다.
                 </p>
               )}
             </div>
@@ -2986,14 +2994,27 @@ function Dashboard() {
               <button type="button" className="header-button" onClick={()=>setIsGradeEditing(true)}>등급 추가/변경</button>
             ) : (
               <div className="grade-panel-actions">
-                <button type="button" className="secondary-button" onClick={async()=>{setIsGradeEditing(false);await load();}}>편집 취소</button>
+                <button type="button" className="secondary-button" onClick={async()=>{setIsGradeEditing(false);await load(selectedGradePeriod);}}>편집 취소</button>
                 <button type="button" className="header-button" onClick={addGrade}>등급 추가</button>
               </div>
             ))}
           </div>
+          <div className="crew-grade-period-bar">
+            <button type="button" className="secondary-button" onClick={()=>setSelectedGradePeriod(data.gradePeriod?.previousStart || "")}>← 이전 기간</button>
+            <strong>{data.gradePeriod ? `${data.gradePeriod.start} ~ ${data.gradePeriod.end}` : "기간 불러오는 중"}</strong>
+            <button type="button" className="secondary-button" disabled={!data.gradePeriod || data.gradePeriod.isCurrent} onClick={()=>setSelectedGradePeriod(data.gradePeriod?.nextStart || "")}>다음 기간 →</button>
+            {data.gradePeriod?.isCurrent && <span>실시간 집계 중</span>}
+          </div>
+          {canManageGrades && isGradeEditing && (
+            <label className="crew-grade-anchor">2개월 집계 기준 시작일
+              <input type="date" value={data.settings.crewGradePeriodStart || ""} onChange={(e)=>setData(current=>({...current,settings:{...current.settings,crewGradePeriodStart:e.target.value}}))}/>
+              <small>예: 11/1 시작 시 11/1~12/31, 1/1~2/28 순서로 자동 전환됩니다.</small>
+            </label>
+          )}
           <div className="crew-grade-list">
-            {visibleGrades.map((grade) => (
-              <article key={grade.id}>
+            {visibleGrades.map((grade) => {
+              const members=(data.gradeRanking || []).filter(item=>Number(item.rank)>=Number(grade.minRank||1)&&(grade.maxRank==null||Number(item.rank)<=Number(grade.maxRank)));
+              return <article key={grade.id}>
                 {grade.imageData ? (
                   <img src={grade.imageData} alt={`${grade.name} 등급`} />
                 ) : (
@@ -3013,49 +3034,43 @@ function Dashboard() {
                     </label>
                     <div className="grade-range">
                       <label>
-                        최소 누적 금액
+                        시작 순위
                         <input
                           type="number"
                           min="0"
-                          step="10000"
-                          value={grade.minAmount}
+                          step="1"
+                          value={grade.minRank}
                           onChange={(e) =>
                             changeGrade(
                               grade.id,
-                              "minAmount",
-                              Math.max(0, Number(e.target.value)),
+                              "minRank",
+                              Math.max(1, Number(e.target.value)),
                             )
                           }
                         />
                       </label>
                       <span>~</span>
                       <label>
-                        최대 누적 금액
+                        마지막 순위
                         <input
                           type="number"
                           min="0"
-                          step="10000"
+                          step="1"
                           placeholder="제한 없음"
-                          value={grade.maxAmount ?? ""}
+                          value={grade.maxRank ?? ""}
                           onChange={(e) =>
                             changeGrade(
                               grade.id,
-                              "maxAmount",
+                              "maxRank",
                               e.target.value === ""
                                 ? null
-                                : Math.max(0, Number(e.target.value)),
+                                : Math.max(1, Number(e.target.value)),
                             )
                           }
                         />
                       </label>
                       <small>
-                        {maskAmounts
-                          ? "•••••• ~ ••••••"
-                          : `${formatKoreanWon(grade.minAmount)} ~ ${
-                              grade.maxAmount == null
-                                ? "제한 없음"
-                                : formatKoreanWon(grade.maxAmount)
-                            }`}
+                        {grade.minRank}위 ~ {grade.maxRank == null ? "이하 전체" : `${grade.maxRank}위`}
                       </small>
                     </div>
                     <label className="grade-file">
@@ -3088,21 +3103,18 @@ function Dashboard() {
                       <b>{grade.name}</b>
                     </div>
                     <div className="grade-readonly-amount">
-                      <small>누적 금액 구간</small>
+                      <small>순위 구간 · 현재 {members.length}명</small>
                       <b>
-                        {maskAmounts
-                          ? "•••••• ~ ••••••"
-                          : `${formatKoreanWon(grade.minAmount)} ~ ${
-                              grade.maxAmount == null
-                                ? "제한 없음"
-                                : formatKoreanWon(grade.maxAmount)
-                            }`}
+                        {grade.minRank}위 ~ {grade.maxRank == null ? "이하 전체" : `${grade.maxRank}위`}
                       </b>
+                    </div>
+                    <div className="grade-members">
+                      {members.map(member=><div key={`${grade.id}-${member.donorName}`}><b><i>{member.rank}</i>{member.donorName}</b><span>{maskAmounts ? "••••••원" : `${formatWon(member.amount)}원`}</span></div>)}
+                      {!members.length && <small>이 기간에 포함된 후원자가 없습니다.</small>}
                     </div>
                   </>
                 )}
-              </article>
-            ))}
+              </article>})}
             {!visibleGrades.length && (
               <p className="empty">등록된 등급이 없습니다.</p>
             )}
@@ -7597,6 +7609,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const isTextMotion = ["pulse","float","sway","glow"].includes(rankMotion);
               const staggerCharacters = isTextMotion && rankStyle.staggerCharacters === true;
               const markerHidden = settings.rankingHiddenRankMarkers?.[index] === true || rankStyle.hideMarker === true;
+              const crewGrade=(settings.crewGrades||[]).find(grade=>grade.id===item.crewGradeId);
               const rankMarkerNode = index < rankNumberLimit && !markerHidden ? (
                 <em
                   className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"} ribbon-shape-${settings.rankingMedalRibbonShape || "classic"} ribbon-${settings.rankingMedalRibbonPattern || "solid"} depth-${settings.rankingMedalDepth || "soft"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}
@@ -7656,6 +7669,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     ) : null}
                     <span className={`rank-text-effect${!isTextMotion && rankMotion !== "none" ? ` rank-motion-${rankMotion}` : ""}`}>
                     <span className="rank-name-group">
+                    {settings.crewGradeEnabled && crewGrade && (settings.crewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`}/> : null)}
                     <OutlinedText
                       className="donor-name"
                       enabled={settings.rankingNameOutlineEnabled}

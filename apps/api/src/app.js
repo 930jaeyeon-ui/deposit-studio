@@ -80,12 +80,12 @@ function publishDataChange(userId, reason = 'updated') {
   dataChangeRevisions.set(Number(userId), revision);
   const payload = { reason, revision, changedAt:new Date().toISOString() };
   for (const client of dataChangeClients) {
-    if (Number(client.userId) !== Number(userId)) continue;
+    if (!client.allUsers && Number(client.userId) !== Number(userId)) continue;
     sendOverlayEvent(client.res, 'change', payload);
   }
 }
 
-function openDataChangeStream(req, res, userId) {
+function openDataChangeStream(req, res, userId, allUsers = false) {
   res.set({
     'Content-Type':'text/event-stream',
     'Cache-Control':'no-cache, no-transform',
@@ -93,7 +93,7 @@ function openDataChangeStream(req, res, userId) {
     'X-Accel-Buffering':'no'
   });
   res.flushHeaders();
-  const client = { res, userId };
+  const client = { res, userId, allUsers };
   dataChangeClients.add(client);
   sendOverlayEvent(res, 'ready', { connected:true, revision:dataChangeRevisions.get(Number(userId)) || 0 });
   const heartbeat = setInterval(() => sendOverlayEvent(res, 'heartbeat', { revision:dataChangeRevisions.get(Number(userId)) || 0 }), 15000);
@@ -196,10 +196,50 @@ function bankTestOverlayDonation(donation) {
 
 async function donationWithCrewGrade(donation, userId, settings) {
   if (!settings?.crewGradeEnabled) return { ...donation, crewGradeId:null };
-  const total = await db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) total FROM donations d LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE ${effectiveDonorName} = ? AND d.status = 'included'`, args:[donation.donorName] });
-  const cumulativeAmount=Number(total.rows[0]?.total||0);
-  const grade=[...(settings.crewGrades||[])].filter(item=>cumulativeAmount>=Number(item.minAmount||0)&&(item.maxAmount==null||cumulativeAmount<=Number(item.maxAmount))).sort((a,b)=>Number(b.minAmount)-Number(a.minAmount))[0];
-  return { ...donation, cumulativeAmount, crewGradeId:grade?.id||null };
+  const period = crewGradePeriod(settings.crewGradePeriodStart);
+  const ranking = await crewGradeRanking(period.start, period.end);
+  const entry = ranking.find(item => item.donorName === donation.donorName);
+  const rank = Number(entry?.rank || 0);
+  const grade=[...(settings.crewGrades||[])].find(item=>rank>=Number(item.minRank||1)&&(item.maxRank==null||rank<=Number(item.maxRank)));
+  return { ...donation, cumulativeAmount:Number(entry?.amount||0), crewGradeRank:rank||null, crewGradeId:grade?.id||null };
+}
+
+function calendarDate(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? String(value) : new Date(Date.now() + 9*60*60*1000).toISOString().slice(0,8) + '01';
+}
+
+function shiftCalendarMonths(dateText, months) {
+  const [year, month, day] = dateText.split('-').map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${target.getUTCFullYear()}-${String(target.getUTCMonth()+1).padStart(2,'0')}-${String(Math.min(day,lastDay)).padStart(2,'0')}`;
+}
+
+function crewGradePeriod(anchorValue, selectedValue = '') {
+  const anchor = calendarDate(anchorValue);
+  const today = new Date(Date.now() + 9*60*60*1000).toISOString().slice(0,10);
+  const selected = calendarDate(selectedValue || today);
+  const [ay,am] = anchor.split('-').map(Number);
+  const [sy,sm] = selected.split('-').map(Number);
+  let step = Math.floor(((sy-ay)*12 + sm-am) / 2);
+  let start = shiftCalendarMonths(anchor, step*2);
+  while (selected < start) start = shiftCalendarMonths(anchor, --step*2);
+  while (selected >= shiftCalendarMonths(anchor,(step+1)*2)) start = shiftCalendarMonths(anchor,++step*2);
+  const nextStart = shiftCalendarMonths(anchor,(step+1)*2);
+  const endDate = new Date(`${nextStart}T00:00:00Z`);
+  endDate.setUTCDate(endDate.getUTCDate()-1);
+  const end=endDate.toISOString().slice(0,10);
+  return { start, end, nextStart, previousStart:shiftCalendarMonths(anchor,(step-1)*2), isCurrent:today>=start&&today<=end };
+}
+
+async function crewGradeRanking(start, end) {
+  const result = await db.execute({ sql:`SELECT ${effectiveDonorName} donorName, SUM(d.amount) amount, COUNT(*) count
+    FROM donations d JOIN users u ON u.id=d.recipient_user_id
+    LEFT JOIN donor_aliases a ON a.recipient_user_id=d.recipient_user_id AND a.raw_name=d.donor_name
+    WHERE d.status='included' AND u.role <> 'super'
+      AND date(datetime(d.received_at, '+9 hours')) >= ? AND date(datetime(d.received_at, '+9 hours')) <= ?
+    GROUP BY ${effectiveDonorName} ORDER BY amount DESC, donorName`, args:[start,end] });
+  return result.rows.map((row,index)=>({ ...row, amount:Number(row.amount), count:Number(row.count), rank:index+1 }));
 }
 
 async function settingsWithCrewPreview(user) {
@@ -361,6 +401,7 @@ async function getUserSettings(userId) {
   if(result.rows[0].role!=='super') {
     const shared = await getSharedCrewSettings();
     settings.crewGrades=shared.crewGrades;
+    settings.crewGradePeriodStart=shared.crewGradePeriodStart;
     settings.crewTtsWordReplacements=shared.crewTtsWordReplacements;
   }
   return settings;
@@ -368,12 +409,12 @@ async function getUserSettings(userId) {
 
 async function getSharedCrewSettings() {
   const result=await db.execute(`SELECT s.value FROM users u JOIN user_settings s ON s.user_id = u.id WHERE u.role = 'super' AND u.is_active = 1 ORDER BY u.id LIMIT 1`);
-  if(!result.rows.length)return { crewGrades:[], crewTtsWordReplacements:[] };
+  if(!result.rows.length)return { crewGrades:[], crewGradePeriodStart:'', crewTtsWordReplacements:[] };
   try {
     const settings=cleanSettings(JSON.parse(result.rows[0].value));
-    return { crewGrades:settings.crewGrades, crewTtsWordReplacements:settings.crewTtsWordReplacements };
+    return { crewGrades:settings.crewGrades, crewGradePeriodStart:settings.crewGradePeriodStart, crewTtsWordReplacements:settings.crewTtsWordReplacements };
   } catch {
-    return { crewGrades:[], crewTtsWordReplacements:[] };
+    return { crewGrades:[], crewGradePeriodStart:'', crewTtsWordReplacements:[] };
   }
 }
 
@@ -470,13 +511,14 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.crewGradeTextColor=String(settings.crewGradeTextColor||DEFAULT_SETTINGS.crewGradeTextColor).slice(0,20);
   settings.crewGradeTextFontFamily=String(settings.crewGradeTextFontFamily||DEFAULT_SETTINGS.crewGradeTextFontFamily).slice(0,120);
   settings.crewGradeTextSize=Math.max(16,Math.min(160,Number(settings.crewGradeTextSize)||54));
+  settings.crewGradePeriodStart=calendarDate(settings.crewGradePeriodStart);
   settings.crewGradeMinimumAmount = Math.max(0, Math.min(1000000000, Number(settings.crewGradeMinimumAmount) || DEFAULT_SETTINGS.crewGradeMinimumAmount));
   settings.crewGradeImageData = String(settings.crewGradeImageData || '').slice(0,MEDIA_DATA_URL_MAX_LENGTH);
   if (settings.crewGradeImageData && !settings.crewGradeImageData.startsWith('data:image/')) settings.crewGradeImageData = '';
   settings.crewGradeImageName = String(settings.crewGradeImageName || '').slice(0,100);
   const requestedGradeImageSize=Number(settings.crewGradeImageSize)||DEFAULT_SETTINGS.crewGradeImageSize;
   settings.crewGradeImageSize = Math.max(80, Math.min(400, requestedGradeImageSize <= 180 ? DEFAULT_SETTINGS.crewGradeImageSize : requestedGradeImageSize));
-  settings.crewGrades = Array.isArray(settings.crewGrades) ? settings.crewGrades.slice(0,20).map((grade,index)=>({id:String(grade.id||`grade-${index}`).slice(0,50),name:String(grade.name||`${index+1}등급`).slice(0,30),minAmount:Math.max(0,Math.min(1000000000,Number(grade.minAmount)||0)),maxAmount:grade.maxAmount==null||grade.maxAmount===''?null:Math.max(0,Math.min(1000000000,Number(grade.maxAmount)||0)),imageName:String(grade.imageName||'').slice(0,100),imageData:String(grade.imageData||'').slice(0,MEDIA_DATA_URL_MAX_LENGTH)})).filter(grade=>!grade.imageData||grade.imageData.startsWith('data:image/')) : [];
+  settings.crewGrades = Array.isArray(settings.crewGrades) ? settings.crewGrades.slice(0,20).map((grade,index)=>({id:String(grade.id||`grade-${index}`).slice(0,50),name:String(grade.name||`${index+1}등급`).slice(0,30),minRank:Math.max(1,Math.min(10000,Number(grade.minRank)||index*5+1)),maxRank:Object.prototype.hasOwnProperty.call(grade,'maxRank')?(grade.maxRank==null||grade.maxRank===''?null:Math.max(1,Math.min(10000,Number(grade.maxRank)||1))):(index+1)*5,imageName:String(grade.imageName||'').slice(0,100),imageData:String(grade.imageData||'').slice(0,MEDIA_DATA_URL_MAX_LENGTH)})).filter(grade=>!grade.imageData||grade.imageData.startsWith('data:image/')) : [];
   settings.customSoundData = String(settings.customSoundData || '').slice(0,MEDIA_DATA_URL_MAX_LENGTH);
   settings.customSoundName = String(settings.customSoundName || '').slice(0,100);
   settings.soundLibrary = Array.isArray(settings.soundLibrary) ? settings.soundLibrary.slice(0,10).map((sound,index)=>({id:String(sound.id || `sound-${index}`).slice(0,50),name:String(sound.name || `내 음원 ${index+1}`).slice(0,100),data:String(sound.data || '').slice(0,MEDIA_DATA_URL_MAX_LENGTH)})).filter(sound=>sound.data.startsWith('data:audio/')) : [];
@@ -911,7 +953,9 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
     db.execute({ sql:`SELECT COALESCE(SUM(d.amount),0) totalAmount, COUNT(*) donationCount, COUNT(DISTINCT ${effectiveDonorName}) donorCount FROM donations d JOIN users u ON u.id = d.recipient_user_id LEFT JOIN donor_aliases a ON a.recipient_user_id = d.recipient_user_id AND a.raw_name = d.donor_name WHERE d.session_id = ? AND d.status = 'included' AND u.role <> 'super'`, args:[session.id] }),
     getUserSettings(req.user.id)
   ]);
-  res.json({ session, donations:donations.rows, summary:summary.rows[0], settings:savedSettings });
+  const gradePeriod=crewGradePeriod(savedSettings.crewGradePeriodStart, req.query.gradePeriod);
+  const gradeRanking=await crewGradeRanking(gradePeriod.start, gradePeriod.end);
+  res.json({ session, donations:donations.rows, summary:summary.rows[0], settings:savedSettings, gradePeriod, gradeRanking });
 });
 
 app.get('/api/dashboard/donors', requireAuth, async (req, res) => {
@@ -927,6 +971,10 @@ app.get('/api/dashboard/donors', requireAuth, async (req, res) => {
   ]);
   const totalCount = Number(total.rows[0]?.total || 0);
   res.json({ items:items.rows, total:totalCount, offset, limit, hasMore:offset + items.rows.length < totalCount, match:match.rows[0] || null });
+});
+
+app.get('/api/dashboard/events', requireAuth, (req, res) => {
+  openDataChangeStream(req, res, req.user.id, true);
 });
 
 app.get('/api/my/donors', requireAuth, async (req, res) => {
@@ -1304,7 +1352,16 @@ async function widgetDataForUser(userId, { full = false } = {}) {
     merged.set(row.donorName, current);
   }
   const sortedRanking = [...merged.values()].filter(row => row.amount > 0).sort((a,b) => b.amount - a.amount || String(b.lastReceivedAt||'').localeCompare(String(a.lastReceivedAt||'')) || a.donorName.localeCompare(b.donorName, 'ko'));
-  const visibleRanking = full ? sortedRanking : sortedRanking.slice(0,60);
+  const settings=await getUserSettings(userId);
+  const gradePeriod=crewGradePeriod(settings.crewGradePeriodStart);
+  const crewRanking=settings.crewGradeEnabled ? await crewGradeRanking(gradePeriod.start,gradePeriod.end) : [];
+  const crewRanks=new Map(crewRanking.map(item=>[item.donorName,item.rank]));
+  const gradedRanking=sortedRanking.map(item=>{
+    const crewGradeRank=Number(crewRanks.get(item.donorName)||0);
+    const crewGrade=(settings.crewGrades||[]).find(grade=>crewGradeRank>=Number(grade.minRank||1)&&(grade.maxRank==null||crewGradeRank<=Number(grade.maxRank)));
+    return {...item,crewGradeRank:crewGradeRank||null,crewGradeId:crewGrade?.id||null};
+  });
+  const visibleRanking = full ? gradedRanking : gradedRanking.slice(0,60);
   return { donations:donations.rows, ranking:visibleRanking };
 }
 
@@ -1535,6 +1592,7 @@ app.put('/api/tts-word-replacements', requireAuth, async (req, res) => {
     settings.ttsWordReplacements = personal;
     if (req.user.role !== 'super') {
       settings.crewGrades = [];
+      settings.crewGradePeriodStart = '';
       settings.crewTtsWordReplacements = [];
     }
     await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
@@ -1586,6 +1644,7 @@ app.put('/api/youtube/enabled', requireAuth, async (req, res) => {
   settings.youtubeChatEnabled = enabled;
   if(req.user.role!=='super') {
     settings.crewGrades=[];
+    settings.crewGradePeriodStart='';
     settings.crewTtsWordReplacements=[];
   }
   await db.execute({
@@ -1683,9 +1742,9 @@ app.put('/api/settings', requireAuth, async (req, res) => {
     return res.status(400).json({ error:error.message });
   }
   if(req.user.role==='super'&&Array.isArray(req.body?.crewGrades)){
-    const ranges=req.body.crewGrades.map(grade=>({min:Number(grade.minAmount)||0,max:grade.maxAmount==null||grade.maxAmount===''?null:Number(grade.maxAmount)})).sort((a,b)=>a.min-b.min);
-    if(ranges.some(range=>range.max!=null&&range.max<range.min))return res.status(400).json({error:'크루 등급의 최대 누적 금액은 최소 누적 금액보다 크거나 같아야 합니다.'});
-    if(ranges.some((range,index)=>index>0&&(ranges[index-1].max==null||range.min<=ranges[index-1].max)))return res.status(400).json({error:'크루 등급의 누적 금액 구간이 서로 겹치지 않게 입력해주세요.'});
+    const ranges=req.body.crewGrades.map(grade=>({min:Number(grade.minRank)||1,max:grade.maxRank==null||grade.maxRank===''?null:Number(grade.maxRank)})).sort((a,b)=>a.min-b.min);
+    if(ranges.some(range=>range.max!=null&&range.max<range.min))return res.status(400).json({error:'크루 등급의 마지막 순위는 시작 순위보다 크거나 같아야 합니다.'});
+    if(ranges.some((range,index)=>index>0&&(ranges[index-1].max==null||range.min<=ranges[index-1].max)))return res.status(400).json({error:'크루 등급의 순위 구간이 서로 겹치지 않게 입력해주세요.'});
   }
   const settings = cleanSettings(req.body);
   if (settings.toonationEnabled && !toonationWidgetKey(settings.toonationWidgetUrl)) {
@@ -1699,6 +1758,7 @@ app.put('/api/settings', requireAuth, async (req, res) => {
   }
   if(req.user.role!=='super') {
     settings.crewGrades=[];
+    settings.crewGradePeriodStart='';
     settings.crewTtsWordReplacements=[];
   }
   await db.execute({ sql:`INSERT INTO user_settings (user_id, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(user_id) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP`, args:[req.user.id,JSON.stringify(settings)] });
@@ -1707,6 +1767,7 @@ app.put('/api/settings', requireAuth, async (req, res) => {
   if(req.user.role!=='super') {
     const shared=await getSharedCrewSettings();
     settings.crewGrades=shared.crewGrades;
+    settings.crewGradePeriodStart=shared.crewGradePeriodStart;
     settings.crewTtsWordReplacements=shared.crewTtsWordReplacements;
   }
   const savedSettings = await settingsWithCrewPreview(req.user);

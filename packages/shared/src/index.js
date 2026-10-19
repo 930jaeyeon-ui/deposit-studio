@@ -68,6 +68,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   crewGradeTextColor: '#ffffff',
   crewGradeTextFontFamily: 'Pretendard, "Noto Sans KR", sans-serif',
   crewGradeTextSize: 54,
+  crewGradePeriodStart: '',
   crewGrades: [],
   minimumDonationAmount: MINIMUM_DONATION_AMOUNT,
   alertMinimumAmount: MINIMUM_DONATION_AMOUNT,

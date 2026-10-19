@@ -74,7 +74,10 @@ export class YouTubeChatConnection {
     this.fetchImpl = options.fetchImpl || fetch;
     this.streamFactory = options.streamFactory || createYouTubeGrpcStream;
     this.retryDelayMs = options.retryDelayMs ?? 5000;
+    this.retryStatusDelayMs = options.retryStatusDelayMs ?? 15000;
     this.call = null;
+    this.retryStatusTimer = null;
+    this.lastRetryMessage = '';
     this.primed = false;
     this.processing = Promise.resolve();
     this.seen = new Map();
@@ -83,6 +86,7 @@ export class YouTubeChatConnection {
   stop() {
     this.stopped = true;
     clearTimeout(this.timer);
+    clearTimeout(this.retryStatusTimer);
     this.call?.cancel?.();
     this.call = null;
   }
@@ -108,6 +112,7 @@ export class YouTubeChatConnection {
   listen() {
     if (this.stopped) return;
     try {
+      const streamStartedAt = Date.now();
       const call = this.streamFactory({
         apiKey:this.apiKey,
         liveChatId:this.liveChatId,
@@ -122,12 +127,19 @@ export class YouTubeChatConnection {
         this.retry(message || '유튜브 스트림 연결 종료 · 다시 연결 중');
       };
       call.on('data', response => {
+        clearTimeout(this.retryStatusTimer);
+        this.retryStatusTimer = null;
         this.pageToken = response.nextPageToken || this.pageToken;
         this.onStatus(this.userId, { state:'connected', text:'유튜브 라이브 채팅 스트리밍 연결됨' });
         const skipHistory = !this.primed && !this.pageTokenBeforeConnect;
         this.primed = true;
-        if (skipHistory) return;
-        this.processing = this.processing.then(() => this.processItems(response.items || []))
+        const items = skipHistory
+          ? (response.items || []).filter(item => {
+              const publishedAt = Date.parse(String(item.snippet?.publishedAt || ''));
+              return Number.isFinite(publishedAt) && publishedAt >= streamStartedAt;
+            })
+          : (response.items || []);
+        this.processing = this.processing.then(() => this.processItems(items))
           .catch(error => console.error('유튜브 채팅 처리 실패:', error.message));
       });
       call.on('error', error => finish(error?.message));
@@ -154,7 +166,16 @@ export class YouTubeChatConnection {
   }
   retry(message) {
     if (this.stopped) return;
-    this.onStatus(this.userId, { state:'retrying', text:message || '유튜브 채팅 재연결 중' });
+    this.lastRetryMessage = message || '유튜브 채팅 재연결 중';
+    if (!this.primed) {
+      this.onStatus(this.userId, { state:'retrying', text:this.lastRetryMessage });
+    } else if (!this.retryStatusTimer) {
+      this.retryStatusTimer = setTimeout(() => {
+        this.retryStatusTimer = null;
+        if (!this.stopped) this.onStatus(this.userId, { state:'retrying', text:this.lastRetryMessage });
+      }, this.retryStatusDelayMs);
+      this.retryStatusTimer.unref?.();
+    }
     clearTimeout(this.timer);
     this.pageTokenBeforeConnect = this.pageToken;
     this.timer = setTimeout(() => this.liveChatId ? this.listen() : this.connect(), this.retryDelayMs);
