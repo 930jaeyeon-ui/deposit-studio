@@ -36,6 +36,15 @@ const RANKING_SETTING_KEYS = [
   "minimumDonationAmount",
   ...Object.keys(DEFAULT_SETTINGS).filter((key) => key.startsWith("ranking")),
 ];
+const CREW_GRADE_RGB_PALETTES = {
+  classic:{label:"클래식 RGB",gradient:"#ff1744,#ffea00,#00e676,#00e5ff,#2979ff,#d500f9,#ff1744"},
+  neon:{label:"네온",gradient:"#ff2bd6,#9b5cff,#247bff,#00f5d4,#ff2bd6"},
+  aurora:{label:"오로라",gradient:"#7c3aed,#2563eb,#06b6d4,#84cc16,#7c3aed"},
+  pastel:{label:"파스텔",gradient:"#ff9ecf,#ffbc8b,#fff08a,#9ff5cf,#9ed8ff,#c7a6ff,#ff9ecf"},
+  fire:{label:"파이어",gradient:"#ff1f1f,#ff6d00,#ffd600,#ffffff,#ff1f1f"},
+  ocean:{label:"오션",gradient:"#172554,#1d4ed8,#00b8d4,#7dd3fc,#ffffff,#172554"},
+  gold:{label:"골드",gradient:"#9a5b13,#f59e0b,#fff176,#ffffff,#f59e0b,#9a5b13"},
+};
 const pickRankingSettings = (settings) => Object.fromEntries(
   RANKING_SETTING_KEYS.map((key) => [key, settings[key]]),
 );
@@ -4130,6 +4139,17 @@ function Settings({ mode }) {
     setSettings((current) => ({ ...current, [key]: value }));
     setPreviewRun((current) => current + 1);
   };
+  const changeCrewGradeEffect = (gradeId, key, value) => {
+    setSettings((current) => {
+      const effects=[...(current.rankingCrewGradeEffects||[])];
+      const index=effects.findIndex(item=>item.gradeId===gradeId);
+      const base=index>=0?effects[index]:{gradeId,effect:"none",palette:"classic",color:"#facc15",color2:"#ffffff",background:"#241b05",intensity:65,speed:"normal"};
+      const next={...base,[key]:value};
+      if(index>=0)effects[index]=next;else effects.push(next);
+      return {...current,rankingCrewGradeEffects:effects};
+    });
+    setPreviewRun((current)=>current+1);
+  };
   const toggleFullRankingUseStandard = (useStandard) => {
     setStoredSettings((current) => {
       const standard = current.__standardRankingSettings || pickRankingSettings(current);
@@ -6887,6 +6907,20 @@ function Settings({ mode }) {
                       <span>{settings.rankingCrewGradeSize || 80}%</span>
                       <small>순위표 닉네임 글자 크기를 기준으로 조절됩니다.</small>
                     </label>
+                    <div className="ranking-grade-effect-list">
+                      <div className="ranking-grade-effect-heading"><b>등급별 닉네임 효과</b><small>순위가 아니라 현재 크루 등급을 기준으로 닉네임에 적용됩니다.</small></div>
+                      {(settings.crewGrades||[]).map((grade)=>{
+                        const effect=(settings.rankingCrewGradeEffects||[]).find(item=>item.gradeId===grade.id)||{gradeId:grade.id,effect:"none",palette:"classic",color:"#facc15",color2:"#ffffff",background:"#241b05",intensity:65,speed:"normal"};
+                        return <article key={grade.id} className="ranking-grade-effect-card">
+                          <header>{grade.imageData?<img src={grade.imageData} alt=""/>:<span/>}<b>{grade.name}</b><small>{grade.minRank}~{grade.maxRank??"∞"}위</small></header>
+                          <label>닉네임 효과<select value={effect.effect} onChange={(e)=>changeCrewGradeEffect(grade.id,"effect",e.target.value)}><option value="none">효과 없음</option><option value="rainbow">RGB 색상 순환</option><option value="glow">등급색 글로우</option><option value="gradient">2색 그라데이션</option><option value="aura">등급 오라</option><option value="shine">홀로그램 광택</option><option value="outline">에너지 테두리</option><option value="badge">캡슐형 명찰</option><option value="sparkle">별빛 반짝임</option></select></label>
+                          {effect.effect === "rainbow" && <label>RGB 팔레트<select value={effect.palette||"classic"} onChange={(e)=>changeCrewGradeEffect(grade.id,"palette",e.target.value)}>{Object.entries(CREW_GRADE_RGB_PALETTES).map(([value,item])=><option value={value} key={value}>{item.label}</option>)}</select><i className="rgb-palette-preview" style={{background:`linear-gradient(90deg,${CREW_GRADE_RGB_PALETTES[effect.palette||"classic"].gradient})`}}/></label>}
+                          {effect.effect !== "none" && effect.effect !== "rainbow" && <><label>효과색 1<span className="grade-effect-color"><input type="color" value={effect.color} onChange={(e)=>changeCrewGradeEffect(grade.id,"color",e.target.value)}/><input value={effect.color} onChange={(e)=>changeCrewGradeEffect(grade.id,"color",e.target.value)}/></span></label><label>효과색 2<span className="grade-effect-color"><input type="color" value={effect.color2} onChange={(e)=>changeCrewGradeEffect(grade.id,"color2",e.target.value)}/><input value={effect.color2} onChange={(e)=>changeCrewGradeEffect(grade.id,"color2",e.target.value)}/></span></label><label>배경색<span className="grade-effect-color"><input type="color" value={effect.background} onChange={(e)=>changeCrewGradeEffect(grade.id,"background",e.target.value)}/><input value={effect.background} onChange={(e)=>changeCrewGradeEffect(grade.id,"background",e.target.value)}/></span></label></>}
+                          {effect.effect !== "none" && <><label>효과 강도<input type="range" min="20" max="100" step="5" value={effect.intensity} onChange={(e)=>changeCrewGradeEffect(grade.id,"intensity",Number(e.target.value))}/><small>{effect.intensity}%</small></label><label>움직임 속도<select value={effect.speed} onChange={(e)=>changeCrewGradeEffect(grade.id,"speed",e.target.value)}><option value="slow">느리게</option><option value="normal">보통</option><option value="fast">빠르게</option></select></label></>}
+                        </article>;
+                      })}
+                      {!(settings.crewGrades||[]).length&&<p className="empty">크루 후원 현황에서 등급을 먼저 등록해주세요.</p>}
+                    </div>
                   </>}
                 </AlertSettingSection>
                 <AlertSettingSection
@@ -7647,6 +7681,10 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const staggerCharacters = isTextMotion && rankStyle.staggerCharacters === true;
               const markerHidden = settings.rankingHiddenRankMarkers?.[index] === true || rankStyle.hideMarker === true;
               const crewGrade=(settings.crewGrades||[]).find(grade=>grade.id===item.crewGradeId);
+              const crewEffect=(settings.rankingCrewGradeEffects||[]).find(effect=>effect.gradeId===crewGrade?.id);
+              const crewNicknameEffect=settings.rankingCrewGradeEnabled !== false ? (crewEffect?.effect || "none") : "none";
+              const crewPalette=CREW_GRADE_RGB_PALETTES[crewEffect?.palette||"classic"]||CREW_GRADE_RGB_PALETTES.classic;
+              const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":crewEffect?.speed==="slow"?"4.8s":crewEffect?.speed==="fast"?"1.6s":"2.8s","--crew-rgb-gradient":crewPalette.gradient} : undefined;
               const crewGradeNode=settings.rankingCrewGradeEnabled !== false && crewGrade && (settings.rankingCrewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:`${(settings.rankingCrewGradeSize||80)/100}em`}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`} style={{width:`${(settings.rankingCrewGradeSize||80)/100}em`,height:`${(settings.rankingCrewGradeSize||80)/100}em`}}/> : null);
               const rankMarkerNode = index < rankNumberLimit && !markerHidden ? (
                 <em
@@ -7708,11 +7746,12 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     <span className={`rank-text-effect${!isTextMotion && rankMotion !== "none" ? ` rank-motion-${rankMotion}` : ""}`}>
                     <span className={`rank-name-group crew-grade-${settings.rankingCrewGradePosition === "left" ? "left" : "right"}`}>
                     <OutlinedText
-                      className="donor-name"
+                      className={`donor-name${crewNicknameEffect !== "none" ? ` crew-nickname-effect crew-effect-${crewNicknameEffect}` : ""}`}
                       enabled={settings.rankingNameOutlineEnabled}
                       singlePass
                       width={`${Math.min(0.12, settings.rankingNameOutlineWidth / Math.max(1, settings.rankingFontSize))}em`}
                       color={settings.rankingNameOutlineColor}
+                      style={crewEffectStyle}
                     >
                       <AnimatedRankText text={item.donorName} stagger={staggerCharacters}/>
                       {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.nameSuffixColor || settings.rankingNameSuffixColor || rankStyle.color) : (settings.rankingNameSuffixColor || settings.rankingNameColor) }}>{settings.rankingNameSuffix}</span>}

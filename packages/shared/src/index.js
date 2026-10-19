@@ -156,6 +156,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingCrewGradePosition: 'right',
   rankingCrewGradeDisplayMode: 'image',
   rankingCrewGradeSize: 80,
+  rankingCrewGradeEffects: [],
   rankingRankHighlightEnabled: true,
   rankingHiddenRankMarkers: [false, false, false],
   rankingRankStyles: [
