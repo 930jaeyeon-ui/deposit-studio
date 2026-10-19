@@ -6892,21 +6892,24 @@ function Settings({ mode }) {
                       <select value={settings.rankingCrewGradeDisplayMode || "image"} onChange={(e)=>update("rankingCrewGradeDisplayMode",e.target.value)}>
                         <option value="image">등급 이미지</option>
                         <option value="text">등급명</option>
+                        <option value="none">표시 없음 · 닉네임 효과만</option>
                       </select>
                     </label>
-                    <label>
-                      표시 위치
-                      <select value={settings.rankingCrewGradePosition || "right"} onChange={(e)=>update("rankingCrewGradePosition",e.target.value)}>
-                        <option value="right">닉네임 오른쪽</option>
-                        <option value="left">닉네임 왼쪽</option>
-                      </select>
-                    </label>
-                    <label>
-                      {settings.rankingCrewGradeDisplayMode === "text" ? "등급명 크기" : "등급 이미지 크기"}
-                      <input type="range" min="30" max="180" step="5" value={settings.rankingCrewGradeSize || 80} onChange={(e)=>update("rankingCrewGradeSize",Number(e.target.value))}/>
-                      <span>{settings.rankingCrewGradeSize || 80}%</span>
-                      <small>순위표 닉네임 글자 크기를 기준으로 조절됩니다.</small>
-                    </label>
+                    {settings.rankingCrewGradeDisplayMode !== "none" && <>
+                      <label>
+                        표시 위치
+                        <select value={settings.rankingCrewGradePosition || "right"} onChange={(e)=>update("rankingCrewGradePosition",e.target.value)}>
+                          <option value="right">닉네임 오른쪽</option>
+                          <option value="left">닉네임 왼쪽</option>
+                        </select>
+                      </label>
+                      <label>
+                        {settings.rankingCrewGradeDisplayMode === "text" ? "등급명 크기" : "등급 이미지 크기"}
+                        <input type="range" min="30" max="180" step="5" value={settings.rankingCrewGradeSize || 80} onChange={(e)=>update("rankingCrewGradeSize",Number(e.target.value))}/>
+                        <span>{settings.rankingCrewGradeSize || 80}%</span>
+                        <small>순위표 닉네임 글자 크기를 기준으로 조절됩니다.</small>
+                      </label>
+                    </>}
                     <div className="ranking-grade-effect-list">
                       <div className="ranking-grade-effect-heading"><b>등급별 닉네임 효과</b><small>순위가 아니라 현재 크루 등급을 기준으로 닉네임에 적용됩니다.</small></div>
                       {(settings.crewGrades||[]).map((grade)=>{
@@ -7685,7 +7688,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const crewNicknameEffect=settings.rankingCrewGradeEnabled !== false ? (crewEffect?.effect || "none") : "none";
               const crewPalette=CREW_GRADE_RGB_PALETTES[crewEffect?.palette||"classic"]||CREW_GRADE_RGB_PALETTES.classic;
               const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":crewEffect?.speed==="slow"?"4.8s":crewEffect?.speed==="fast"?"1.6s":"2.8s","--crew-rgb-gradient":crewPalette.gradient} : undefined;
-              const crewGradeNode=settings.rankingCrewGradeEnabled !== false && crewGrade && (settings.rankingCrewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:`${(settings.rankingCrewGradeSize||80)/100}em`}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`} style={{width:`${(settings.rankingCrewGradeSize||80)/100}em`,height:`${(settings.rankingCrewGradeSize||80)/100}em`}}/> : null);
+              const crewGradeNode=settings.rankingCrewGradeEnabled !== false && crewGrade && settings.rankingCrewGradeDisplayMode !== "none" && (settings.rankingCrewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:`${(settings.rankingCrewGradeSize||80)/100}em`}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`} style={{width:`${(settings.rankingCrewGradeSize||80)/100}em`,height:`${(settings.rankingCrewGradeSize||80)/100}em`}}/> : null);
               const rankMarkerNode = index < rankNumberLimit && !markerHidden ? (
                 <em
                   className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"} ribbon-shape-${settings.rankingMedalRibbonShape || "classic"} ribbon-${settings.rankingMedalRibbonPattern || "solid"} depth-${settings.rankingMedalDepth || "soft"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}

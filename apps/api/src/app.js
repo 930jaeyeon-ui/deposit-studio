@@ -589,7 +589,7 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.rankingShowCount = Boolean(settings.rankingShowCount);
   settings.rankingCrewGradeEnabled = settings.rankingCrewGradeEnabled !== false;
   settings.rankingCrewGradePosition = settings.rankingCrewGradePosition === 'left' ? 'left' : 'right';
-  settings.rankingCrewGradeDisplayMode = settings.rankingCrewGradeDisplayMode === 'text' ? 'text' : 'image';
+  settings.rankingCrewGradeDisplayMode = ['text','none'].includes(settings.rankingCrewGradeDisplayMode) ? settings.rankingCrewGradeDisplayMode : 'image';
   settings.rankingCrewGradeSize = Math.max(30,Math.min(180,Number(settings.rankingCrewGradeSize)||80));
   settings.rankingCrewGradeEffects = Array.isArray(settings.rankingCrewGradeEffects) ? settings.rankingCrewGradeEffects.slice(0,20).map((effect,index)=>({gradeId:String(effect.gradeId||`grade-${index}`).slice(0,50),effect:['none','glow','gradient','aura','shine','outline','badge','sparkle','rainbow'].includes(effect.effect)?effect.effect:'none',palette:['classic','neon','aurora','pastel','fire','ocean','gold'].includes(effect.palette)?effect.palette:'classic',color:String(effect.color||'#facc15').slice(0,20),color2:String(effect.color2||'#ffffff').slice(0,20),background:String(effect.background||'#241b05').slice(0,20),intensity:Math.max(20,Math.min(100,Number(effect.intensity)||65)),speed:['slow','normal','fast'].includes(effect.speed)?effect.speed:'normal'})) : [];
   settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);
