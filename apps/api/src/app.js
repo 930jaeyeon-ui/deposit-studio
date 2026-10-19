@@ -246,7 +246,8 @@ async function settingsWithCrewPreview(user) {
   const settings=await getUserSettings(user.id);
   const previewDonorName='폴조지';
   const previewDonation=await donationWithCrewGrade({ donorName:previewDonorName, amount:50000 },user.id,settings);
-  return { ...settings, previewCrewGradeId:previewDonation.crewGradeId, previewDonorName, previewCumulativeAmount:previewDonation.cumulativeAmount||0 };
+  const fallbackGrade=(settings.crewGrades||[]).find(grade=>grade.imageData)||(settings.crewGrades||[])[0];
+  return { ...settings, previewCrewGradeId:previewDonation.crewGradeId||fallbackGrade?.id||null, previewDonorName, previewCumulativeAmount:previewDonation.cumulativeAmount||0 };
 }
 app.use((req, res, next) => {
   res.setHeader('Access-Control-Allow-Origin', process.env.WEB_ORIGIN || req.headers.origin || '*');
@@ -586,6 +587,10 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.rankingShowRank = Boolean(settings.rankingShowRank);
   settings.rankingRankPlacement = settings.rankingRankPlacement === 'gutter' ? 'gutter' : 'inline';
   settings.rankingShowCount = Boolean(settings.rankingShowCount);
+  settings.rankingCrewGradeEnabled = settings.rankingCrewGradeEnabled !== false;
+  settings.rankingCrewGradePosition = settings.rankingCrewGradePosition === 'left' ? 'left' : 'right';
+  settings.rankingCrewGradeDisplayMode = settings.rankingCrewGradeDisplayMode === 'text' ? 'text' : 'image';
+  settings.rankingCrewGradeSize = Math.max(30,Math.min(180,Number(settings.rankingCrewGradeSize)||80));
   settings.rankingTitle = String(settings.rankingTitle || DEFAULT_SETTINGS.rankingTitle).trim().slice(0, 40);
   if (skipFullRanking) {
     delete settings.fullRankingSettings;
@@ -1354,7 +1359,7 @@ async function widgetDataForUser(userId, { full = false } = {}) {
   const sortedRanking = [...merged.values()].filter(row => row.amount > 0).sort((a,b) => b.amount - a.amount || String(b.lastReceivedAt||'').localeCompare(String(a.lastReceivedAt||'')) || a.donorName.localeCompare(b.donorName, 'ko'));
   const settings=await getUserSettings(userId);
   const gradePeriod=crewGradePeriod(settings.crewGradePeriodStart);
-  const crewRanking=settings.crewGradeEnabled ? await crewGradeRanking(gradePeriod.start,gradePeriod.end) : [];
+  const crewRanking=settings.rankingCrewGradeEnabled !== false ? await crewGradeRanking(gradePeriod.start,gradePeriod.end) : [];
   const crewRanks=new Map(crewRanking.map(item=>[item.donorName,item.rank]));
   const gradedRanking=sortedRanking.map(item=>{
     const crewGradeRank=Number(crewRanks.get(item.donorName)||0);

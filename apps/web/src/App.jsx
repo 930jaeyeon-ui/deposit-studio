@@ -3453,9 +3453,10 @@ function useTransparentDocument() {
 
 function alertAppearance(settings, amount = 50000) {
   const tier = resolveTier(settings, amount);
-  const previewGrade = (settings.crewGrades || []).find(
+  const grades=settings.crewGrades || [];
+  const previewGrade = grades.find(
     (grade) => grade.id === settings.previewCrewGradeId,
-  );
+  ) || grades.find((grade)=>grade.imageData) || grades[0];
   const customText = tier?.textMode === "custom";
   const customEffect = tier?.effectMode === "custom";
   const customSound = tier?.soundMode === "custom";
@@ -6854,6 +6855,41 @@ function Settings({ mode }) {
                   </>}
                 </AlertSettingSection>
                 <AlertSettingSection
+                  id="ranking-crew-grade"
+                  title="크루 등급 표시"
+                  description="닉네임 옆 등급 이미지·위치·크기"
+                  open={Boolean(openAlertSections["ranking-crew-grade"])}
+                  onToggle={() => toggleAlertSection("ranking-crew-grade")}
+                >
+                  <label className="toggle-label">
+                    후원 순위표에 등급 표시
+                    <input type="checkbox" checked={settings.rankingCrewGradeEnabled !== false} onChange={(e)=>update("rankingCrewGradeEnabled",e.target.checked)}/>
+                    <i />
+                  </label>
+                  {settings.rankingCrewGradeEnabled !== false && <>
+                    <label>
+                      표시 방식
+                      <select value={settings.rankingCrewGradeDisplayMode || "image"} onChange={(e)=>update("rankingCrewGradeDisplayMode",e.target.value)}>
+                        <option value="image">등급 이미지</option>
+                        <option value="text">등급명</option>
+                      </select>
+                    </label>
+                    <label>
+                      표시 위치
+                      <select value={settings.rankingCrewGradePosition || "right"} onChange={(e)=>update("rankingCrewGradePosition",e.target.value)}>
+                        <option value="right">닉네임 오른쪽</option>
+                        <option value="left">닉네임 왼쪽</option>
+                      </select>
+                    </label>
+                    <label>
+                      {settings.rankingCrewGradeDisplayMode === "text" ? "등급명 크기" : "등급 이미지 크기"}
+                      <input type="range" min="30" max="180" step="5" value={settings.rankingCrewGradeSize || 80} onChange={(e)=>update("rankingCrewGradeSize",Number(e.target.value))}/>
+                      <span>{settings.rankingCrewGradeSize || 80}%</span>
+                      <small>순위표 닉네임 글자 크기를 기준으로 조절됩니다.</small>
+                    </label>
+                  </>}
+                </AlertSettingSection>
+                <AlertSettingSection
                   id="ranking-layout"
                   title="목록 배치"
                   description="정렬·열 수·표시 효과"
@@ -7465,6 +7501,7 @@ function RankingPreview({ settings, count = 60 }) {
       sampleNames[index] || `후원자 ${String(index + 1).padStart(2, "0")}`,
     amount: Math.max(10000, 180000 - index * 2800),
     count: (index % 4) + 1,
+    crewGradeId: (settings.crewGrades || [])[index % Math.max(1,(settings.crewGrades || []).length)]?.id || null,
   }));
   return (
     <RankingOutputCanvas preview>
@@ -7610,6 +7647,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const staggerCharacters = isTextMotion && rankStyle.staggerCharacters === true;
               const markerHidden = settings.rankingHiddenRankMarkers?.[index] === true || rankStyle.hideMarker === true;
               const crewGrade=(settings.crewGrades||[]).find(grade=>grade.id===item.crewGradeId);
+              const crewGradeNode=settings.rankingCrewGradeEnabled !== false && crewGrade && (settings.rankingCrewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily,fontSize:`${(settings.rankingCrewGradeSize||80)/100}em`}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`} style={{width:`${(settings.rankingCrewGradeSize||80)/100}em`,height:`${(settings.rankingCrewGradeSize||80)/100}em`}}/> : null);
               const rankMarkerNode = index < rankNumberLimit && !markerHidden ? (
                 <em
                   className={isMedalMarker ? `ranking-medal medal-${settings.rankingMedalShape || "circle"} ribbon-shape-${settings.rankingMedalRibbonShape || "classic"} ribbon-${settings.rankingMedalRibbonPattern || "solid"} depth-${settings.rankingMedalDepth || "soft"}${settings.rankingMedalShineEnabled === false ? " no-shine" : ""}${settings.rankingMedalShadowEnabled === false ? " no-shadow" : ""}` : undefined}
@@ -7669,7 +7707,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     ) : null}
                     <span className={`rank-text-effect${!isTextMotion && rankMotion !== "none" ? ` rank-motion-${rankMotion}` : ""}`}>
                     <span className="rank-name-group">
-                    {settings.crewGradeEnabled && crewGrade && (settings.crewGradeDisplayMode === "text" ? <span className="ranking-crew-grade-text" style={{color:settings.crewGradeTextColor,fontFamily:settings.crewGradeTextFontFamily}}>{crewGrade.name}</span> : crewGrade.imageData ? <img className="ranking-crew-grade-image" src={crewGrade.imageData} alt={`${crewGrade.name} 등급`}/> : null)}
+                    {settings.rankingCrewGradePosition === "left" && crewGradeNode}
                     <OutlinedText
                       className="donor-name"
                       enabled={settings.rankingNameOutlineEnabled}
@@ -7680,6 +7718,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                       <AnimatedRankText text={item.donorName} stagger={staggerCharacters}/>
                       {settings.rankingNameSuffix && <span className="donor-name-suffix" style={{ color: rankHighlight && index < 3 ? (rankStyle.nameSuffixColor || settings.rankingNameSuffixColor || rankStyle.color) : (settings.rankingNameSuffixColor || settings.rankingNameColor) }}>{settings.rankingNameSuffix}</span>}
                     </OutlinedText>
+                    {settings.rankingCrewGradePosition !== "left" && crewGradeNode}
                     {settings.rankingShowCount && <small>{item.count}회</small>}
                     </span>
                   <OutlinedText

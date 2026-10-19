@@ -152,6 +152,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   rankingShowRank: true,
   rankingRankPlacement: 'inline',
   rankingShowCount: false,
+  rankingCrewGradeEnabled: true,
+  rankingCrewGradePosition: 'right',
+  rankingCrewGradeDisplayMode: 'image',
+  rankingCrewGradeSize: 80,
   rankingRankHighlightEnabled: true,
   rankingHiddenRankMarkers: [false, false, false],
   rankingRankStyles: [
