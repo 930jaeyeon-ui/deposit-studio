@@ -853,3 +853,6 @@ html[data-theme=dark] .ranking-settings-grid>.ranking-controls{background:transp
 @keyframes crewGradeRainbowRtl{from{background-position:0 0}to{background-position:calc(-1 * var(--crew-rgb-cycle-size,432px)) 0}}
 @keyframes crewGradeRainbowLtr{from{background-position:calc(-1 * var(--crew-rgb-cycle-size,432px)) 0}to{background-position:0 0}}
 .widget-row .rank-text-effect>.donor-amount>.broadcast-text-fill{display:block;text-align:right}
+/* Background motions must not change the content box. Keeping the same fixed
+   padding preserves the donor-name and amount alignment across every rank. */
+.rank-text-effect:is(.rank-motion-ambient,.rank-motion-border-pulse,.rank-motion-border-spin,.rank-motion-gradient-flow,.rank-motion-spotlight,.rank-motion-aura,.rank-motion-underline-run,.rank-motion-sparkle-bg){padding:calc(var(--ranking-size,30px) * .05) calc(var(--ranking-size,30px) * .2)}
