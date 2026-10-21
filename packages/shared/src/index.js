@@ -81,6 +81,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   toonationAlertMode: 'official',
   toonationUseOwnAlert: false,
   youtubeChatEnabled: false,
+  youtubeManualDonationTestEnabled: false,
   youtubeApiKey: '',
   youtubeVideoId: '',
   youtubeMatchWindowSeconds: 30,

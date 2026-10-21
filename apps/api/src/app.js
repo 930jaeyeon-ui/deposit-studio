@@ -456,6 +456,7 @@ function cleanSettings(input, skipFullRanking = false) {
   settings.toonationAlertMode = ['official','custom','custom-original-audio'].includes(settings.toonationAlertMode) ? settings.toonationAlertMode : legacyToonationMode;
   settings.toonationUseOwnAlert = settings.toonationAlertMode !== 'official';
   settings.youtubeChatEnabled = Boolean(settings.youtubeChatEnabled);
+  settings.youtubeManualDonationTestEnabled = Boolean(settings.youtubeManualDonationTestEnabled);
   settings.youtubeApiKey = String(settings.youtubeApiKey || '').trim().slice(0, 500);
   settings.youtubeVideoId = String(settings.youtubeVideoId || '').trim().slice(0, 500);
   settings.youtubeMatchWindowSeconds = Math.max(10, Math.min(120, Math.floor(Number(settings.youtubeMatchWindowSeconds) || 30)));
@@ -693,7 +694,8 @@ async function findRecentDonationByName(userId, settings, normalizedName, requir
         AND d.status = 'included'
         ${requirePending ? `AND d.message IS NULL AND d.alert_published_at IS NULL` : ''}
         AND d.amount >= ?
-        AND d.bank NOT IN ('toonation','manual','test')
+        AND d.bank NOT IN ('toonation','test')
+        ${settings.youtubeManualDonationTestEnabled ? '' : "AND d.bank <> 'manual'"}
         AND d.received_at >= datetime('now', ?)
         AND lower(replace(${effectiveDonorName}, ' ', '')) = ?
       ORDER BY d.id DESC LIMIT 1`,
@@ -832,7 +834,7 @@ export async function startExternalConnections() {
     youtubeChatManager.configure(user.id, settings);
     const pending = await db.execute({
       sql:`SELECT id FROM donations WHERE recipient_user_id = ? AND alert_published_at IS NULL
-        AND bank NOT IN ('toonation','manual','test') ORDER BY id`,
+        AND bank NOT IN ('toonation','test') ${settings.youtubeManualDonationTestEnabled ? '' : "AND bank <> 'manual'"} ORDER BY id`,
       args:[user.id]
     });
     for (const donation of pending.rows) await queueBankDonationAlert(donation.id, user.id, settings);
@@ -1104,8 +1106,13 @@ app.post('/api/my/deposits', requireAuth, async (req, res) => {
       args:[session.id,req.user.id,input.donorName,input.amount,storedAt]
     });
     const saved = await db.execute({ sql:`SELECT id, donor_name donorName, amount, bank, datetime(received_at, '+9 hours') receivedAt FROM donations WHERE id = ?`, args:[result.lastInsertRowid] });
-    const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, await getUserSettings(req.user.id));
-    publishOverlayDonation(donation, req.user.id);
+    const settings = await getUserSettings(req.user.id);
+    const donation = await donationWithCrewGrade(saved.rows[0], req.user.id, settings);
+    if (settings.youtubeChatEnabled && settings.youtubeManualDonationTestEnabled) {
+      await queueBankDonationAlert(Number(result.lastInsertRowid), req.user.id, settings);
+    } else {
+      publishOverlayDonation(donation, req.user.id);
+    }
     publishDataChange(req.user.id, 'deposit-created');
     res.status(201).json(donation);
   } catch (error) {
@@ -1674,7 +1681,7 @@ app.put('/api/youtube/enabled', requireAuth, async (req, res) => {
   if (!enabled) {
     const pending = await db.execute({
       sql:`SELECT id FROM donations WHERE recipient_user_id = ? AND alert_published_at IS NULL
-        AND bank NOT IN ('toonation','manual','test') ORDER BY id`,
+        AND bank NOT IN ('toonation','test') ${settings.youtubeManualDonationTestEnabled ? '' : "AND bank <> 'manual'"} ORDER BY id`,
       args:[req.user.id]
     });
     for (const donation of pending.rows) {

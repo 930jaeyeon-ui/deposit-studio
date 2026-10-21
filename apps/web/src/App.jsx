@@ -4651,6 +4651,12 @@ function Settings({ mode }) {
                     <input type="checkbox" checked={settings.youtubeChatEnabled} onChange={(e) => update("youtubeChatEnabled", e.target.checked)} />
                     <i />
                   </label>
+                  <label className="toggle-label">
+                    테스트용 수동 입금 후원채팅
+                    <input type="checkbox" checked={settings.youtubeManualDonationTestEnabled} onChange={(e) => update("youtubeManualDonationTestEnabled", e.target.checked)} />
+                    <i />
+                  </label>
+                  <p className="alert-setting-help">테스트 중에만 켜세요. 수동 입금으로 <code>!후원등록 입금자명</code>을 연결하고, 다음 수동 입금 후 일반 채팅을 읽을 수 있습니다. 채팅을 기다리는 동안 알림이 최대 설정 시간만큼 늦게 울릴 수 있습니다. 테스트 후에는 다시 꺼주세요.</p>
                   <label>
                     YouTube Data API 키
                     <input type="password" value={settings.youtubeApiKey} placeholder="AIza..." autoComplete="off" onChange={(e) => update("youtubeApiKey", e.target.value)} />

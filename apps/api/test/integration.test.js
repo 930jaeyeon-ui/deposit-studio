@@ -348,10 +348,24 @@ test('전체 API E2E 흐름', { timeout:30000 }, async () => {
     await handleYouTubeDonationCommand(memberId,{ text:'!후원등록 변경후원자',chatId:'register-chat-change',channelId:'registered-channel',youtubeName:'등록 시청자' });
     linked = await db.execute({ sql:'SELECT donor_name donorName FROM youtube_donor_links WHERE recipient_user_id = ? AND youtube_channel_id = ?', args:[memberId,'registered-channel'] });
     assert.equal(linked.rows[0].donorName,'변경후원자');
+    youtubeSettings.youtubeManualDonationTestEnabled=true;
+    await db.execute({ sql:'UPDATE user_settings SET value = ? WHERE user_id = ?', args:[JSON.stringify(youtubeSettings),memberId] });
+    const manualRegistration = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, '폴조지', 10000, 'manual')`, args:[currentSession.id,memberId] });
+    await queueBankDonationAlert(Number(manualRegistration.lastInsertRowid),memberId,youtubeSettings);
+    await handleYouTubeDonationCommand(memberId,{ text:'!후원등록 폴조지',chatId:'manual-register',channelId:'manual-channel',youtubeName:'테스트 시청자' });
+    linked = await db.execute({ sql:'SELECT donor_name donorName FROM youtube_donor_links WHERE recipient_user_id = ? AND youtube_channel_id = ?', args:[memberId,'manual-channel'] });
+    assert.equal(linked.rows[0].donorName,'폴조지');
+    const manualFollowup = await db.execute({ sql:`INSERT INTO donations (session_id, recipient_user_id, donor_name, amount, bank) VALUES (?, ?, '폴조지', 10000, 'manual')`, args:[currentSession.id,memberId] });
+    await queueBankDonationAlert(Number(manualFollowup.lastInsertRowid),memberId,youtubeSettings);
+    await handleYouTubeDonationCommand(memberId,{ text:'가나다라마바사',chatId:'manual-message',channelId:'manual-channel',youtubeName:'테스트 시청자' });
+    const manualMatched = await db.execute({ sql:'SELECT message, youtube_chat_id youtubeChatId FROM donations WHERE id = ?', args:[manualFollowup.lastInsertRowid] });
+    assert.equal(manualMatched.rows[0].message,'가나다라마바사');
+    assert.equal(manualMatched.rows[0].youtubeChatId,'manual-message');
     await db.execute({ sql:'DELETE FROM youtube_chat_messages WHERE recipient_user_id = ?', args:[memberId] });
     await db.execute({ sql:'DELETE FROM youtube_donor_links WHERE recipient_user_id = ?', args:[memberId] });
-    await db.execute({ sql:'DELETE FROM donations WHERE id IN (?, ?, ?)', args:[registrationDeposit.lastInsertRowid,automaticDeposit.lastInsertRowid,changedNameDeposit.lastInsertRowid] });
+    await db.execute({ sql:'DELETE FROM donations WHERE id IN (?, ?, ?, ?, ?)', args:[registrationDeposit.lastInsertRowid,automaticDeposit.lastInsertRowid,changedNameDeposit.lastInsertRowid,manualRegistration.lastInsertRowid,manualFollowup.lastInsertRowid] });
     youtubeSettings.youtubeChatEnabled=false;
+    youtubeSettings.youtubeManualDonationTestEnabled=false;
     await db.execute({ sql:'UPDATE user_settings SET value = ? WHERE user_id = ?', args:[JSON.stringify(youtubeSettings),memberId] });
     await db.execute({ sql:`INSERT INTO youtube_donor_links (recipient_user_id, youtube_channel_id, youtube_name, donor_name, donor_normalized) VALUES (?, ?, ?, ?, ?)`, args:[memberId,'channel-e2e-1','E2E 시청자','홍길동','홍길동'] });
     await assert.rejects(
