@@ -7657,6 +7657,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
               const crewEffect=(settings.rankingCrewGradeEffects||[]).find(effect=>effect.gradeId===crewGrade?.id);
               const crewNicknameEffect=settings.rankingCrewGradeEnabled !== false ? (crewEffect?.effect || "none") : "none";
               const crewAmountEffect=crewEffect?.amountEnabled===true ? crewNicknameEffect : "none";
+              const usesClippedTextFill = (effect) => ["rainbow", "gradient", "shine", "verticalGradient"].includes(effect);
               const crewPalette=CREW_GRADE_RGB_PALETTES[crewEffect?.palette||"classic"]||CREW_GRADE_RGB_PALETTES.classic;
               const crewEffectDurationMs=crewEffect?.speed==="slow"?4800:crewEffect?.speed==="fast"?1600:2800;
               const crewEffectStyle=crewNicknameEffect !== "none" ? {"--crew-effect-color":crewEffect?.color||"#facc15","--crew-effect-color-2":crewEffect?.color2||"#ffffff","--crew-effect-background":crewEffect?.backgroundEnabled===false?"transparent":crewEffect?.background||"#241b05","--crew-effect-strength":Math.max(.2,Math.min(1,Number(crewEffect?.intensity||65)/100)),"--crew-effect-duration":`${crewEffectDurationMs}ms`,"--crew-effect-delay":`-${Date.now()%crewEffectDurationMs}ms`,"--crew-rgb-gradient":crewPalette.gradient,"--crew-rgb-cycle-size":`${effectiveFontSize*12}px`} : undefined;
@@ -7723,7 +7724,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                     <OutlinedText
                       className={`donor-name${crewNicknameEffect !== "none" ? ` crew-nickname-effect crew-effect-${crewNicknameEffect}${crewNicknameEffect === "rainbow" ? ` crew-rgb-${crewEffect?.direction === "ltr" ? "ltr" : "rtl"}` : ""}${crewNicknameEffect === "gradient" ? ` crew-gradient-${crewEffect?.direction === "ltr" ? "ltr" : "rtl"}` : ""}` : ""}`}
                       enabled={settings.rankingNameOutlineEnabled}
-                      singlePass
+                      singlePass={!usesClippedTextFill(crewNicknameEffect)}
                       width={`${Math.min(0.12, settings.rankingNameOutlineWidth / Math.max(1, settings.rankingFontSize))}em`}
                       color={settings.rankingNameOutlineColor}
                       style={crewEffectStyle}
@@ -7737,7 +7738,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
                   <OutlinedText
                     className={`donor-amount${crewAmountEffect !== "none" ? ` crew-grade-amount crew-amount-${crewAmountEffect}${crewAmountEffect === "rainbow" ? ` crew-rgb-${crewEffect?.direction === "ltr" ? "ltr" : "rtl"}` : ""}${crewAmountEffect === "gradient" ? ` crew-gradient-${crewEffect?.direction === "ltr" ? "ltr" : "rtl"}` : ""}` : ""}`}
                     enabled={settings.rankingAmountOutlineEnabled}
-                    singlePass
+                    singlePass={!usesClippedTextFill(crewAmountEffect)}
                     width={`${Math.min(0.12, settings.rankingAmountOutlineWidth / Math.max(1, settings.rankingFontSize * (rankHighlight && index < 3 ? 1 : 0.92)))}em`}
                     color={settings.rankingAmountOutlineColor}
                     style={{
