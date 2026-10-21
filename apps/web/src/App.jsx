@@ -83,7 +83,7 @@ function OutlinedText({
   const showOutline = enabled && Number.parseFloat(width) > 0;
   const outlineWidth = typeof width === "string"
     ? width
-    : `${Math.max(0, Math.min(8, Number(width) || 0))}px`;
+    : `${Math.max(0, Math.min(20, Number(width) || 0))}px`;
   return (
     <Element
       className={`broadcast-outlined-text ${showOutline && singlePass ? "broadcast-outline-single" : ""} ${className}`.trim()}
@@ -4926,7 +4926,7 @@ function Settings({ mode }) {
                       <input
                         type="range"
                         min="0.5"
-                        max="12"
+                        max="20"
                         step=".5"
                         value={Math.max(0.5, settings.outlineWidth)}
                         onChange={(e) =>
@@ -5954,7 +5954,7 @@ function Settings({ mode }) {
                                       <input
                                         type="number"
                                         min="0"
-                                        max="12"
+                                        max="20"
                                         step=".5"
                                         value={
                                           tier.outlineWidth ??
