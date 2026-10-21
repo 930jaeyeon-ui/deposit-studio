@@ -7539,17 +7539,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
     { length: Math.min(maxColumns, Math.ceil(visible.length / capacityRows) || 1) },
     (_, column) => visible.slice(column * capacityRows, (column + 1) * capacityRows),
   );
-  const actualRows = Math.max(1, ...columns.map((column) => column.length));
-  // Size against the rows that are actually visible. The previous 15-row
-  // floor plus a 38px hard cap made the font-size control appear ineffective.
-  const sizingRows = actualRows;
-  const themeRowVerticalPadding = {
-    ocean: 16,
-    lavender: 18,
-    transparent: 4,
-  }[settings.rankingTheme] ?? 10;
   const effectiveRowGap = settings.rankingRowGap;
-  const effectiveRowPadding = themeRowVerticalPadding / 2;
   // OBS must render the exact size chosen by the streamer. Do not silently
   // shrink it based on row count; only the explicit top-rank scale is applied.
   const effectiveFontSize = settings.rankingFontSize * renderScale;
@@ -7576,7 +7566,6 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
     fontFamily: rankingFontStack(settings.rankingFontFamily),
     "--ranking-size": `${effectiveFontSize}px`,
     "--ranking-gap": `${effectiveRowGap * renderScale}px`,
-    "--ranking-row-padding": `${effectiveRowPadding * renderScale}px`,
     "--ranking-item-gap": `${8 * renderScale}px`,
     "--rank-lane-width": rankLaneWidth,
     "--column-gap": `${settings.rankingColumnGap * renderScale}px`,
@@ -7602,7 +7591,7 @@ function RankingCard({ items, settings, onEdit, full = false, rankOffset = 0, re
     : undefined;
   return (
     <div
-      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} rank-placement-${settings.rankingRankPlacement || "inline"} ranking-columns-${layoutColumns} ranking-data-columns-${columns.length} ${full ? "ranking-full-card" : "ranking-standard-card"} ranking-density-${sizingRows > 20 ? "dense" : sizingRows >= 15 ? "compact" : "normal"} ranking-enter-${settings.rankingAnimation}`}
+      className={`widget-card theme-${settings.rankingTheme} ${settings.rankingBackgroundEnabled ? "" : "ranking-no-background"} marker-${settings.rankingCustomMarker} rank-placement-${settings.rankingRankPlacement || "inline"} ranking-columns-${layoutColumns} ranking-data-columns-${columns.length} ${full ? "ranking-full-card" : "ranking-standard-card"} ranking-enter-${settings.rankingAnimation}`}
       style={cardStyle}
     >
       {settings.rankingShowTitle && (
